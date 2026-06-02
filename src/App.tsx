@@ -23,6 +23,7 @@ import CustomersPage from "./pages/customers/Index";
 import DashboardPage from "./pages/dashboard/Index";
 import FiscalYearsPage from "./pages/fiscal-years/Index";
 import ReceivablesPage from "./pages/receivables/Index";
+import PayablesPage from "./pages/payables/Index";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -66,6 +67,7 @@ function AppRoutes() {
         {isOwner && <Route path="customers" element={<CustomersPage />} />}
         {isOwner && <Route path="fiscal-years" element={<FiscalYearsPage />} />}
         <Route path="receivables" element={<ReceivablesPage />} />
+        <Route path="payables" element={<PayablesPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

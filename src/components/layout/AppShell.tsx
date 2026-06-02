@@ -11,7 +11,7 @@ import {
 import { cn } from '@/lib/utils';
 
 const MODULE_PATHS: Record<string, string[]> = {
-  FI:       ['/accounts', '/journal', '/ledger', '/auxiliary-ledgers', '/receivables', '/reports'],
+  FI:       ['/accounts', '/journal', '/ledger', '/auxiliary-ledgers', '/receivables', '/payables', '/reports'],
   MM:       ['/inventory', '/shipments'],
   SD:       ['/dashboard', '/sales', '/customers'],
   SETTINGS: ['/settings', '/fiscal-years'],
@@ -123,6 +123,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         ...(permissions.can_view_ledger    ? [{ path: '/ledger',            label: 'Libro Mayor'       }] : []),
         ...(permissions.can_view_auxiliary ? [{ path: '/auxiliary-ledgers', label: 'Libros Auxiliares' }] : []),
         { path: '/receivables', label: 'Cuentas x Cobrar' },
+        { path: '/payables',    label: 'Cuentas x Pagar'  },
         ...(permissions.can_view_reports   ? [{ path: '/reports',           label: 'Reportes'          }] : []),
       ]
     : [
@@ -131,6 +132,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         { path: '/ledger',            label: 'Libro Mayor'       },
         { path: '/auxiliary-ledgers', label: 'Libros Auxiliares' },
         { path: '/receivables',       label: 'Cuentas x Cobrar'  },
+        { path: '/payables',          label: 'Cuentas x Pagar'   },
         { path: '/reports',           label: 'Reportes'          },
       ];
 
