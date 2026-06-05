@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Plus, ShoppingCart, Ban, DollarSign, TrendingUp, Percent, Loader2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserAccess } from '@/contexts/UserAccessContext';
@@ -70,6 +71,7 @@ export default function SalesPage() {
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
+  const [itemsMap, setItemsMap] = useState<Record<string, string[]>>({});
 
   // Filtros
   const [period, setPeriod] = useState<PeriodFilter>('month');
@@ -91,7 +93,22 @@ export default function SalesPage() {
   async function load() {
     setLoading(true);
     try {
-      setSales(await listSales());
+      const data = await listSales();
+      setSales(data);
+      // Batch-fetch productos para mostrar en la tabla
+      if (data.length > 0) {
+        const saleIds = data.map(s => s.id);
+        const { data: items } = await supabase
+          .from('sale_items')
+          .select('sale_id, product_nombre')
+          .in('sale_id', saleIds);
+        const map: Record<string, string[]> = {};
+        for (const it of items ?? []) {
+          if (!map[it.sale_id]) map[it.sale_id] = [];
+          map[it.sale_id].push(it.product_nombre);
+        }
+        setItemsMap(map);
+      }
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Error cargando ventas');
     } finally {
@@ -263,6 +280,7 @@ export default function SalesPage() {
                 <TableHead>Número</TableHead>
                 <TableHead>Fecha</TableHead>
                 <TableHead>Cliente</TableHead>
+                <TableHead>Productos</TableHead>
                 <TableHead>Canal</TableHead>
                 <TableHead className="text-center">Factura</TableHead>
                 <TableHead className="text-right">Total Cobrado</TableHead>
@@ -292,6 +310,34 @@ export default function SalesPage() {
                     </TableCell>
                     <TableCell className="text-sm">{s.fecha}</TableCell>
                     <TableCell className="text-sm">{s.cliente_nombre || '—'}</TableCell>
+                    <TableCell className="text-sm max-w-[180px]">
+                      {(() => {
+                        const prods = itemsMap[s.id] ?? [];
+                        if (prods.length === 0) return <span className="text-muted-foreground">—</span>;
+                        const rest = prods.slice(1);
+                        return (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="truncate max-w-[130px]">{prods[0]}</span>
+                            {rest.length > 0 && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge variant="secondary" className="text-xs cursor-default shrink-0">
+                                      +{rest.length}
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="right" className="max-w-[220px]">
+                                    <ul className="space-y-0.5 text-xs">
+                                      {rest.map((p, i) => <li key={i}>{p}</li>)}
+                                    </ul>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </TableCell>
                     <TableCell className="text-sm">{CANAL_LABELS[s.canal] ?? s.canal}</TableCell>
                     <TableCell className="text-center">
                       {s.con_factura ? <Badge variant="outline">Sí</Badge> : <span className="text-muted-foreground text-xs">No</span>}
@@ -324,7 +370,7 @@ export default function SalesPage() {
             {/* Totales al pie */}
             <TableFooter>
               <TableRow className="bg-muted/30 font-semibold text-sm">
-                <TableCell colSpan={5} className="text-muted-foreground">Totales (confirmadas)</TableCell>
+                <TableCell colSpan={6} className="text-muted-foreground">Totales (confirmadas)</TableCell>
                 <TableCell className="text-right">Bs {fmt(tableTotals.cobrado)}</TableCell>
                 <TableCell className="text-right text-muted-foreground">Bs {fmt(tableTotals.costo)}</TableCell>
                 <TableCell className="text-right">Bs {fmt(tableTotals.margen)}</TableCell>
