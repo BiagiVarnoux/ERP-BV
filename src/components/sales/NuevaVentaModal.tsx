@@ -25,15 +25,19 @@ import {
   type MetodoValuacion,
   type SaleItemEnriched,
 } from '@/domain/sales';
-import { fetchProductsStockBatch } from '@/domain/sales/stockService';
+import { fetchProductsStockBatch, fetchLastPricesByCanal } from '@/domain/sales/stockService';
 import { CustomerSearchCombobox } from '@/components/customers/CustomerSearchCombobox';
 
 interface ProductOption {
   id: string;
   codigo: string;
   nombre: string;
+  descripcion: string | null;
+  categoria: string | null;
+  unidad_medida: string;
   cuenta_inventario_id: string | null;
   metodo_valuacion: MetodoValuacion;
+  precio_minimo: number | null;
 }
 
 interface Props {
@@ -46,6 +50,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
   const { reloadEntries } = useAccounting();
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [stockMap, setStockMap] = useState<Record<string, { stock: number; cpp: number }>>({});
+  const [suggestedPrices, setSuggestedPrices] = useState<Record<string, number>>({});
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmStockOpen, setConfirmStockOpen] = useState(false);
@@ -73,6 +78,12 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     loadProductsAndStock();
   }, [isOpen]);
 
+  // Actualizar precios sugeridos cuando cambia el canal
+  useEffect(() => {
+    if (!products.length) return;
+    fetchLastPricesByCanal(products.map(p => p.id), canal).then(setSuggestedPrices);
+  }, [canal, products]);
+
   function resetForm() {
     setFecha(todayISO());
     setCanal('electronica');
@@ -84,6 +95,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     setItems([]);
     setSearchQuery('');
     setSearchOpen(false);
+    setSuggestedPrices({});
   }
 
   async function loadProductsAndStock() {
@@ -91,7 +103,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     try {
       const { data } = await supabase
         .from('products')
-        .select('id, codigo, nombre, cuenta_inventario_id, metodo_valuacion')
+        .select('id, codigo, nombre, descripcion, categoria, unidad_medida, cuenta_inventario_id, metodo_valuacion, precio_minimo')
         .eq('company_id', DEFAULT_COMPANY_ID)
         .eq('status', 'activo')
         .order('nombre');
@@ -99,8 +111,12 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
       setProducts(prods);
 
       const ids = prods.map(p => p.id);
-      const sm = await fetchProductsStockBatch(ids);
+      const [sm, sp] = await Promise.all([
+        fetchProductsStockBatch(ids),
+        fetchLastPricesByCanal(ids, canal),
+      ]);
       setStockMap(sm);
+      setSuggestedPrices(sp);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Error cargando productos');
     } finally {
@@ -133,6 +149,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
       updateItem(existing._key, { cantidad: existing.cantidad + 1 });
     } else {
       const stockInfo = stockMap[product.id] ?? null;
+      const precioSugerido = suggestedPrices[product.id] ?? 0;
       const newItem: SaleItemEnriched = {
         _key: Math.random().toString(36).slice(2),
         product_id: product.id,
@@ -141,12 +158,23 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
         cuenta_inventario_id: product.cuenta_inventario_id,
         metodo_valuacion: product.metodo_valuacion,
         cantidad: 1,
-        precio_unitario_neto: 0,
+        precio_lista: precioSugerido,
+        descuento_pct: 0,
+        precio_unitario_neto: precioSugerido,
+        unidad_medida: product.unidad_medida,
+        descripcion: product.descripcion,
+        categoria: product.categoria,
+        precio_minimo: product.precio_minimo,
         stock_disponible: stockInfo?.stock ?? null,
         cpp_unitario: stockInfo?.cpp ?? null,
         margen_unitario: null,
         margen_porcentaje: null,
       };
+      // Calcular margen inicial si hay precio sugerido
+      if (precioSugerido > 0 && stockInfo?.cpp) {
+        newItem.margen_unitario = round2(precioSugerido - stockInfo.cpp);
+        newItem.margen_porcentaje = round2((newItem.margen_unitario / precioSugerido) * 100);
+      }
       setItems(prev => [...prev, newItem]);
     }
     setSearchQuery('');
@@ -157,6 +185,15 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     setItems(prev => prev.map(it => {
       if (it._key !== key) return it;
       const updated = { ...it, ...patch };
+
+      // Recalcular precio neto si cambia lista o descuento
+      if ('precio_lista' in patch || 'descuento_pct' in patch) {
+        updated.precio_unitario_neto = round2(
+          updated.precio_lista * (1 - updated.descuento_pct / 100)
+        );
+      }
+
+      // Recalcular margen
       if (updated.cpp_unitario !== null && updated.precio_unitario_neto > 0) {
         updated.margen_unitario = round2(updated.precio_unitario_neto - updated.cpp_unitario);
         updated.margen_porcentaje = round2(
@@ -205,7 +242,11 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
   async function doSubmit() {
     setSubmitting(true);
     try {
-      const cleanItems: SaleItemInput[] = items.map(({ _key, stock_disponible, cpp_unitario, margen_unitario, margen_porcentaje, ...rest }) => rest);
+      const cleanItems: SaleItemInput[] = items.map(({
+        _key, stock_disponible, cpp_unitario, margen_unitario, margen_porcentaje,
+        precio_lista, descuento_pct, unidad_medida, descripcion, categoria, precio_minimo,
+        ...rest
+      }) => rest);
       const result = await createSale(
         {
           fecha,
@@ -244,7 +285,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
   return (
     <>
       <Dialog open={isOpen} onOpenChange={o => !o && !submitting && onClose()}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ShoppingCart className="w-5 h-5 text-primary" />
@@ -273,9 +314,10 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
                   />
                 </div>
                 {searchOpen && searchResults.length > 0 && (
-                  <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md max-h-64 overflow-y-auto">
+                  <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md max-h-72 overflow-y-auto">
                     {searchResults.map(p => {
                       const si = stockMap[p.id];
+                      const sp = suggestedPrices[p.id];
                       return (
                         <button
                           key={p.id}
@@ -283,24 +325,46 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
                           className="w-full text-left px-3 py-2.5 hover:bg-accent text-sm border-b last:border-0"
                           onMouseDown={e => { e.preventDefault(); addProduct(p); }}
                         >
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <span className="text-xs text-muted-foreground font-mono mr-1">{p.codigo}</span>
-                              <span className="font-medium">{p.nombre}</span>
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-muted-foreground font-mono">{p.codigo}</span>
+                                <span className="font-medium truncate">{p.nombre}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                {p.categoria && (
+                                  <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                    {p.categoria}
+                                  </span>
+                                )}
+                                <span className="text-xs text-muted-foreground">{p.unidad_medida}</span>
+                                {p.descripcion && (
+                                  <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                    — {p.descripcion}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            {si !== undefined ? (
-                              <span className={`text-xs font-medium ${stockColor(si.stock)}`}>
-                                Stock: {si.stock} u.
-                              </span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">Sin stock</span>
-                            )}
+                            <div className="shrink-0 text-right space-y-0.5">
+                              {si !== undefined ? (
+                                <div className={`text-xs font-medium ${stockColor(si.stock)}`}>
+                                  Stock: {si.stock} {p.unidad_medida}
+                                </div>
+                              ) : (
+                                <div className="text-xs text-muted-foreground">Sin stock</div>
+                              )}
+                              {sp !== undefined && (
+                                <div className="text-xs text-blue-600 font-medium">
+                                  Último: Bs {fmt(sp)}
+                                </div>
+                              )}
+                              {si && si.cpp > 0 && (
+                                <div className="text-xs text-muted-foreground">
+                                  CPP: Bs {fmt(si.cpp)}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          {si && si.cpp > 0 && (
-                            <div className="text-xs text-muted-foreground mt-0.5">
-                              CPP: Bs {fmt(si.cpp)}
-                            </div>
-                          )}
                         </button>
                       );
                     })}
@@ -314,11 +378,12 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="min-w-[160px]">Producto</TableHead>
-                        <TableHead className="w-20 text-right">Cant.</TableHead>
-                        <TableHead className="w-28 text-right">Precio Unit.</TableHead>
+                        <TableHead className="min-w-[180px]">Producto</TableHead>
+                        <TableHead className="w-16 text-right">Cant.</TableHead>
+                        <TableHead className="w-28 text-right">Precio Lista</TableHead>
+                        <TableHead className="w-20 text-right">Desc. %</TableHead>
+                        <TableHead className="w-28 text-right">Precio Neto</TableHead>
                         <TableHead className="w-24 text-right">CPP</TableHead>
-                        <TableHead className="w-24 text-right">Margen Bs</TableHead>
                         <TableHead className="w-20 text-right">Margen %</TableHead>
                         <TableHead className="w-28 text-right">Subtotal</TableHead>
                         <TableHead className="w-8"></TableHead>
@@ -329,48 +394,99 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
                         const subtotal = round2(it.cantidad * it.precio_unitario_neto);
                         const stockInsuf = it.stock_disponible !== null && it.cantidad > it.stock_disponible;
                         const belowCost = it.margen_porcentaje !== null && it.margen_porcentaje < 0;
+                        const belowMinimo = it.precio_minimo !== null && it.precio_unitario_neto > 0
+                          && it.precio_unitario_neto < it.precio_minimo;
+                        const hasSuggested = suggestedPrices[it.product_id] !== undefined
+                          && suggestedPrices[it.product_id] !== it.precio_lista;
                         return (
                           <React.Fragment key={it._key}>
                             <TableRow className={stockInsuf ? 'bg-amber-50/50' : ''}>
+                              {/* Producto */}
                               <TableCell>
                                 <div className="font-medium text-sm leading-tight">{it.product_nombre}</div>
-                                <div className="flex items-center gap-1.5 mt-0.5">
+                                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                   {it.product_codigo && (
                                     <span className="text-xs text-muted-foreground font-mono">{it.product_codigo}</span>
                                   )}
+                                  {it.categoria && (
+                                    <span className="text-xs text-muted-foreground bg-muted px-1 rounded">{it.categoria}</span>
+                                  )}
+                                  <span className="text-xs text-muted-foreground">{it.unidad_medida}</span>
                                   {it.stock_disponible !== null && (
                                     <Badge variant="outline" className={`text-xs px-1 py-0 ${stockColor(it.stock_disponible)} border-current`}>
-                                      Stock: {it.stock_disponible}
+                                      {it.stock_disponible} u.
                                     </Badge>
                                   )}
                                 </div>
                               </TableCell>
+
+                              {/* Cantidad */}
                               <TableCell>
                                 <Input
                                   type="number"
                                   min="0.001"
                                   step="any"
-                                  className="h-8 w-20 text-right"
+                                  className="h-8 w-16 text-right"
                                   value={it.cantidad || ''}
                                   onChange={e => updateItem(it._key, { cantidad: parseFloat(e.target.value) || 0 })}
                                 />
                               </TableCell>
+
+                              {/* Precio Lista */}
+                              <TableCell>
+                                <div className="space-y-0.5">
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    className="h-8 w-28 text-right"
+                                    value={it.precio_lista || ''}
+                                    onChange={e => updateItem(it._key, { precio_lista: parseFloat(e.target.value) || 0 })}
+                                  />
+                                  {hasSuggested && (
+                                    <button
+                                      type="button"
+                                      className="text-xs text-blue-600 hover:underline w-full text-right leading-tight"
+                                      onClick={() => updateItem(it._key, { precio_lista: suggestedPrices[it.product_id] })}
+                                    >
+                                      Último: {fmt(suggestedPrices[it.product_id])}
+                                    </button>
+                                  )}
+                                </div>
+                              </TableCell>
+
+                              {/* Descuento % */}
                               <TableCell>
                                 <Input
                                   type="number"
                                   min="0"
-                                  step="any"
-                                  className="h-8 w-28 text-right"
-                                  value={it.precio_unitario_neto || ''}
-                                  onChange={e => updateItem(it._key, { precio_unitario_neto: parseFloat(e.target.value) || 0 })}
+                                  max="100"
+                                  step="0.1"
+                                  className="h-8 w-20 text-right"
+                                  value={it.descuento_pct || ''}
+                                  placeholder="0"
+                                  onChange={e => updateItem(it._key, { descuento_pct: parseFloat(e.target.value) || 0 })}
                                 />
                               </TableCell>
+
+                              {/* Precio Neto (derivado) */}
+                              <TableCell className="text-right">
+                                <div className="font-medium text-sm">
+                                  Bs {fmt(it.precio_unitario_neto)}
+                                </div>
+                                {it.precio_minimo !== null && it.precio_unitario_neto > 0 && (
+                                  <div className="text-xs text-muted-foreground">
+                                    Mín: Bs {fmt(it.precio_minimo)}
+                                  </div>
+                                )}
+                              </TableCell>
+
+                              {/* CPP */}
                               <TableCell className="text-right text-sm text-muted-foreground">
                                 {it.cpp_unitario !== null ? `Bs ${fmt(it.cpp_unitario)}` : '—'}
                               </TableCell>
-                              <TableCell className={`text-right text-sm font-medium ${it.margen_unitario !== null ? (it.margen_unitario >= 0 ? 'text-green-700' : 'text-red-700') : 'text-muted-foreground'}`}>
-                                {it.margen_unitario !== null ? `Bs ${fmt(it.margen_unitario)}` : '—'}
-                              </TableCell>
+
+                              {/* Margen % */}
                               <TableCell className="text-right">
                                 {it.margen_porcentaje !== null ? (
                                   <Badge variant="outline" className={`text-xs ${margenBadgeClass(it.margen_porcentaje)}`}>
@@ -380,33 +496,47 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
                                   <span className="text-sm text-muted-foreground">—</span>
                                 )}
                               </TableCell>
+
+                              {/* Subtotal */}
                               <TableCell className="text-right font-medium text-sm">
                                 Bs {fmt(subtotal)}
                               </TableCell>
+
+                              {/* Eliminar */}
                               <TableCell>
                                 <Button
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8"
                                   onClick={() => setItems(prev => prev.filter(p => p._key !== it._key))}
-                                  disabled={items.length === 1}
                                 >
                                   <Trash2 className="w-4 h-4 text-destructive" />
                                 </Button>
                               </TableCell>
                             </TableRow>
+
+                            {/* Filas de advertencia */}
                             {stockInsuf && (
                               <TableRow>
-                                <TableCell colSpan={8} className="py-1 px-4">
+                                <TableCell colSpan={9} className="py-1 px-4">
                                   <p className="text-xs text-amber-700">
                                     ⚠ Stock insuficiente: disponible {it.stock_disponible} u.
                                   </p>
                                 </TableCell>
                               </TableRow>
                             )}
-                            {belowCost && (
+                            {belowMinimo && (
                               <TableRow>
-                                <TableCell colSpan={8} className="py-1 px-4">
+                                <TableCell colSpan={9} className="py-1 px-4">
+                                  <p className="text-xs text-red-700">
+                                    ✕ Precio por debajo del mínimo permitido (Bs {fmt(it.precio_minimo!)})
+                                  </p>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            {belowCost && !belowMinimo && (
+                              <TableRow>
+                                <TableCell colSpan={9} className="py-1 px-4">
                                   <p className="text-xs text-red-700">
                                     ✕ Precio por debajo del costo
                                   </p>

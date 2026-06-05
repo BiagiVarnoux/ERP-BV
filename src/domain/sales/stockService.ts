@@ -1,5 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
-import type { ProductStockInfo } from './types';
+import type { Canal, ProductStockInfo } from './types';
 
 /**
  * Carga el stock disponible y CPP de múltiples productos en una sola
@@ -27,4 +27,50 @@ export async function fetchProductsStockBatch(
     map[row.product_id] = row;
   }
   return map;
+}
+
+/**
+ * Retorna el último precio neto al que se vendió cada producto en un canal dado.
+ * Útil para sugerir precio al agregar un producto al modal de venta.
+ */
+export async function fetchLastPricesByCanal(
+  productIds: string[],
+  canal: Canal
+): Promise<Record<string, number>> {
+  if (productIds.length === 0) return {};
+
+  // Obtener las últimas 300 ventas confirmadas del canal para tener cobertura suficiente
+  const { data: sales, error: salesErr } = await supabase
+    .from('sales')
+    .select('id')
+    .eq('canal', canal)
+    .eq('estado', 'confirmed')
+    .order('fecha', { ascending: false })
+    .limit(300);
+
+  if (salesErr || !sales?.length) return {};
+
+  const saleIds = sales.map(s => s.id);
+
+  const { data: items, error: itemsErr } = await supabase
+    .from('sale_items')
+    .select('product_id, precio_unitario_neto, sale_id')
+    .in('product_id', productIds)
+    .in('sale_id', saleIds);
+
+  if (itemsErr || !items?.length) return {};
+
+  // Mantener solo el primer hit por producto (el más reciente, gracias al order de sales)
+  const saleOrder = new Map(saleIds.map((id, i) => [id, i]));
+  const sorted = [...items].sort(
+    (a, b) => (saleOrder.get(a.sale_id) ?? 999) - (saleOrder.get(b.sale_id) ?? 999)
+  );
+
+  const result: Record<string, number> = {};
+  for (const row of sorted) {
+    if (!(row.product_id in result)) {
+      result[row.product_id] = Number(row.precio_unitario_neto);
+    }
+  }
+  return result;
 }

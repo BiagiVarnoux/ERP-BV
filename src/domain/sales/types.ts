@@ -124,7 +124,14 @@ export interface ProductStockInfo {
 
 export interface SaleItemEnriched extends SaleItemInput {
   _key: string;
+  // precio lista + descuento → precio_unitario_neto es derivado
+  precio_lista: number;
+  descuento_pct: number;
   // campos de display calculados en frontend
+  unidad_medida: string;
+  descripcion: string | null;
+  categoria: string | null;
+  precio_minimo: number | null;
   stock_disponible: number | null;   // null = cargando
   cpp_unitario: number | null;
   margen_unitario: number | null;

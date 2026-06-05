@@ -27,6 +27,7 @@ export interface ProductData {
   descripcion: string | null;
   unidad_medida: string;
   metodo_valuacion: string;
+  precio_minimo: number | null;
   is_active: boolean;
   status: 'activo' | 'archivado' | 'descontinuado';
   archived_at: string | null;
@@ -50,6 +51,7 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
   const [cuentaId, setCuentaId] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [unidadMedida, setUnidadMedida] = useState('unidad');
+  const [precioMinimo, setPrecioMinimo] = useState('');
   const [saving, setSaving] = useState(false);
 
   const isEditing = !!editProduct;
@@ -63,13 +65,14 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
       setCuentaId(editProduct.cuenta_inventario_id || '');
       setDescripcion(editProduct.descripcion || '');
       setUnidadMedida(editProduct.unidad_medida || 'unidad');
+      setPrecioMinimo(editProduct.precio_minimo != null ? String(editProduct.precio_minimo) : '');
     } else {
       resetFields();
     }
   }, [editProduct, isOpen]);
 
   function resetFields() {
-    setNombre(''); setCodigo(''); setCategoria('otros'); setCuentaId(''); setDescripcion(''); setUnidadMedida('unidad');
+    setNombre(''); setCodigo(''); setCategoria('otros'); setCuentaId(''); setDescripcion(''); setUnidadMedida('unidad'); setPrecioMinimo('');
   }
 
   async function handleSave() {
@@ -89,6 +92,7 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
         cuenta_inventario_id: cuentaId || null,
         descripcion: descripcion.trim() || null,
         unidad_medida: unidadMedida.trim() || 'unidad',
+        precio_minimo: precioMinimo !== '' ? parseFloat(precioMinimo) : null,
       };
 
       if (isEditing) {
@@ -166,6 +170,20 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
           <div className="space-y-2">
             <Label>Unidad de medida</Label>
             <Input value={unidadMedida} onChange={e => setUnidadMedida(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Precio mínimo de venta (Bs)</Label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Sin límite"
+              value={precioMinimo}
+              onChange={e => setPrecioMinimo(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              El modal de ventas alertará si el precio neto cae por debajo de este valor.
+            </p>
           </div>
         </div>
         <DialogFooter>
