@@ -11,6 +11,7 @@ import { Quarter, isDateInQuarter } from '@/accounting/quarterly-utils';
 import { parseMonthString, isDateInMonth, MonthPeriod } from '@/accounting/period-utils';
 import { exportEquityChangesToPDF } from '@/services/pdfService';
 import { computeIncomeStatement } from './IncomeStatementReport';
+import { computePeriodResult, findUtilidadesAcumuladasAccount } from '@/accounting/fiscal-year-utils';
 import { useReportSettings } from '@/hooks/useReportSettings';
 
 interface EquityChangesReportProps {
@@ -127,10 +128,34 @@ function computeEquityChanges(
   };
 
   // 2. Opening balances
+  // Igual que el Balance General: saldo real de cuentas Pn + resultado I-G de gestiones anteriores
+  // (el sistema no usa asientos de cierre, así que el resultado acumulado de años previos
+  //  no está en Pn.2 sino en las cuentas I-G; lo sumamos a Pn.2 para presentación correcta)
   const openingValues: Record<string, number> = {};
   for (const col of columns) {
     openingValues[col.accountId] = balanceBefore(col.accountId, periodStart);
   }
+
+  // Resultado I-G acumulado de TODAS las gestiones ANTERIORES al período
+  const priorIGResult = computePeriodResult(accounts, entries, '0001-01-01', (() => {
+    // un día antes de periodStart
+    const d = new Date(periodStart);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })()).resultado;
+
+  // Atribuirlo a Pn.2 (Utilidades Acumuladas) o a la última cuenta de patrimonio
+  if (priorIGResult !== 0) {
+    const uaAccount = findUtilidadesAcumuladasAccount(accounts);
+    const targetId = uaAccount?.id ?? columns[columns.length - 1]?.accountId;
+    if (targetId && openingValues[targetId] !== undefined) {
+      openingValues[targetId] = round2(openingValues[targetId] + priorIGResult);
+    } else if (targetId) {
+      // La columna existe aunque el saldo contable sea 0
+      openingValues[targetId] = round2(priorIGResult);
+    }
+  }
+
   const openingTotal = round2(Object.values(openingValues).reduce((s, v) => s + v, 0));
 
   // 3. Movement rows
