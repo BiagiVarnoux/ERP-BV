@@ -1,6 +1,6 @@
 // src/services/auditService.ts
 import { supabase } from '@/integrations/supabase/client';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { resolveUserCompanyId } from '@/lib/resolveCompanyId';
 
 export interface AuditLogEntry {
   id: string;
@@ -40,10 +40,11 @@ export async function logAuditEntry(
   if (!user) return;
   
   const changedFields = getChangedFields(oldValues, newValues);
-  
+  const companyId = await resolveUserCompanyId();
+
   await supabase.from('audit_log').insert({
     user_id: user.id,
-    company_id: DEFAULT_COMPANY_ID,
+    company_id: companyId,
     table_name: tableName,
     record_id: recordId,
     action,

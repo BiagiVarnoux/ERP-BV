@@ -9,10 +9,9 @@ import { Package, Eye, Plus, Pencil, Layers, Archive, PackageX, RotateCcw, Chevr
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAccounting } from '@/accounting/AccountingProvider';
-import { useUserAccess } from '@/contexts/UserAccessContext';
+import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { fmt } from '@/accounting/utils';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 import { calcularEstadoProducto, InventoryMovement } from '@/components/inventory/inventory-utils';
 import { ProductKardexModal } from '@/components/inventory/ProductKardexModal';
 import { FifoKardexModal } from '@/components/inventory/FifoKardexModal';
@@ -37,6 +36,7 @@ type ArchiveAction = 'archivado' | 'descontinuado';
 export default function InventoryPage() {
   const { accounts } = useAccounting();
   const { isReadOnly } = useUserAccess();
+  const activeCompanyId = useActiveCompanyId();
   const [products, setProducts] = useState<ProductData[]>([]);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,7 +72,7 @@ export default function InventoryPage() {
       if (!user) { toast.error('No autenticado'); return; }
 
       const [prodsRes, movsRes] = await Promise.all([
-        supabase.from('products').select('*').eq('company_id', DEFAULT_COMPANY_ID).eq('status', 'activo'),
+        supabase.from('products').select('*').eq('company_id', activeCompanyId).eq('status', 'activo'),
         supabase.from('inventory_movements').select('*').eq('user_id', user.id),
       ]);
 
@@ -90,7 +90,7 @@ export default function InventoryPage() {
     try {
       const query = supabase.from('products')
         .select('*')
-        .eq('company_id', DEFAULT_COMPANY_ID)
+        .eq('company_id', activeCompanyId)
         .in('status', ['archivado', 'descontinuado'])
         .order('archived_at', { ascending: false });
 

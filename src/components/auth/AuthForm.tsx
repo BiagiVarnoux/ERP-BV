@@ -54,13 +54,8 @@ export function AuthForm() {
         await signIn(validatedData.email, validatedData.password);
         toast.success('¡Sesión iniciada exitosamente!');
       } else {
-        // Guardar código de invitación en localStorage para después de confirmar email
-        if (validatedData.invitationCode) {
-          localStorage.setItem('pending_invitation_code', validatedData.invitationCode);
-        }
-
-        // Crear cuenta
-        await signUp(validatedData.email, validatedData.password);
+        // El código viaja en el emailRedirectTo — no se guarda en localStorage
+        await signUp(validatedData.email, validatedData.password, validatedData.invitationCode);
 
         if (validatedData.invitationCode) {
           toast.success('¡Cuenta creada! Confirma tu email para aplicar el código de invitación.');

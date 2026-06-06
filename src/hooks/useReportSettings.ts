@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useToast } from '@/hooks/use-toast';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 export interface ReportSettings {
   id: string;
@@ -21,6 +21,7 @@ const defaultSettings: Omit<ReportSettings, 'id'> = {
 export function useReportSettings() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const activeCompanyId = useActiveCompanyId();
   const [settings, setSettings] = useState<ReportSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -52,7 +53,7 @@ export function useReportSettings() {
           .from('report_settings')
           .insert({
             user_id: user.id,
-            company_id: DEFAULT_COMPANY_ID,
+            company_id: activeCompanyId,
             ...defaultSettings,
           })
           .select()

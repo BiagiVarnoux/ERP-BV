@@ -1,5 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { resolveUserCompanyId } from '@/lib/resolveCompanyId';
 import { round2 } from '@/accounting/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -50,10 +50,11 @@ export interface RegisterPayablePaymentInput {
 // ─── Service functions ────────────────────────────────────────────────────────
 
 export async function listPayables(): Promise<PayableRow[]> {
+  const companyId = await resolveUserCompanyId();
   const { data, error } = await (supabase
     .from('payables' as any)
     .select('*')
-    .eq('company_id', DEFAULT_COMPANY_ID)
+    .eq('company_id', companyId)
     .order('fecha_emision', { ascending: false }) as any);
 
   if (error) throw new Error(error.message);
@@ -63,9 +64,10 @@ export async function listPayables(): Promise<PayableRow[]> {
 export async function createPayable(input: CreatePayableInput): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No autenticado');
+  const companyId = await resolveUserCompanyId();
 
   const { error } = await (supabase.from('payables' as any).insert({
-    company_id:       DEFAULT_COMPANY_ID,
+    company_id:       companyId,
     user_id:          user.id,
     proveedor_nombre: input.proveedor_nombre,
     proveedor_nit:    input.proveedor_nit ?? null,
@@ -97,8 +99,9 @@ export async function registerPayablePayment(input: RegisterPayablePaymentInput)
   const currentPendiente = (rec as { monto_pendiente: number }).monto_pendiente;
 
   // 2. Insert payment record
+  const companyId = await resolveUserCompanyId();
   const { error: payErr } = await (supabase.from('debt_payments' as any).insert({
-    company_id:    DEFAULT_COMPANY_ID,
+    company_id:    companyId,
     user_id:       user.id,
     receivable_id: null,
     payable_id:    input.payable_id,

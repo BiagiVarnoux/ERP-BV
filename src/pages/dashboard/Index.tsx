@@ -8,7 +8,7 @@ import {
 } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt, round2 } from '@/accounting/utils';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { CANAL_LABELS } from '@/domain/sales';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -100,6 +100,7 @@ function BsTooltip({ active, payload, label }: any) {
 // ── Main component ──────────────────────────────────────────────────────────
 
 export default function SalesDashboardPage() {
+  const activeCompanyId = useActiveCompanyId();
   const [loading, setLoading] = useState(true);
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [items, setItems] = useState<SaleItem[]>([]);
@@ -114,7 +115,7 @@ export default function SalesDashboardPage() {
         .from('sales')
         .select('id,fecha,canal,con_factura,total_cobrado,precio_neto_total,total_costo,estado,customer_id,cliente_nombre')
         .eq('estado', 'confirmed')
-        .eq('company_id', DEFAULT_COMPANY_ID),
+        .eq('company_id', activeCompanyId),
       supabase
         .from('sale_items')
         .select('sale_id,product_nombre,product_codigo,cantidad,subtotal_neto,costo_total,margen_bruto'),

@@ -10,10 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, CreditCard, Loader2, Banknote, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { useUserAccess } from '@/contexts/UserAccessContext';
+import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { fmt, round2 } from '@/accounting/utils';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 import {
   listPayables,
   createPayable,
@@ -72,6 +71,7 @@ function estadoFilterLabel(f: EstadoFilter): string {
 
 export default function PayablesPage() {
   const { isReadOnly } = useUserAccess();
+  const activeCompanyId = useActiveCompanyId();
   const [rows, setRows]       = useState<PayableRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -122,7 +122,7 @@ export default function PayablesPage() {
     const { data } = await (supabase
       .from('debt_payments' as any)
       .select('monto')
-      .eq('company_id', DEFAULT_COMPANY_ID)
+      .eq('company_id', activeCompanyId)
       .not('payable_id', 'is', null)
       .gte('fecha', from)
       .lte('fecha', to) as any);

@@ -1,5 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { resolveUserCompanyId } from '@/lib/resolveCompanyId';
 import { round2 } from '@/accounting/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -49,13 +49,14 @@ export interface RegisterPaymentInput {
 // ─── Service functions ────────────────────────────────────────────────────────
 
 export async function listReceivables(): Promise<ReceivableRow[]> {
+  const companyId = await resolveUserCompanyId();
   const { data, error } = await supabase
     .from('receivables')
     .select(`
       *,
       customers ( razon_social )
     `)
-    .eq('company_id', DEFAULT_COMPANY_ID)
+    .eq('company_id', companyId)
     .order('fecha_emision', { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -73,9 +74,10 @@ export async function listReceivables(): Promise<ReceivableRow[]> {
 export async function createReceivable(input: CreateReceivableInput): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No autenticado');
+  const companyId = await resolveUserCompanyId();
 
   const { error } = await supabase.from('receivables').insert({
-    company_id:       DEFAULT_COMPANY_ID,
+    company_id:       companyId,
     user_id:          user.id,
     customer_id:      input.customer_id ?? null,
     sale_id:          input.sale_id ?? null,
@@ -107,8 +109,9 @@ export async function registerPayment(input: RegisterPaymentInput): Promise<void
   const currentPendiente = (rec as unknown as { monto_pendiente: number }).monto_pendiente;
 
   // 2. Insert payment record
+  const companyId = await resolveUserCompanyId();
   const { error: payErr } = await supabase.from('debt_payments').insert({
-    company_id:    DEFAULT_COMPANY_ID,
+    company_id:    companyId,
     user_id:       user.id,
     receivable_id: input.receivable_id,
     payable_id:    null,

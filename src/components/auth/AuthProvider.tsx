@@ -6,7 +6,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, invitationCode?: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -41,31 +41,34 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setUser(session?.user ?? null);
         setLoading(false);
 
-        // When user signs in (after email confirmation), check for pending invitation code
+        // When user signs in (after email confirmation), check for invitation code in URL
         if (event === 'SIGNED_IN' && session?.user) {
-          const pendingCode = localStorage.getItem('pending_invitation_code');
-          
+          const urlParams = new URLSearchParams(window.location.search);
+          const pendingCode = urlParams.get('invitation_code');
+
           if (pendingCode) {
-            // Redeem the invitation code
+            // Remove code from URL immediately to avoid leaking it in browser history
+            urlParams.delete('invitation_code');
+            const newUrl = urlParams.toString()
+              ? `${window.location.pathname}?${urlParams}`
+              : window.location.pathname;
+            window.history.replaceState({}, '', newUrl);
+
             setTimeout(async () => {
               try {
                 const { data } = await supabase.rpc('redeem_invitation_code', {
                   _code: pendingCode,
                   _user_id: session.user.id
                 });
-                
+
                 const result = data as Record<string, unknown> | null;
                 if (result?.success) {
-                  localStorage.removeItem('pending_invitation_code');
-                  console.log('Invitation code redeemed successfully');
                   window.location.reload();
                 } else {
                   console.error('Failed to redeem code:', (result as any)?.error);
-                  localStorage.removeItem('pending_invitation_code');
                 }
               } catch (error) {
                 console.error('Error redeeming invitation code:', error);
-                localStorage.removeItem('pending_invitation_code');
               }
             }, 0);
           } else {
@@ -103,12 +106,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (error) throw error;
   };
 
-  const signUp = async (email: string, password: string) => {
+  const signUp = async (email: string, password: string, invitationCode?: string) => {
     if (!supabase) throw new Error('Supabase no disponible');
-    
+
+    const redirectTo = invitationCode
+      ? `${window.location.origin}/?invitation_code=${encodeURIComponent(invitationCode)}`
+      : `${window.location.origin}/`;
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
+      options: { emailRedirectTo: redirectTo },
     });
     if (error) throw error;
   };

@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt, todayISO, round2 } from '@/accounting/utils';
 import { useAccounting } from '@/accounting/AccountingProvider';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import {
   calculateTaxes,
   createSale,
@@ -48,6 +48,7 @@ interface Props {
 
 export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
   const { reloadEntries } = useAccounting();
+  const activeCompanyId = useActiveCompanyId();
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [stockMap, setStockMap] = useState<Record<string, { stock: number; cpp: number }>>({});
   const [suggestedPrices, setSuggestedPrices] = useState<Record<string, number>>({});
@@ -104,7 +105,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
       const { data } = await supabase
         .from('products')
         .select('id, codigo, nombre, descripcion, categoria, unidad_medida, cuenta_inventario_id, metodo_valuacion, precio_minimo')
-        .eq('company_id', DEFAULT_COMPANY_ID)
+        .eq('company_id', activeCompanyId)
         .eq('status', 'activo')
         .order('nombre');
       const prods = (data ?? []) as ProductOption[];
@@ -257,7 +258,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
           glosa: glosa || null,
         },
         cleanItems,
-        DEFAULT_COMPANY_ID,
+        activeCompanyId,
       );
       toast.success(`Venta ${result.numero} registrada`);
       await reloadEntries();

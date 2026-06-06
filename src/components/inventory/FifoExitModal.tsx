@@ -8,7 +8,7 @@ import { AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt, round2, todayISO } from '@/accounting/utils';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { InventoryLot, simularSalidaFifo } from './fifo-utils';
 
 interface FifoExitModalProps {
@@ -22,6 +22,7 @@ interface FifoExitModalProps {
 }
 
 export function FifoExitModal({ isOpen, onClose, product, lots, onSaved, journalEntryId, journalDate }: FifoExitModalProps) {
+  const activeCompanyId = useActiveCompanyId();
   const [fecha, setFecha] = useState(journalDate || todayISO());
   const [cantidad, setCantidad] = useState('');
   const [referencia, setReferencia] = useState(journalEntryId || '');
@@ -76,7 +77,7 @@ export function FifoExitModal({ isOpen, onClose, product, lots, onSaved, journal
           referencia: referencia.trim() || null,
           journal_entry_id: journalEntryId || null,
           user_id: user.id,
-          company_id: DEFAULT_COMPANY_ID,
+          company_id: activeCompanyId,
         });
         if (movErr) throw movErr;
       }

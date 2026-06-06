@@ -8,7 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ChevronDown, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { createCustomer, updateCustomer } from '@/domain/customers';
 import type { CustomerRow, CreateCustomerInput, CustomerTipo } from '@/domain/customers';
 
@@ -34,6 +34,7 @@ const emptyForm = (): CreateCustomerInput & { credito_autorizado: number; dias_c
 });
 
 export function CustomerModal({ isOpen, onClose, onSaved, initialName, editCustomer }: Props) {
+  const activeCompanyId = useActiveCompanyId();
   const [form, setForm] = useState(emptyForm());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -80,7 +81,7 @@ export function CustomerModal({ isOpen, onClose, onSaved, initialName, editCusto
       const query = supabase
         .from('customers')
         .select('id')
-        .eq('company_id', DEFAULT_COMPANY_ID)
+        .eq('company_id', activeCompanyId)
         .eq('nit', form.nit.trim());
       if (editCustomer) query.neq('id', editCustomer.id);
       const { data } = await query.limit(1);

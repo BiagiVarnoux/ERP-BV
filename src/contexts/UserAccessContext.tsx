@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -124,6 +125,11 @@ export function useUserAccess() {
   const context = useContext(UserAccessContext);
   if (!context) throw new Error('useUserAccess must be used within a UserAccessProvider');
   return context;
+}
+
+export function useActiveCompanyId(): string {
+  const { companyId } = useUserAccess();
+  return companyId ?? DEFAULT_COMPANY_ID;
 }
 
 // ─── Provider ─────────────────────────────────────────────────────────────────

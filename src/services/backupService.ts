@@ -266,12 +266,19 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
     await safeDelete('receivables');
     await safeDelete('payables');
     await safeDelete('customers');
-    // sale_items must go before sales (no user_id, scoped via RLS)
-    const { error: saleItemsDelError } = await supabase
-      .from('sale_items')
-      .delete()
-      .gte('created_at', '1900-01-01');
-    if (saleItemsDelError) throw new Error(`Error limpiando sale_items: ${saleItemsDelError.message}`);
+    // sale_items must go before sales (no user_id column — delete by matching sale IDs)
+    const { data: userSaleIds } = await supabase
+      .from('sales')
+      .select('id')
+      .eq('user_id', user.id);
+    if (userSaleIds && userSaleIds.length > 0) {
+      const saleIds = userSaleIds.map((s: any) => s.id);
+      const { error: saleItemsDelError } = await supabase
+        .from('sale_items')
+        .delete()
+        .in('sale_id', saleIds);
+      if (saleItemsDelError) throw new Error(`Error limpiando sale_items: ${saleItemsDelError.message}`);
+    }
     await safeDelete('sales');
     await safeDelete('auxiliary_movement_details');
     await safeDelete('auxiliary_ledger');
@@ -455,20 +462,22 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
     }
 
     if (backup.member_permissions?.length) {
-      // Restaurar solo los permisos del usuario actual (company_member_id puede haber cambiado)
-      const { data: currentMember } = await supabase
+      // Solo el owner de la empresa puede restaurar permisos de miembros
+      const { data: ownerCheck } = await supabase
         .from('company_members')
-        .select('id')
+        .select('id, role')
         .eq('company_id', userCompanyIdForRestore)
         .eq('user_id', user.id)
         .maybeSingle();
-      if (currentMember) {
-        const rows = backup.member_permissions.map((r: any) => ({
-          ...r,
-          company_member_id: currentMember.id,
-        }));
+      if (ownerCheck?.role === 'owner') {
+        // Strip id to avoid PK conflicts; company_member_id is remapped to current member
+        const rows = backup.member_permissions.map((r: any) => {
+          const { id: _id, ...rest } = r;
+          return { ...rest, company_member_id: ownerCheck.id };
+        });
         await chunkedInsert('member_permissions', rows);
       }
+      // Non-owners: skip silently — their permissions remain as set by the owner
     }
 
     const extras = [];
@@ -513,6 +522,22 @@ export function validateBackupFile(data: any): { valid: boolean; error?: string 
   for (const key of requiredArrays) {
     if (!Array.isArray(data[key])) {
       return { valid: false, error: `Falta o es inválido el campo: ${key}` };
+    }
+  }
+
+  // Optional arrays must be arrays if present (not arbitrary objects or primitives)
+  const optionalArrays = [
+    'auxiliary_ledger_definitions', 'auxiliary_ledger', 'auxiliary_movement_details',
+    'kardex_definitions', 'kardex_entries', 'kardex_movements', 'quarterly_closures',
+    'products', 'inventory_movements', 'inventory_lots', 'import_lots',
+    'cost_sheets', 'cost_sheet_cells', 'report_settings', 'shipments',
+    'sales', 'sale_items', 'fiscal_years', 'customers', 'receivables',
+    'payables', 'debt_payments', 'member_permissions', 'company_module_config',
+  ];
+
+  for (const key of optionalArrays) {
+    if (data[key] !== undefined && !Array.isArray(data[key])) {
+      return { valid: false, error: `Campo inválido (debe ser array): ${key}` };
     }
   }
 

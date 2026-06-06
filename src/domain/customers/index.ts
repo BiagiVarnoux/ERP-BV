@@ -1,15 +1,16 @@
 import { supabase } from '@/integrations/supabase/client';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { resolveUserCompanyId } from '@/lib/resolveCompanyId';
 import type { CustomerRow, CreateCustomerInput } from '@/domain/sales/types';
 
 export type { CustomerRow, CreateCustomerInput } from '@/domain/sales/types';
 export type { CustomerTipo } from '@/domain/sales/types';
 
 export async function listCustomers(): Promise<CustomerRow[]> {
+  const companyId = await resolveUserCompanyId();
   const { data, error } = await supabase
     .from('customers')
     .select('*')
-    .eq('company_id', DEFAULT_COMPANY_ID)
+    .eq('company_id', companyId)
     .eq('activo', true)
     .order('razon_social');
   if (error) throw new Error(error.message);
@@ -22,11 +23,12 @@ export async function createCustomer(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No autenticado');
 
+  const companyId = await resolveUserCompanyId();
   const { data, error } = await supabase
     .from('customers')
     .insert({
       ...input,
-      company_id: DEFAULT_COMPANY_ID,
+      company_id: companyId,
       user_id: user.id,
     })
     .select()

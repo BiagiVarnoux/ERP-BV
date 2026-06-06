@@ -6,11 +6,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Plus, Users, Pencil, UserMinus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useUserAccess } from '@/contexts/UserAccessContext';
+import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { fmt } from '@/accounting/utils';
 import { supabase } from '@/integrations/supabase/client';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 import { updateCustomer } from '@/domain/customers';
 import type { CustomerRow } from '@/domain/customers';
 import { CustomerModal } from '@/components/customers/CustomerModal';
@@ -22,6 +21,7 @@ const TIPO_LABELS: Record<string, string> = {
 
 export default function CustomersPage() {
   const { isReadOnly } = useUserAccess();
+  const activeCompanyId = useActiveCompanyId();
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -44,7 +44,7 @@ export default function CustomersPage() {
       const { data, error } = await supabase
         .from('customers')
         .select('*')
-        .eq('company_id', DEFAULT_COMPANY_ID)
+        .eq('company_id', activeCompanyId)
         .order('razon_social');
       if (error) throw new Error(error.message);
       setCustomers((data ?? []) as CustomerRow[]);

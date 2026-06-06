@@ -10,10 +10,11 @@ import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { supabase } from '@/integrations/supabase/client';
 import { KardexDefinition } from '@/accounting/types';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 export function KardexDefinitionsModal() {
   const { accounts, kardexDefinitions, setKardexDefinitions } = useAccounting();
+  const activeCompanyId = useActiveCompanyId();
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState('');
   const [selectedAccountId, setSelectedAccountId] = useState('');
@@ -48,7 +49,7 @@ export function KardexDefinitionsModal() {
           name: name.trim(),
           account_id: selectedAccountId,
           user_id: user.id,
-          company_id: DEFAULT_COMPANY_ID,
+          company_id: activeCompanyId,
         })
         .select()
         .single();

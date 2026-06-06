@@ -4,7 +4,7 @@
 import { Shipment } from './shipment-types';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { resolveUserCompanyId } from '@/lib/resolveCompanyId';
 
 // Helper: convert DB row to Shipment
 function rowToShipment(row: any): Shipment {
@@ -19,12 +19,12 @@ function rowToShipment(row: any): Shipment {
 }
 
 // Helper: convert Shipment to DB row fields
-function shipmentToRow(s: Shipment, userId: string) {
+async function shipmentToRow(s: Shipment, userId: string) {
   const { id, numero, status, ...rest } = s;
   return {
     id,
     user_id: userId,
-    company_id: DEFAULT_COMPANY_ID,
+    company_id: await resolveUserCompanyId(),
     numero,
     status,
     data: JSON.parse(JSON.stringify(rest)) as Json,
@@ -53,7 +53,7 @@ export const ShipmentStorage = {
     const userId = await getUserId();
     await supabase.from('shipments').delete().eq('user_id', userId);
     if (shipments.length > 0) {
-      const rows = shipments.map(s => shipmentToRow(s, userId));
+      const rows = await Promise.all(shipments.map(s => shipmentToRow(s, userId)));
       const { error } = await supabase.from('shipments').insert(rows);
       if (error) throw error;
     }
@@ -61,7 +61,7 @@ export const ShipmentStorage = {
 
   async upsert(shipment: Shipment): Promise<void> {
     const userId = await getUserId();
-    const row = shipmentToRow(shipment, userId);
+    const row = await shipmentToRow(shipment, userId);
     const { error } = await supabase
       .from('shipments')
       .upsert(row, { onConflict: 'id' });
@@ -96,7 +96,7 @@ export const ShipmentStorage = {
       if (!old.length) return 0;
 
       const userId = await getUserId();
-      const rows = old.map(s => shipmentToRow(s, userId));
+      const rows = await Promise.all(old.map(s => shipmentToRow(s, userId)));
       const { error } = await supabase.from('shipments').upsert(rows, { onConflict: 'id' });
       if (error) throw error;
 

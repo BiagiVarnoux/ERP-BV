@@ -9,13 +9,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Plus, Trash2, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
-import { useUserAccess } from '@/contexts/UserAccessContext';
+import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { KardexMovement } from '@/accounting/types';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt, todayISO } from '@/accounting/utils';
 import { KardexDefinitionsModal } from './KardexDefinitionsModal';
 import { calculateCPP } from '@/accounting/kardex-utils';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,6 +29,7 @@ import {
 export function KardexCPP() {
   const { accounts, kardexDefinitions } = useAccounting();
   const { isReadOnly } = useUserAccess();
+  const activeCompanyId = useActiveCompanyId();
   const [selectedKardexDefId, setSelectedKardexDefId] = useState<string>('');
   const [kardexId, setKardexId] = useState<string>('');
   const [movements, setMovements] = useState<KardexMovement[]>([]);
@@ -82,7 +82,7 @@ export function KardexCPP() {
             .insert({
               account_id: selectedKardexDef.account_id,
               user_id: user.id,
-              company_id: DEFAULT_COMPANY_ID,
+              company_id: activeCompanyId,
             })
             .select()
             .single();
@@ -168,7 +168,7 @@ export function KardexCPP() {
         .insert({
           kardex_id: kardexId,
           user_id: user.id,
-          company_id: DEFAULT_COMPANY_ID,
+          company_id: activeCompanyId,
           fecha: formData.fecha,
           concepto: formData.concepto.trim(),
           entrada,

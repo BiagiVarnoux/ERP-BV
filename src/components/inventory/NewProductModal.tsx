@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { toast } from 'sonner';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { Archive } from 'lucide-react';
 
 const CATEGORIAS = [
@@ -45,6 +45,7 @@ interface NewProductModalProps {
 
 export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewProductModalProps) {
   const { accounts } = useAccounting();
+  const activeCompanyId = useActiveCompanyId();
   const [nombre, setNombre] = useState('');
   const [codigo, setCodigo] = useState('');
   const [categoria, setCategoria] = useState('otros');
@@ -100,7 +101,7 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
         if (error) throw error;
         toast.success('Producto actualizado');
       } else {
-        const { error } = await supabase.from('products').insert({ ...payload, user_id: user.id, company_id: DEFAULT_COMPANY_ID });
+        const { error } = await supabase.from('products').insert({ ...payload, user_id: user.id, company_id: activeCompanyId });
         if (error) throw error;
         toast.success('Producto creado');
       }

@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { fmt } from '@/accounting/utils';
 import { supabase } from '@/integrations/supabase/client';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 interface KardexMovementData {
   concepto: string;
@@ -32,14 +32,15 @@ interface KardexModalProps {
   onSave: (entry: any) => void;
 }
 
-export function KardexModal({ 
-  isOpen, 
-  onClose, 
+export function KardexModal({
+  isOpen,
+  onClose,
   linesToProcess,
   originalEntry,
-  onSave 
+  onSave
 }: KardexModalProps) {
   const { accounts } = useAccounting();
+  const activeCompanyId = useActiveCompanyId();
   const [currentLineIndex, setCurrentLineIndex] = useState(0);
   const [lineMovements, setLineMovements] = useState<{ [lineIndex: number]: KardexMovementData }>({});
   const [concepto, setConcepto] = useState('');
@@ -131,7 +132,7 @@ export function KardexModal({
             .insert({
               account_id: line.accountId,
               user_id: user.id,
-              company_id: DEFAULT_COMPANY_ID,
+              company_id: activeCompanyId,
             })
             .select()
             .single();
@@ -146,7 +147,7 @@ export function KardexModal({
           .insert({
             kardex_id: kardexId,
             user_id: user.id,
-            company_id: DEFAULT_COMPANY_ID,
+            company_id: activeCompanyId,
             fecha: originalEntry.date,
             concepto: movement.concepto,
             entrada: movement.entrada,

@@ -24,8 +24,7 @@ import { useAccounting } from '@/accounting/AccountingProvider';
 import { fmt, todayISO, round2 } from '@/accounting/utils';
 import { generateEntryId } from '@/accounting/utils';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
-import { useUserAccess } from '@/contexts/UserAccessContext';
-import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 import {
   Shipment, ShipmentProduct, ShipmentExpense,
@@ -82,6 +81,7 @@ function newShipment(existingShipments: Shipment[] = []): Shipment {
 export default function ShipmentsPage() {
   const { entries, setEntries, adapter } = useAccounting();
   const { isReadOnly } = useUserAccess();
+  const activeCompanyId = useActiveCompanyId();
 
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -287,7 +287,7 @@ export default function ShipmentsPage() {
           const { data: existing } = await supabase.from('products')
             .select('id, status, nombre')
             .eq('codigo', link.newProductData.codigo)
-            .eq('company_id', DEFAULT_COMPANY_ID)
+            .eq('company_id', activeCompanyId)
             .maybeSingle();
           if (existing) {
             newProductIds[link.shipmentProductId] = existing.id;
@@ -307,7 +307,7 @@ export default function ShipmentsPage() {
               categoria: 'importado',
               unidad_medida: 'unidad',
               user_id: user.user.id,
-              company_id: DEFAULT_COMPANY_ID,
+              company_id: activeCompanyId,
             }).select('id').single();
             if (error) throw error;
             newProductIds[link.shipmentProductId] = data.id;
@@ -498,7 +498,7 @@ export default function ShipmentsPage() {
             cantidad_disponible: product.cantidad,
             costo_unitario: costo_unitario,
             user_id: user.user.id,
-            company_id: DEFAULT_COMPANY_ID,
+            company_id: activeCompanyId,
           })
           .select('id')
           .single();
@@ -516,7 +516,7 @@ export default function ShipmentsPage() {
           referencia: `${s.numero} — Importación cerrada`,
           metodo_valuacion: 'FIFO',
           user_id: user.user.id,
-          company_id: DEFAULT_COMPANY_ID,
+          company_id: activeCompanyId,
         });
         if (movError) throw movError;
       }

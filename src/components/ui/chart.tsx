@@ -65,6 +65,14 @@ const ChartContainer = React.forwardRef<
 })
 ChartContainer.displayName = "Chart"
 
+// Allowlists for values interpolated into dangerouslySetInnerHTML CSS
+const SAFE_CSS_IDENT = /^[a-zA-Z0-9_-]+$/
+const SAFE_CSS_COLOR = /^(#[0-9a-fA-F]{3,8}|rgba?\([^)]{1,60}\)|hsla?\([^)]{1,60}\)|[a-zA-Z]{2,30})$/
+
+function safeCssId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "")
+}
+
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   const colorConfig = Object.entries(config).filter(
     ([_, config]) => config.theme || config.color
@@ -74,19 +82,23 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
     return null
   }
 
+  const safeId = safeCssId(id)
+
   return (
     <style
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
           .map(
             ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
+${prefix} [data-chart=${safeId}] {
 ${colorConfig
   .map(([key, itemConfig]) => {
+    if (!SAFE_CSS_IDENT.test(key)) return null
     const color =
       itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
       itemConfig.color
-    return color ? `  --color-${key}: ${color};` : null
+    if (!color || !SAFE_CSS_COLOR.test(color)) return null
+    return `  --color-${key}: ${color};`
   })
   .join("\n")}
 }
