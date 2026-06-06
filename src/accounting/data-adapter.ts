@@ -245,338 +245,324 @@ export const LocalAdapter: IDataAdapter = {
   },
 };
 
-export const SupaAdapter: IDataAdapter = {
-  async loadAccounts(){
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAccounts();
-    const data = await fetchAllPaginated<Account>((from, to) =>
-      supa.from("accounts")
-        .select("id,name,type,normal_side,is_active,expense_category,is_cash_equivalent,is_current,clasificacion_resultado,subclasificacion_resultado,clasificacion_flujo,es_partida_no_monetaria,es_capital_trabajo,es_financiera,es_extraordinaria,afecta_ebitda")
-        .order("id")
-        .range(from, to)
-    );
-    return data;
-  },
-  async upsertAccount(a){
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAccount(a);
-    const { data: { user } } = await supa.auth.getUser();
-    if (!user) throw new Error("Usuario no autenticado");
-    // Include classification fields
-    const accountWithUser = {
-      ...a,
-      user_id: user.id,
-      company_id: DEFAULT_COMPANY_ID,
-      expense_category: a.expense_category ?? null,
-      is_cash_equivalent: a.is_cash_equivalent ?? false,
-      is_current: a.is_current ?? null,
-      clasificacion_resultado: a.clasificacion_resultado ?? null,
-      subclasificacion_resultado: a.subclasificacion_resultado ?? null,
-      clasificacion_flujo: a.clasificacion_flujo ?? 'no_aplica',
-      es_partida_no_monetaria: a.es_partida_no_monetaria ?? false,
-      es_capital_trabajo: a.es_capital_trabajo ?? false,
-      es_financiera: a.es_financiera ?? false,
-      es_extraordinaria: a.es_extraordinaria ?? false,
-      afecta_ebitda: a.afecta_ebitda ?? true,
-    };
-    const { error } = await supa.from("accounts").upsert(accountWithUser);
-    if (error) throw error;
-  },
-  async deleteAccount(id){
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteAccount(id);
-    const { error } = await supa.from("accounts").delete().eq("id", id);
-    if (error) throw error;
-  },
-  async loadEntries(){
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.loadEntries();
-    const heads = await fetchAllPaginated<any>((from, to) =>
-      supa.from("journal_entries").select("id,date,memo,void_of").order("date").range(from, to)
-    );
-    const ids = heads.map(h => h.id); if (ids.length === 0) return [];
-    // Fetch lines paginated AND chunk the .in() filter to avoid URL-length limits
-    const allLines: any[] = [];
-    for (const idsChunk of chunk(ids, 300)) {
-      const part = await fetchAllPaginated<any>((from, to) =>
-        supa.from("journal_lines")
-          .select("entry_id,account_id,debit,credit,line_memo")
-          .in("entry_id", idsChunk)
+/**
+ * Crea un SupabaseAdapter acotado a una empresa específica.
+ * Todas las lecturas filtran por company_id y todas las escrituras
+ * usan ese mismo company_id en lugar del valor hardcodeado.
+ */
+export function createSupaAdapter(companyId: string): IDataAdapter {
+  const adapter: IDataAdapter = {
+    async loadAccounts(){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAccounts();
+      const data = await fetchAllPaginated<Account>((from, to) =>
+        supa.from("accounts")
+          .select("id,name,type,normal_side,is_active,expense_category,is_cash_equivalent,is_current,clasificacion_resultado,subclasificacion_resultado,clasificacion_flujo,es_partida_no_monetaria,es_capital_trabajo,es_financiera,es_extraordinaria,afecta_ebitda")
+          .eq("company_id", companyId)
+          .order("id")
           .range(from, to)
       );
-      allLines.push(...part);
-    }
-    const map = new Map<string, JournalEntry>();
-    for (const h of heads) map.set(h.id, { id: h.id, date: String(h.date), memo: h.memo || undefined, void_of: h.void_of || undefined, lines: [] });
-    for (const l of allLines) { const e = map.get(l.entry_id)!; if (e) e.lines.push({ account_id: l.account_id, debit: Number(l.debit)||0, credit: Number(l.credit)||0, line_memo: l.line_memo||undefined }); }
-    return Array.from(map.values()).filter(e => e.lines.length > 0).sort((a,b)=> cmpDate(a.date,b.date) || a.id.localeCompare(b.id));
-  },
-  async saveEntry(e){
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.saveEntry(e);
-    const { data: { user } } = await supa.auth.getUser();
-    if (!user) throw new Error("Usuario no autenticado");
-    const { error: e1 } = await supa.from("journal_entries").upsert({ id: e.id, date: e.date, memo: e.memo||null, void_of: e.void_of||null, user_id: user.id, company_id: DEFAULT_COMPANY_ID });
-    if (e1) throw e1;
-    const { error: eDel } = await supa.from("journal_lines").delete().eq("entry_id", e.id);
-    if (eDel) throw eDel;
-    const payload = e.lines.map(l=> ({ entry_id: e.id, account_id: l.account_id, debit: round2(l.debit), credit: round2(l.credit), line_memo: l.line_memo||null }));
-    const { error: e2 } = await supa.from("journal_lines").insert(payload);
-    if (e2) throw e2;
-  },
-  async deleteEntry(id){
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteEntry(id);
-    const { error: e1 } = await supa.from("journal_lines").delete().eq("entry_id", id);
-    if (e1) throw e1;
-    const { error: e2 } = await supa.from("journal_entries").delete().eq("id", id);
-    if (e2) throw e2;
-  },
-  async loadAuxiliaryDefinitions(){
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryDefinitions();
-    const data = await fetchAllPaginated<AuxiliaryLedgerDefinition>((from, to) =>
-      supa.from("auxiliary_ledger_definitions").select("id,name,account_id").order("name").range(from, to)
-    );
-    return data;
-  },
-  async upsertAuxiliaryDefinition(d){
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryDefinition(d);
-    const { data: { user } } = await supa.auth.getUser();
-    if (!user) throw new Error("Usuario no autenticado");
-    const defWithUser = { ...d, user_id: user.id, company_id: DEFAULT_COMPANY_ID };
-    const { error } = await supa.from("auxiliary_ledger_definitions").upsert(defWithUser);
-    if (error) throw error;
-  },
-  async deleteAuxiliaryDefinition(id){
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteAuxiliaryDefinition(id);
-    const { error } = await supa.from("auxiliary_ledger_definitions").delete().eq("id", id);
-    if (error) throw error;
-  },
-  async loadAuxiliaryEntries(){
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryEntries();
-    const entries = await fetchAllPaginated<any>((from, to) =>
-      supa.from("auxiliary_ledger").select("id,client_name,account_id,definition_id,closed_date").order("client_name").range(from, to)
-    );
-    if (entries.length === 0) return [];
-
-    // Load ALL movements (paginated + chunked) for the entries
-    const entryIds = entries.map(e => e.id);
-    const allMovements: any[] = [];
-    for (const idsChunk of chunk(entryIds, 300)) {
-      const part = await fetchAllPaginated<any>((from, to) =>
-        supa.from("auxiliary_movement_details")
-          .select("aux_entry_id,movement_type,amount")
-          .in("aux_entry_id", idsChunk)
+      return data;
+    },
+    async upsertAccount(a){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAccount(a);
+      const { data: { user } } = await supa.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
+      const accountWithUser = {
+        ...a,
+        user_id: user.id,
+        company_id: companyId,
+        expense_category: a.expense_category ?? null,
+        is_cash_equivalent: a.is_cash_equivalent ?? false,
+        is_current: a.is_current ?? null,
+        clasificacion_resultado: a.clasificacion_resultado ?? null,
+        subclasificacion_resultado: a.subclasificacion_resultado ?? null,
+        clasificacion_flujo: a.clasificacion_flujo ?? 'no_aplica',
+        es_partida_no_monetaria: a.es_partida_no_monetaria ?? false,
+        es_capital_trabajo: a.es_capital_trabajo ?? false,
+        es_financiera: a.es_financiera ?? false,
+        es_extraordinaria: a.es_extraordinaria ?? false,
+        afecta_ebitda: a.afecta_ebitda ?? true,
+      };
+      const { error } = await supa.from("accounts").upsert(accountWithUser);
+      if (error) throw error;
+    },
+    async deleteAccount(id){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteAccount(id);
+      const { error } = await supa.from("accounts").delete().eq("id", id).eq("company_id", companyId);
+      if (error) throw error;
+    },
+    async loadEntries(){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.loadEntries();
+      const heads = await fetchAllPaginated<any>((from, to) =>
+        supa.from("journal_entries")
+          .select("id,date,memo,void_of")
+          .eq("company_id", companyId)
+          .order("date")
           .range(from, to)
       );
-      allMovements.push(...part);
-    }
+      const ids = heads.map(h => h.id); if (ids.length === 0) return [];
+      const allLines: any[] = [];
+      for (const idsChunk of chunk(ids, 300)) {
+        const part = await fetchAllPaginated<any>((from, to) =>
+          supa.from("journal_lines")
+            .select("entry_id,account_id,debit,credit,line_memo")
+            .in("entry_id", idsChunk)
+            .range(from, to)
+        );
+        allLines.push(...part);
+      }
+      const map = new Map<string, JournalEntry>();
+      for (const h of heads) map.set(h.id, { id: h.id, date: String(h.date), memo: h.memo || undefined, void_of: h.void_of || undefined, lines: [] });
+      for (const l of allLines) { const e = map.get(l.entry_id)!; if (e) e.lines.push({ account_id: l.account_id, debit: Number(l.debit)||0, credit: Number(l.credit)||0, line_memo: l.line_memo||undefined }); }
+      return Array.from(map.values()).filter(e => e.lines.length > 0).sort((a,b)=> cmpDate(a.date,b.date) || a.id.localeCompare(b.id));
+    },
+    async saveEntry(e){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.saveEntry(e);
+      const { data: { user } } = await supa.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
+      const { error: e1 } = await supa.from("journal_entries").upsert({ id: e.id, date: e.date, memo: e.memo||null, void_of: e.void_of||null, user_id: user.id, company_id: companyId });
+      if (e1) throw e1;
+      const { error: eDel } = await supa.from("journal_lines").delete().eq("entry_id", e.id);
+      if (eDel) throw eDel;
+      const payload = e.lines.map(l=> ({ entry_id: e.id, account_id: l.account_id, debit: round2(l.debit), credit: round2(l.credit), line_memo: l.line_memo||null }));
+      const { error: e2 } = await supa.from("journal_lines").insert(payload);
+      if (e2) throw e2;
+    },
+    async deleteEntry(id){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteEntry(id);
+      const { error: e1 } = await supa.from("journal_lines").delete().eq("entry_id", id);
+      if (e1) throw e1;
+      const { error: e2 } = await supa.from("journal_entries").delete().eq("id", id).eq("company_id", companyId);
+      if (e2) throw e2;
+    },
+    async loadAuxiliaryDefinitions(){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryDefinitions();
+      const data = await fetchAllPaginated<AuxiliaryLedgerDefinition>((from, to) =>
+        supa.from("auxiliary_ledger_definitions")
+          .select("id,name,account_id")
+          .eq("company_id", companyId)
+          .order("name")
+          .range(from, to)
+      );
+      return data;
+    },
+    async upsertAuxiliaryDefinition(d){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryDefinition(d);
+      const { data: { user } } = await supa.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
+      const defWithUser = { ...d, user_id: user.id, company_id: companyId };
+      const { error } = await supa.from("auxiliary_ledger_definitions").upsert(defWithUser);
+      if (error) throw error;
+    },
+    async deleteAuxiliaryDefinition(id){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteAuxiliaryDefinition(id);
+      const { error } = await supa.from("auxiliary_ledger_definitions").delete().eq("id", id);
+      if (error) throw error;
+    },
+    async loadAuxiliaryEntries(){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryEntries();
+      const entries = await fetchAllPaginated<any>((from, to) =>
+        supa.from("auxiliary_ledger")
+          .select("id,client_name,account_id,definition_id,closed_date")
+          .eq("company_id", companyId)
+          .order("client_name")
+          .range(from, to)
+      );
+      if (entries.length === 0) return [];
 
-    // Group movements by aux_entry_id in memory
-    const movementsByEntry = new Map<string, AuxiliaryMovementDetail[]>();
-    for (const mov of allMovements) {
-      const entryMovs = movementsByEntry.get((mov as any).aux_entry_id) || [];
-      entryMovs.push(mov as any);
-      movementsByEntry.set((mov as any).aux_entry_id, entryMovs);
-    }
+      const entryIds = entries.map(e => e.id);
+      const allMovements: any[] = [];
+      for (const idsChunk of chunk(entryIds, 300)) {
+        const part = await fetchAllPaginated<any>((from, to) =>
+          supa.from("auxiliary_movement_details")
+            .select("aux_entry_id,movement_type,amount")
+            .in("aux_entry_id", idsChunk)
+            .range(from, to)
+        );
+        allMovements.push(...part);
+      }
 
-    // Calculate total_balance for each entry
-    const result: AuxiliaryLedgerEntry[] = entries.map(entry => {
-      const movements = movementsByEntry.get(entry.id) || [];
-      const total_balance = movements.reduce((sum, m) => {
+      const movementsByEntry = new Map<string, AuxiliaryMovementDetail[]>();
+      for (const mov of allMovements) {
+        const entryMovs = movementsByEntry.get((mov as any).aux_entry_id) || [];
+        entryMovs.push(mov as any);
+        movementsByEntry.set((mov as any).aux_entry_id, entryMovs);
+      }
+
+      const result: AuxiliaryLedgerEntry[] = entries.map(entry => {
+        const movements = movementsByEntry.get(entry.id) || [];
+        const total_balance = movements.reduce((sum, m) => {
+          return sum + (m.movement_type === 'INCREASE' ? m.amount : -m.amount);
+        }, 0);
+        return { ...entry, total_balance };
+      });
+
+      return result;
+    },
+    async upsertAuxiliaryEntry(a){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryEntry(a);
+      const { data: { user } } = await supa.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
+
+      const auxData = {
+        id: a.id,
+        client_name: a.client_name,
+        account_id: a.account_id,
+        definition_id: a.definition_id
+      };
+
+      const isNew = !auxData.id || auxData.id.includes('-');
+      if (isNew) { auxData.id = crypto.randomUUID(); }
+
+      const auxWithUser = { ...auxData, user_id: user.id, company_id: companyId };
+
+      let savedEntry;
+      if (isNew) {
+        const { data, error } = await supa
+          .from("auxiliary_ledger")
+          .insert(auxWithUser)
+          .select("id,client_name,account_id,definition_id")
+          .single();
+        if (error) throw error;
+        savedEntry = data;
+      } else {
+        const { data, error } = await supa
+          .from("auxiliary_ledger")
+          .update(auxWithUser)
+          .eq("id", auxData.id)
+          .select("id,client_name,account_id,definition_id")
+          .single();
+        if (error) throw error;
+        savedEntry = data;
+      }
+
+      const movements = await adapter.loadAuxiliaryDetails(savedEntry.id);
+      const calculatedBalance = movements.reduce((sum, m) => {
         return sum + (m.movement_type === 'INCREASE' ? m.amount : -m.amount);
       }, 0);
-      return { ...entry, total_balance };
-    });
 
-    return result;
-  },
-  async upsertAuxiliaryEntry(a){
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryEntry(a);
-    const { data: { user } } = await supa.auth.getUser();
-    if (!user) throw new Error("Usuario no autenticado");
-    
-    // Extract only the fields needed for database (exclude calculated total_balance)
-    const auxData = {
-      id: a.id,
-      client_name: a.client_name,
-      account_id: a.account_id,
-      definition_id: a.definition_id
-    };
-    
-    // For new entries, generate UUID explicitly since DB doesn't have default
-    const isNew = !auxData.id || auxData.id.includes('-');
-    if (isNew) {
-      auxData.id = crypto.randomUUID();
-    }
-    
-    const auxWithUser = { ...auxData, user_id: user.id, company_id: DEFAULT_COMPANY_ID };
-    
-    let savedEntry;
-    if (isNew) {
-      // INSERT: include the generated id
-      const { data, error } = await supa
-        .from("auxiliary_ledger")
-        .insert(auxWithUser)
-        .select("id,client_name,account_id,definition_id")
-        .single();
+      return { ...savedEntry, total_balance: calculatedBalance } as AuxiliaryLedgerEntry;
+    },
+    async deleteAuxiliaryEntry(id){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteAuxiliaryEntry(id);
+      const { error } = await supa.from("auxiliary_ledger").delete().eq("id", id);
       if (error) throw error;
-      savedEntry = data;
-    } else {
-      // UPDATE: use .update().select().single()
-      const { data, error } = await supa
-        .from("auxiliary_ledger")
-        .update(auxWithUser)
-        .eq("id", auxData.id)
-        .select("id,client_name,account_id,definition_id")
-        .single();
+    },
+    async loadAuxiliaryDetails(auxEntryId: string): Promise<AuxiliaryMovementDetail[]> {
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryDetails(auxEntryId);
+      const data = await fetchAllPaginated<AuxiliaryMovementDetail>((from, to) =>
+        supa.from("auxiliary_movement_details")
+          .select("id,aux_entry_id,journal_entry_id,movement_date,amount,movement_type")
+          .eq("aux_entry_id", auxEntryId)
+          .order("movement_date", { ascending: false })
+          .range(from, to)
+      );
+      return data;
+    },
+    async upsertAuxiliaryMovementDetails(details: AuxiliaryMovementDetail[]): Promise<void> {
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryMovementDetails(details);
+      const { data: { user } } = await supa.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
+
+      const payload = details.map(d => {
+        const detailCopy = { ...d, user_id: user.id, company_id: companyId };
+        if (!detailCopy.id || detailCopy.id.includes('-')) { delete detailCopy.id; }
+        return detailCopy;
+      });
+
+      const { error } = await supa.from("auxiliary_movement_details").insert(payload);
       if (error) throw error;
-      savedEntry = data;
-    }
-    
-    // Calculate total_balance from movements
-    const movements = await this.loadAuxiliaryDetails(savedEntry.id);
-    const calculatedBalance = movements.reduce((sum, m) => {
-      return sum + (m.movement_type === 'INCREASE' ? m.amount : -m.amount);
-    }, 0);
-    
-    return { ...savedEntry, total_balance: calculatedBalance } as AuxiliaryLedgerEntry;
-  },
-  async deleteAuxiliaryEntry(id){
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteAuxiliaryEntry(id);
-    const { error } = await supa.from("auxiliary_ledger").delete().eq("id", id);
-    if (error) throw error;
-  },
-  async loadAuxiliaryDetails(auxEntryId: string): Promise<AuxiliaryMovementDetail[]> {
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryDetails(auxEntryId);
-    const data = await fetchAllPaginated<AuxiliaryMovementDetail>((from, to) =>
-      supa.from("auxiliary_movement_details")
-        .select("id,aux_entry_id,journal_entry_id,movement_date,amount,movement_type")
-        .eq("aux_entry_id", auxEntryId)
-        .order("movement_date", { ascending: false })
-        .range(from, to)
-    );
-    return data;
-  },
-  async upsertAuxiliaryMovementDetails(details: AuxiliaryMovementDetail[]): Promise<void> {
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryMovementDetails(details);
-    const { data: { user } } = await supa.auth.getUser();
-    if (!user) throw new Error("Usuario no autenticado");
-    
-    const payload = details.map(d => {
-      const detailCopy = { ...d, user_id: user.id, company_id: DEFAULT_COMPANY_ID };
-      // For new movements, let the database generate the UUID
-      if (!detailCopy.id || detailCopy.id.includes('-')) {
-        delete detailCopy.id;
+
+      const affectedClientIds = Array.from(new Set(details.map(d => d.aux_entry_id)));
+      const entries = await adapter.loadAuxiliaryEntries();
+
+      for (const auxId of affectedClientIds) {
+        const entry = entries.find(e => e.id === auxId);
+        if (entry?.closed_date) { await adapter.reopenAuxiliaryEntry(auxId); }
       }
-      return detailCopy;
-    });
-    
-    const { error } = await supa.from("auxiliary_movement_details").insert(payload);
-    if (error) throw error;
-    
-    // Automatic reopening: Check if any affected clients are closed and reopen them
-    const affectedClientIds = Array.from(new Set(details.map(d => d.aux_entry_id)));
-    const entries = await this.loadAuxiliaryEntries();
-    
-    for (const auxId of affectedClientIds) {
-      const entry = entries.find(e => e.id === auxId);
-      if (entry?.closed_date) {
-        await this.reopenAuxiliaryEntry(auxId);
-      }
-    }
-  },
-  async loadKardexDefinitions(){
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.loadKardexDefinitions();
-    const data = await fetchAllPaginated<KardexDefinition>((from, to) =>
-      supa.from("kardex_definitions").select("id,name,account_id,user_id,created_at").order("name").range(from, to)
-    );
-    return data;
-  },
-  async loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>> {
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.loadClosingBalances(quarterEndDate);
-    
-    const { data, error } = await supa
-      .from("quarterly_closures")
-      .select("balances")
-      .eq("closure_date", quarterEndDate)
-      .maybeSingle();
-    
-    if (error) throw error;
-    if (data) return data.balances as Record<string, number>;
-    
-    // If no closure exists, calculate from entries
-    const entries = await this.loadEntries();
-    const accounts = await this.loadAccounts();
-    const balances: Record<string, number> = {};
-    
-    // Filter entries up to quarter end date
-    const relevantEntries = entries.filter(e => e.date <= quarterEndDate);
-    
-    for (const account of accounts) {
-      let debit = 0;
-      let credit = 0;
-      
-      for (const entry of relevantEntries) {
-        for (const line of entry.lines) {
-          if (line.account_id === account.id) {
-            debit += line.debit;
-            credit += line.credit;
+    },
+    async loadKardexDefinitions(){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.loadKardexDefinitions();
+      const data = await fetchAllPaginated<KardexDefinition>((from, to) =>
+        supa.from("kardex_definitions")
+          .select("id,name,account_id,user_id,created_at")
+          .eq("company_id", companyId)
+          .order("name")
+          .range(from, to)
+      );
+      return data;
+    },
+    async loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>> {
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.loadClosingBalances(quarterEndDate);
+
+      const { data, error } = await supa
+        .from("quarterly_closures")
+        .select("balances")
+        .eq("closure_date", quarterEndDate)
+        .eq("company_id", companyId)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) return data.balances as Record<string, number>;
+
+      const entries = await adapter.loadEntries();
+      const accounts = await adapter.loadAccounts();
+      const balances: Record<string, number> = {};
+      const relevantEntries = entries.filter(e => e.date <= quarterEndDate);
+
+      for (const account of accounts) {
+        let debit = 0; let credit = 0;
+        for (const entry of relevantEntries) {
+          for (const line of entry.lines) {
+            if (line.account_id === account.id) { debit += line.debit; credit += line.credit; }
           }
         }
+        const balance = account.normal_side === "DEBE" ? (debit - credit) : (credit - debit);
+        if (balance !== 0) { balances[account.id] = balance; }
       }
-      
-      // Calculate signed balance based on account normal side
-      const balance = account.normal_side === "DEBE" ? (debit - credit) : (credit - debit);
-      if (balance !== 0) {
-        balances[account.id] = balance;
-      }
-    }
-    
-    return balances;
-  },
-  async saveClosingBalances(quarterEndDate: string, balances: Record<string, number>): Promise<void> {
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.saveClosingBalances(quarterEndDate, balances);
-    
-    const { data: { user } } = await supa.auth.getUser();
-    if (!user) throw new Error("Usuario no autenticado");
-    
-    const { error } = await supa.from("quarterly_closures").upsert({
-      user_id: user.id,
-      company_id: DEFAULT_COMPANY_ID,
-      closure_date: quarterEndDate,
-      balances
-    });
-    
-    if (error) throw error;
-  },
-  async closeAuxiliaryEntry(id: string, closureDate: string): Promise<void> {
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.closeAuxiliaryEntry(id, closureDate);
-    const { data: { user } } = await supa.auth.getUser();
-    if (!user) throw new Error("Usuario no autenticado");
-    
-    const { error } = await supa
-      .from('auxiliary_ledger')
-      .update({ closed_date: closureDate })
-      .eq('id', id)
-      .eq('user_id', user.id);
-    if (error) throw error;
-  },
-  async reopenAuxiliaryEntry(id: string): Promise<void> {
-    const supa = await getSupabase(); if (!supa) return LocalAdapter.reopenAuxiliaryEntry(id);
-    const { data: { user } } = await supa.auth.getUser();
-    if (!user) throw new Error("Usuario no autenticado");
-    
-    const { error } = await supa
-      .from('auxiliary_ledger')
-      .update({ closed_date: null })
-      .eq('id', id)
-      .eq('user_id', user.id);
-    if (error) throw error;
-  },
-};
+
+      return balances;
+    },
+    async saveClosingBalances(quarterEndDate: string, balances: Record<string, number>): Promise<void> {
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.saveClosingBalances(quarterEndDate, balances);
+      const { data: { user } } = await supa.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
+      const { error } = await supa.from("quarterly_closures").upsert({
+        user_id: user.id,
+        company_id: companyId,
+        closure_date: quarterEndDate,
+        balances
+      });
+      if (error) throw error;
+    },
+    async closeAuxiliaryEntry(id: string, closureDate: string): Promise<void> {
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.closeAuxiliaryEntry(id, closureDate);
+      const { data: { user } } = await supa.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
+      const { error } = await supa.from('auxiliary_ledger').update({ closed_date: closureDate }).eq('id', id).eq('user_id', user.id);
+      if (error) throw error;
+    },
+    async reopenAuxiliaryEntry(id: string): Promise<void> {
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.reopenAuxiliaryEntry(id);
+      const { data: { user } } = await supa.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
+      const { error } = await supa.from('auxiliary_ledger').update({ closed_date: null }).eq('id', id).eq('user_id', user.id);
+      if (error) throw error;
+    },
+  };
+  return adapter;
+}
+
+/** Instancia legacy para compatibilidad (apunta a DEFAULT_COMPANY_ID) */
+export const SupaAdapter: IDataAdapter = createSupaAdapter(DEFAULT_COMPANY_ID);
 
 // Elegir adapter dinámicamente
-export async function pickAdapter(): Promise<IDataAdapter> {
+export async function pickAdapter(companyId: string = DEFAULT_COMPANY_ID): Promise<IDataAdapter> {
   const supa = await getSupabase();
   if (!supa) return LocalAdapter;
   try {
     const { error } = await supa.from("accounts").select("id").limit(1);
     if (error) return LocalAdapter;
-    return SupaAdapter;
+    return createSupaAdapter(companyId);
   } catch { return LocalAdapter; }
 }

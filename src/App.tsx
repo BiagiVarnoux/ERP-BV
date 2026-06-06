@@ -24,6 +24,8 @@ import DashboardPage from "./pages/dashboard/Index";
 import FiscalYearsPage from "./pages/fiscal-years/Index";
 import ReceivablesPage from "./pages/receivables/Index";
 import PayablesPage from "./pages/payables/Index";
+import UsersPage from "./pages/users/Index";
+import HoldingPage from "./pages/holding/Index";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -35,7 +37,7 @@ const queryClient = new QueryClient({
 });
 
 function AppRoutes() {
-  const { isViewer, isOwner, loading } = useUserAccess();
+  const { isViewer, isOwner, canView, loading } = useUserAccess();
 
   if (loading) {
     return (
@@ -45,7 +47,6 @@ function AppRoutes() {
     );
   }
 
-  // Determine default route based on role
   const defaultRoute = isViewer ? "/viewer-dashboard" : "/accounts";
 
   return (
@@ -53,21 +54,33 @@ function AppRoutes() {
       <Route path="/" element={<AppShell />}>
         <Route index element={<Navigate to={defaultRoute} replace />} />
         <Route path="viewer-dashboard" element={<ViewerDashboardPage />} />
-        <Route path="accounts" element={<AccountsPage />} />
-        <Route path="journal" element={<JournalPage />} />
-        <Route path="auxiliary-ledgers" element={<AuxiliaryLedgersPage />} />
-        <Route path="ledger" element={<LedgerPage />} />
-        <Route path="reports" element={<ReportsPage />} />
-        {/* Settings only for owners */}
-        {isOwner && <Route path="settings" element={<SettingsPage />} />}
-        {isOwner && <Route path="shipments" element={<ShipmentsPage />} />}
-        {isOwner && <Route path="inventory" element={<InventoryPage />} />}
-        {isOwner && <Route path="sales" element={<SalesPage />} />}
-        {isOwner && <Route path="dashboard" element={<DashboardPage />} />}
-        {isOwner && <Route path="customers" element={<CustomersPage />} />}
-        {isOwner && <Route path="fiscal-years" element={<FiscalYearsPage />} />}
-        <Route path="receivables" element={<ReceivablesPage />} />
-        <Route path="payables" element={<PayablesPage />} />
+
+        {/* Módulo FI — Finanzas */}
+        {canView('accounts')          && <Route path="accounts"          element={<AccountsPage />} />}
+        {canView('journal')           && <Route path="journal"           element={<JournalPage />} />}
+        {canView('ledger')            && <Route path="ledger"            element={<LedgerPage />} />}
+        {canView('auxiliary_ledgers') && <Route path="auxiliary-ledgers" element={<AuxiliaryLedgersPage />} />}
+        {canView('reports')           && <Route path="reports"           element={<ReportsPage />} />}
+        {canView('fiscal_years')      && <Route path="fiscal-years"      element={<FiscalYearsPage />} />}
+        {canView('receivables')       && <Route path="receivables"       element={<ReceivablesPage />} />}
+        {canView('payables')          && <Route path="payables"          element={<PayablesPage />} />}
+
+        {/* Módulo MM — Materiales */}
+        {canView('shipments')  && <Route path="shipments"  element={<ShipmentsPage />} />}
+        {canView('inventory')  && <Route path="inventory"  element={<InventoryPage />} />}
+
+        {/* Módulo SD — Ventas */}
+        {canView('sales')      && <Route path="sales"      element={<SalesPage />} />}
+        {canView('customers')  && <Route path="customers"  element={<CustomersPage />} />}
+        {canView('sales')      && <Route path="dashboard"  element={<DashboardPage />} />}
+
+        {/* Configuración */}
+        {canView('settings')   && <Route path="settings"   element={<SettingsPage />} />}
+        {isOwner               && <Route path="users"      element={<UsersPage />} />}
+
+        {/* Holding */}
+        {canView('holding')    && <Route path="holding"    element={<HoldingPage />} />}
+
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

@@ -4,6 +4,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Account, FiscalYear, JournalEntry, AuxiliaryLedgerEntry, AuxiliaryLedgerDefinition, KardexDefinition } from './types';
 import { IDataAdapter, LocalAdapter, pickAdapter } from './data-adapter';
 import { supabase } from '@/integrations/supabase/client';
+import { useUserAccess } from '@/contexts/UserAccessContext';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 import { toast } from 'sonner';
 
 interface AccountingContextType {
@@ -38,6 +40,8 @@ interface AccountingProviderProps {
 }
 
 export function AccountingProvider({ children }: AccountingProviderProps) {
+  const { companyId: ctxCompanyId, loading: accessLoading } = useUserAccess();
+
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [auxiliaryEntries, setAuxiliaryEntries] = useState<AuxiliaryLedgerEntry[]>([]);
@@ -57,8 +61,13 @@ export function AccountingProvider({ children }: AccountingProviderProps) {
   }
 
   useEffect(() => {
+    // Esperar a que el contexto de acceso termine de cargar
+    if (accessLoading) return;
+
+    const activeCompanyId = ctxCompanyId ?? DEFAULT_COMPANY_ID;
+
     (async () => {
-      const db = await pickAdapter();
+      const db = await pickAdapter(activeCompanyId);
       adapterRef.current = db;
       setAdapter(db);
       try {
@@ -73,15 +82,14 @@ export function AccountingProvider({ children }: AccountingProviderProps) {
         const kardexDefs = await db.loadKardexDefinitions();
         setKardexDefinitions(kardexDefs);
 
-        // Load fiscal years directly from Supabase (no LocalAdapter fallback needed;
-        // when empty the system treats all periods as OPEN — see fiscal-year-utils.ts)
+        // Gestiones fiscales filtradas por empresa activa
         if (supabase) {
           const { data: fyData, error: fyError } = await supabase
             .from('fiscal_years')
             .select('*')
+            .eq('company_id', activeCompanyId)
             .order('year', { ascending: true });
           if (fyError) {
-            // Table may not exist yet in local dev — silently skip
             console.warn('fiscal_years not loaded:', fyError.message);
           } else {
             setFiscalYears((fyData ?? []) as FiscalYear[]);
@@ -92,7 +100,7 @@ export function AccountingProvider({ children }: AccountingProviderProps) {
         toast.error(e.message || "Error cargando datos");
       }
     })();
-  }, []);
+  }, [ctxCompanyId, accessLoading]);
 
   return (
     <AccountingContext.Provider value={{

@@ -66,6 +66,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@supabase/mcp-server-supabase": "^0.8.1",
     "@tailwindcss/typography": "^0.5.16",
     "@types/node": "^22.16.5",
     "@types/react": "^18.3.23",

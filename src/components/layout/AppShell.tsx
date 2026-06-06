@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
+import { CompanySwitcher } from '@/components/layout/CompanySwitcher';
 import {
   BarChart3, Package, ShoppingCart, Settings,
-  Eye, ChevronDown, ChevronRight, Menu, LogOut,
+  Eye, ChevronDown, ChevronRight, Menu, LogOut, Users, Building2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +16,7 @@ const MODULE_PATHS: Record<string, string[]> = {
   MM:       ['/inventory', '/shipments'],
   SD:       ['/dashboard', '/sales', '/customers'],
   SETTINGS: ['/settings', '/fiscal-years'],
+  HOLDING:  ['/holding'],
 };
 
 function getActiveModule(pathname: string): string | null {
@@ -87,7 +89,7 @@ function ModuleSection({ label, badge, icon: Icon, isExpanded, onToggle, childre
 function SidebarContent({ onClose }: { onClose?: () => void }) {
   const location = useLocation();
   const { signOut } = useAuth();
-  const { isOwner, isViewer, isReadOnly, permissions, loading } = useUserAccess();
+  const { isOwner, isViewer, isReadOnly, canView, isSubmoduleVisible, companies, loading } = useUserAccess();
 
   const activeModule = getActiveModule(location.pathname);
   const [expanded, setExpanded] = useState<Set<string>>(() => {
@@ -116,31 +118,24 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
 
   const close = onClose ?? (() => {});
 
-  const fiItems: { path: string; label: string }[] = isViewer
-    ? [
-        ...(permissions.can_view_accounts  ? [{ path: '/accounts',          label: 'Plan de Cuentas'   }] : []),
-        ...(permissions.can_view_journal   ? [{ path: '/journal',           label: 'Libro Diario'      }] : []),
-        ...(permissions.can_view_ledger    ? [{ path: '/ledger',            label: 'Libro Mayor'       }] : []),
-        ...(permissions.can_view_auxiliary ? [{ path: '/auxiliary-ledgers', label: 'Libros Auxiliares' }] : []),
-        { path: '/receivables', label: 'Cuentas x Cobrar' },
-        { path: '/payables',    label: 'Cuentas x Pagar'  },
-        ...(permissions.can_view_reports   ? [{ path: '/reports',           label: 'Reportes'          }] : []),
-      ]
-    : [
-        { path: '/accounts',          label: 'Plan de Cuentas'   },
-        { path: '/journal',           label: 'Libro Diario'      },
-        { path: '/ledger',            label: 'Libro Mayor'       },
-        { path: '/auxiliary-ledgers', label: 'Libros Auxiliares' },
-        { path: '/receivables',       label: 'Cuentas x Cobrar'  },
-        { path: '/payables',          label: 'Cuentas x Pagar'   },
-        { path: '/reports',           label: 'Reportes'          },
-      ];
+  const v = (module: ErpModule, sub: string) => canView(module) && isSubmoduleVisible(sub);
+
+  const fiItems = [
+    v('accounts',          'accounts')          && { path: '/accounts',          label: 'Plan de Cuentas'   },
+    v('journal',           'journal')           && { path: '/journal',           label: 'Libro Diario'      },
+    v('ledger',            'ledger')            && { path: '/ledger',            label: 'Libro Mayor'       },
+    v('auxiliary_ledgers', 'auxiliary_ledgers') && { path: '/auxiliary-ledgers', label: 'Libros Auxiliares' },
+    v('receivables',       'receivables')       && { path: '/receivables',       label: 'Cuentas x Cobrar'  },
+    v('payables',          'payables')          && { path: '/payables',          label: 'Cuentas x Pagar'   },
+    v('reports',           'reports')           && { path: '/reports',           label: 'Reportes'          },
+  ].filter(Boolean) as { path: string; label: string }[];
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-4 border-b shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="font-bold text-base leading-tight truncate">ERP BV</span>
+      {/* Logo + nombre ERP */}
+      <div className="px-4 pt-4 pb-2 shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-base leading-tight">ERP BV</span>
           {isReadOnly && (
             <span className="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 rounded-full">
               <Eye className="w-3 h-3" />
@@ -149,6 +144,8 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
           )}
         </div>
       </div>
+      {/* Company switcher */}
+      <CompanySwitcher />
 
       {!loading && isViewer && (
         <div className="px-3 pt-3 shrink-0">
@@ -179,34 +176,44 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
           </ModuleSection>
         )}
 
-        {!loading && isOwner && (
+        {!loading && (v('inventory', 'inventory') || v('shipments', 'shipments')) && (
           <ModuleSection
             label="Materiales" badge="MM" icon={Package}
             isExpanded={expanded.has('MM')} onToggle={() => toggle('MM')}
           >
-            <NavItem path="/shipments" label="Embarques"  currentPath={location.pathname} onClick={close} />
-            <NavItem path="/inventory" label="Inventario" currentPath={location.pathname} onClick={close} />
+            {v('shipments', 'shipments') && <NavItem path="/shipments" label="Embarques"  currentPath={location.pathname} onClick={close} />}
+            {v('inventory', 'inventory') && <NavItem path="/inventory" label="Inventario" currentPath={location.pathname} onClick={close} />}
           </ModuleSection>
         )}
 
-        {!loading && isOwner && (
+        {!loading && (v('sales', 'sales') || v('customers', 'customers')) && (
           <ModuleSection
             label="Ventas" badge="SD" icon={ShoppingCart}
             isExpanded={expanded.has('SD')} onToggle={() => toggle('SD')}
           >
-            <NavItem path="/dashboard" label="Dashboard" currentPath={location.pathname} onClick={close} />
-            <NavItem path="/customers" label="Clientes" currentPath={location.pathname} onClick={close} />
-            <NavItem path="/sales" label="Ventas" currentPath={location.pathname} onClick={close} />
+            {v('sales',     'dashboard') && <NavItem path="/dashboard" label="Dashboard" currentPath={location.pathname} onClick={close} />}
+            {v('customers', 'customers') && <NavItem path="/customers" label="Clientes"  currentPath={location.pathname} onClick={close} />}
+            {v('sales',     'sales')     && <NavItem path="/sales"     label="Ventas"    currentPath={location.pathname} onClick={close} />}
           </ModuleSection>
         )}
 
-        {!loading && isOwner && (
+        {!loading && canView('holding') && companies.length > 1 && (
+          <ModuleSection
+            label="Holding" badge="" icon={Building2}
+            isExpanded={expanded.has('HOLDING')} onToggle={() => toggle('HOLDING')}
+          >
+            <NavItem path="/holding" label="Vista Consolidada" currentPath={location.pathname} onClick={close} />
+          </ModuleSection>
+        )}
+
+        {!loading && (canView('settings') || canView('fiscal_years') || isOwner) && (
           <ModuleSection
             label="Configuración" badge="" icon={Settings}
             isExpanded={expanded.has('SETTINGS')} onToggle={() => toggle('SETTINGS')}
           >
-            <NavItem path="/settings"     label="Configuración" currentPath={location.pathname} onClick={close} />
-            <NavItem path="/fiscal-years" label="Gestiones"     currentPath={location.pathname} onClick={close} />
+            {isOwner                 && <NavItem path="/users"        label="Usuarios"      currentPath={location.pathname} onClick={close} />}
+            {canView('fiscal_years') && <NavItem path="/fiscal-years" label="Gestiones"     currentPath={location.pathname} onClick={close} />}
+            {canView('settings')     && <NavItem path="/settings"     label="Configuración" currentPath={location.pathname} onClick={close} />}
           </ModuleSection>
         )}
       </nav>

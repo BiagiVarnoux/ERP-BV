@@ -8,7 +8,9 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useAccounting } from '@/accounting/AccountingProvider';
-import { Copy, Plus, Trash2, Users, UserMinus, Database, History } from 'lucide-react';
+import { Copy, Plus, Trash2, Users, UserMinus, Database, History, LayoutGrid } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ModuleConfigTab } from '@/components/settings/ModuleConfigTab';
 import {
   Table,
   TableBody,
@@ -271,8 +273,28 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Configuración</h1>
-        <p className="text-muted-foreground">Gestiona el acceso de usuarios y respaldos</p>
+        <p className="text-muted-foreground">Gestiona el acceso de usuarios, módulos y respaldos</p>
       </div>
+
+      <Tabs defaultValue="general">
+        <TabsList className="mb-4">
+          <TabsTrigger value="general">
+            <Database className="h-4 w-4 mr-1.5" />
+            General
+          </TabsTrigger>
+          <TabsTrigger value="modules">
+            <LayoutGrid className="h-4 w-4 mr-1.5" />
+            Módulos
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ── Tab: Módulos ── */}
+        <TabsContent value="modules">
+          <ModuleConfigTab />
+        </TabsContent>
+
+        {/* ── Tab: General (contenido existente) ── */}
+        <TabsContent value="general" className="space-y-6">
 
       {/* Backup & Audit Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -544,6 +566,9 @@ export default function SettingsPage() {
         isOpen={auditModalOpen}
         onClose={() => setAuditModalOpen(false)}
       />
+
+        </TabsContent>{/* cierre TabsContent general */}
+      </Tabs>
     </div>
   );
 }
