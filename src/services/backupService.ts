@@ -83,6 +83,9 @@ export interface BackupData {
   receivables?: any[];
   payables?: any[];
   debt_payments?: any[];
+  // v2.3 fields
+  member_permissions?: any[];
+  company_module_config?: any[];
 }
 
 export async function createFullBackup(): Promise<BackupData> {
@@ -117,6 +120,8 @@ export async function createFullBackup(): Promise<BackupData> {
     receivables,
     payables,
     debt_payments,
+    member_permissions,
+    company_module_config,
   ] = await Promise.all([
     fetchAllUserRows('accounts', user.id),
     fetchAllUserRows('journal_entries', user.id),
@@ -143,10 +148,19 @@ export async function createFullBackup(): Promise<BackupData> {
     fetchAllUserRows('receivables', user.id),
     fetchAllUserRows('payables', user.id),
     fetchAllUserRows('debt_payments', user.id),
+    // member_permissions: join a través de company_members para filtrar por empresa
+    fetchAllPaginated<any>((from, to) =>
+      supabase.from('member_permissions')
+        .select('*, company_members!inner(company_id)')
+        .eq('company_members.company_id', companyId)
+        .range(from, to)
+    ).then(rows => rows.map(({ company_members: _cm, id: _id, ...r }: any) => r)),
+    fetchAllCompanyRows('company_module_config', companyId)
+      .then(rows => rows.map(({ id: _id, ...r }) => r)),
   ]);
 
   return {
-    version: '2.2',
+    version: '2.3',
     created_at: new Date().toISOString(),
     accounts,
     journal_entries,
@@ -173,6 +187,8 @@ export async function createFullBackup(): Promise<BackupData> {
     receivables,
     payables,
     debt_payments,
+    member_permissions,
+    company_module_config,
   };
 }
 
@@ -215,6 +231,27 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
     // Delete existing data in reverse order of dependencies
     // journal_lines are deleted via CASCADE when journal_entries are deleted
     // auxiliary_movement_details and inventory_movements are deleted via triggers on journal_entries delete
+
+    // company_module_config: scoped by company_id
+    const { error: cmcDelError } = await supabase
+      .from('company_module_config')
+      .delete()
+      .eq('company_id', userCompanyIdForRestore);
+    if (cmcDelError) throw new Error(`Error limpiando company_module_config: ${cmcDelError.message}`);
+
+    // member_permissions: borrar via company_members de la empresa
+    const { data: memberIds } = await supabase
+      .from('company_members')
+      .select('id')
+      .eq('company_id', userCompanyIdForRestore);
+    if (memberIds && memberIds.length > 0) {
+      const ids = memberIds.map((m: any) => m.id);
+      const { error: mpDelError } = await supabase
+        .from('member_permissions')
+        .delete()
+        .in('company_member_id', ids);
+      if (mpDelError) throw new Error(`Error limpiando member_permissions: ${mpDelError.message}`);
+    }
 
     // fiscal_years: scoped by company_id, not user_id
     const { error: fyDelError } = await supabase
@@ -408,6 +445,32 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
       await chunkedInsert('debt_payments', rows);
     }
 
+    // v2.3: member_permissions y company_module_config
+    if (backup.company_module_config?.length) {
+      const rows = backup.company_module_config.map((r: any) => ({
+        ...r,
+        company_id: userCompanyIdForRestore,
+      }));
+      await chunkedInsert('company_module_config', rows);
+    }
+
+    if (backup.member_permissions?.length) {
+      // Restaurar solo los permisos del usuario actual (company_member_id puede haber cambiado)
+      const { data: currentMember } = await supabase
+        .from('company_members')
+        .select('id')
+        .eq('company_id', userCompanyIdForRestore)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (currentMember) {
+        const rows = backup.member_permissions.map((r: any) => ({
+          ...r,
+          company_member_id: currentMember.id,
+        }));
+        await chunkedInsert('member_permissions', rows);
+      }
+    }
+
     const extras = [];
     if (backup.products?.length) extras.push(`${backup.products.length} productos`);
     if (backup.shipments?.length) extras.push(`${backup.shipments.length} embarques`);
@@ -417,6 +480,8 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
     if (backup.receivables?.length) extras.push(`${backup.receivables.length} CxC`);
     if (backup.payables?.length) extras.push(`${backup.payables.length} CxP`);
     if (backup.debt_payments?.length) extras.push(`${backup.debt_payments.length} pagos`);
+    if (backup.member_permissions?.length) extras.push(`${backup.member_permissions.length} permisos`);
+    if (backup.company_module_config?.length) extras.push(`${backup.company_module_config.length} configs de módulos`);
 
     return { 
       success: true, 
