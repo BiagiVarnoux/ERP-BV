@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/components/auth/AuthProvider";
 import { UserAccessProvider, useUserAccess } from "@/contexts/UserAccessContext";
 import { AuthForm } from "@/components/auth/AuthForm";
+import { MfaVerifyModal } from "@/components/auth/MfaVerifyModal";
 import { AccountingProvider } from "@/accounting/AccountingProvider";
 import { NavigationHistoryProvider } from "@/contexts/NavigationHistoryContext";
 import { AppShell } from "./components/layout/AppShell";
@@ -88,7 +89,7 @@ function AppRoutes() {
 }
 
 function AppContent() {
-  const { user, loading } = useAuth();
+  const { user, loading, mfaState, mfaVerified, signOut } = useAuth();
 
   if (loading) {
     return (
@@ -100,6 +101,17 @@ function AppContent() {
 
   if (!user) {
     return <AuthForm />;
+  }
+
+  // If user has MFA enrolled but hasn't verified this session, block access
+  if (mfaState === 'required') {
+    return (
+      <MfaVerifyModal
+        isOpen={true}
+        onVerified={mfaVerified}
+        onSignOut={signOut}
+      />
+    );
   }
 
   return (

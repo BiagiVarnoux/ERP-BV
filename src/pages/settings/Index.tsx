@@ -8,7 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useAccounting } from '@/accounting/AccountingProvider';
-import { Copy, Plus, Trash2, Users, UserMinus, Database, History, LayoutGrid } from 'lucide-react';
+import { Copy, Plus, Trash2, Users, UserMinus, Database, History, LayoutGrid, ShieldCheck } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ModuleConfigTab } from '@/components/settings/ModuleConfigTab';
 import {
@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { BackupRestoreModal } from '@/components/backup/BackupRestoreModal';
 import { AuditLogModal } from '@/components/audit/AuditLogModal';
+import { MfaEnrollModal } from '@/components/auth/MfaEnrollModal';
 
 
 interface InvitationCode {
@@ -71,6 +72,14 @@ export default function SettingsPage() {
   const [accessToRevoke, setAccessToRevoke] = useState<SharedAccess | null>(null);
   const [backupModalOpen, setBackupModalOpen] = useState(false);
   const [auditModalOpen, setAuditModalOpen] = useState(false);
+  const [mfaModalOpen, setMfaModalOpen] = useState(false);
+  const [mfaEnrolled, setMfaEnrolled] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.mfa.listFactors().then(({ data }) => {
+      if (data?.totp?.some(f => f.status === 'verified')) setMfaEnrolled(true);
+    });
+  }, []);
   
   // Form states
   const [permissions, setPermissions] = useState({
@@ -335,6 +344,34 @@ export default function SettingsPage() {
         </Card>
       </div>
 
+      {/* Seguridad — 2FA */}
+      {isOwner && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-green-600" />
+              Autenticación de dos factores (2FA)
+            </CardTitle>
+            <CardDescription>
+              Protege tu cuenta de propietario con un segundo factor de autenticación (TOTP).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {mfaEnrolled ? (
+              <div className="flex items-center gap-3">
+                <ShieldCheck className="h-5 w-5 text-green-600" />
+                <span className="text-sm text-green-700 font-medium">2FA activado en tu cuenta</span>
+              </div>
+            ) : (
+              <Button onClick={() => setMfaModalOpen(true)} variant="outline" className="gap-2">
+                <ShieldCheck className="h-4 w-4" />
+                Activar autenticación de dos factores
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Generate Invitation Code */}
       <Card>
         <CardHeader>
@@ -565,6 +602,12 @@ export default function SettingsPage() {
       <AuditLogModal
         isOpen={auditModalOpen}
         onClose={() => setAuditModalOpen(false)}
+      />
+
+      <MfaEnrollModal
+        isOpen={mfaModalOpen}
+        onClose={() => setMfaModalOpen(false)}
+        onEnrolled={() => setMfaEnrolled(true)}
       />
 
         </TabsContent>{/* cierre TabsContent general */}
