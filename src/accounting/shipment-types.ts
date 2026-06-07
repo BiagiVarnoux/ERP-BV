@@ -45,7 +45,8 @@ export const DEFAULT_CATEGORY_LABELS: Record<string, string> = {
 
 // Un producto dentro de un embarque
 export interface ShipmentProduct {
-  archivos?: ShipmentFile[];  // Facturas u otros documentos del producto
+  archivos?: ShipmentFile[];      // Facturas u otros documentos del producto
+  especificacion?: string;        // Variante corta (ej: "256GB / WiFi + Chip")
   id: string;
   shipment_id: string;
 

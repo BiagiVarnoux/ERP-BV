@@ -21,7 +21,7 @@ export interface ProductLink {
   shipmentProductId: string;
   productId: string;        // existing product UUID or '' for new
   isNew: boolean;
-  newProductData?: { nombre: string; codigo: string; cuenta_inventario_id: string };
+  newProductData?: { nombre: string; codigo: string; cuenta_inventario_id: string; especificacion?: string };
 }
 
 export interface JournalPreview {
@@ -90,6 +90,7 @@ export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCanc
           nombre: sp.nombre,
           codigo: '',
           cuenta_inventario_id: '',
+          especificacion: sp.especificacion ?? '',
         } : undefined,
       };
     });
@@ -298,12 +299,20 @@ export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCanc
                       {link?.isNew && (
                         <TableRow className="bg-muted/30">
                           <TableCell colSpan={4}>
-                            <div className="grid grid-cols-3 gap-3 py-1">
+                            <div className="grid grid-cols-4 gap-3 py-1">
                               <div>
                                 <Label className="text-xs">Nombre</Label>
                                 <Input className="h-8" value={link.newProductData?.nombre ?? ''}
                                   onChange={e => updateLink(sp.id, {
                                     newProductData: { ...link.newProductData!, nombre: e.target.value }
+                                  })} />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Especificación</Label>
+                                <Input className="h-8" placeholder="256GB / WiFi + Chip"
+                                  value={link.newProductData?.especificacion ?? ''}
+                                  onChange={e => updateLink(sp.id, {
+                                    newProductData: { ...link.newProductData!, especificacion: e.target.value }
                                   })} />
                               </div>
                               <div>

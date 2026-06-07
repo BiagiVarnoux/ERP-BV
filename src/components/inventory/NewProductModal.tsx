@@ -24,6 +24,7 @@ export interface ProductData {
   codigo: string;
   categoria: string | null;
   cuenta_inventario_id: string | null;
+  especificacion: string | null;
   descripcion: string | null;
   unidad_medida: string;
   metodo_valuacion: string;
@@ -48,6 +49,7 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
   const activeCompanyId = useActiveCompanyId();
   const [nombre, setNombre] = useState('');
   const [codigo, setCodigo] = useState('');
+  const [especificacion, setEspecificacion] = useState('');
   const [categoria, setCategoria] = useState('otros');
   const [cuentaId, setCuentaId] = useState('');
   const [descripcion, setDescripcion] = useState('');
@@ -62,6 +64,7 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
     if (editProduct) {
       setNombre(editProduct.nombre);
       setCodigo(editProduct.codigo);
+      setEspecificacion(editProduct.especificacion || '');
       setCategoria(editProduct.categoria || 'otros');
       setCuentaId(editProduct.cuenta_inventario_id || '');
       setDescripcion(editProduct.descripcion || '');
@@ -73,7 +76,7 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
   }, [editProduct, isOpen]);
 
   function resetFields() {
-    setNombre(''); setCodigo(''); setCategoria('otros'); setCuentaId(''); setDescripcion(''); setUnidadMedida('unidad'); setPrecioMinimo('');
+    setNombre(''); setCodigo(''); setEspecificacion(''); setCategoria('otros'); setCuentaId(''); setDescripcion(''); setUnidadMedida('unidad'); setPrecioMinimo('');
   }
 
   async function handleSave() {
@@ -89,6 +92,7 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
       const payload = {
         nombre: nombre.trim(),
         codigo: codigo.trim(),
+        especificacion: especificacion.trim() || null,
         categoria,
         cuenta_inventario_id: cuentaId || null,
         descripcion: descripcion.trim() || null,
@@ -141,6 +145,11 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
           <div className="space-y-2">
             <Label>Nombre *</Label>
             <Input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre del producto" />
+          </div>
+          <div className="space-y-2">
+            <Label>Especificación / Variante</Label>
+            <Input value={especificacion} onChange={e => setEspecificacion(e.target.value)} placeholder="256GB / WiFi + Chip" />
+            <p className="text-xs text-muted-foreground">Diferencia variantes del mismo modelo (almacenamiento, color, conectividad, etc.)</p>
           </div>
           <div className="space-y-2">
             <Label>Código/SKU *</Label>

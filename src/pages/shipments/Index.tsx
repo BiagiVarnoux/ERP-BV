@@ -305,6 +305,7 @@ export default function ShipmentsPage() {
               nombre: link.newProductData.nombre,
               codigo: link.newProductData.codigo,
               cuenta_inventario_id: link.newProductData.cuenta_inventario_id,
+              especificacion: link.newProductData.especificacion || null,
               categoria: 'importado',
               unidad_medida: 'unidad',
               user_id: user.user.id,
@@ -1275,6 +1276,9 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
                       📎 {p.archivos!.length}
                     </Badge>
                   )}
+                  {p.especificacion && (
+                    <div className="text-xs text-muted-foreground mt-0.5">{p.especificacion}</div>
+                  )}
                 </TableCell>
                 <TableCell>
                   <span className="text-sm">{allCategories[p.categoria] ?? p.categoria}</span>
@@ -1396,13 +1400,24 @@ function ProductEditDialog({ product, tcParalelo, shipmentId, userId, onSave, on
           </DialogHeader>
 
           <div className="space-y-5">
-            {/* Fila 1: Nombre ocupa más espacio, luego categoría, cant, fecha, GA% */}
+            {/* Fila 1: Nombre + especificación */}
             <div className="grid grid-cols-12 gap-4 items-end">
               <div className="col-span-5">
                 <Label className="text-xs">Nombre del producto</Label>
-                <Input value={p.nombre} onChange={e => update({ nombre: e.target.value })} />
+                <Input value={p.nombre} onChange={e => update({ nombre: e.target.value })} placeholder="Samsung TAB S10 FE + KB (Refurb)" />
               </div>
-              <div className="col-span-3">
+              <div className="col-span-4">
+                <Label className="text-xs">Especificación / Variante <span className="text-muted-foreground">(opcional)</span></Label>
+                <Input value={p.especificacion ?? ''} onChange={e => update({ especificacion: e.target.value || undefined })} placeholder="256GB / WiFi + Chip" />
+              </div>
+              <div className="col-span-3 text-xs text-muted-foreground pb-2">
+                Diferencia variantes del mismo modelo
+              </div>
+            </div>
+
+            {/* Fila 2: categoría, cant, fecha, GA% */}
+            <div className="grid grid-cols-12 gap-4 items-end">
+              <div className="col-span-4">
                 <Label className="text-xs">Categoría</Label>
                 <Select value={p.categoria} onValueChange={handleCategorySelect}>
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
@@ -1414,17 +1429,17 @@ function ProductEditDialog({ product, tcParalelo, shipmentId, userId, onSave, on
                   </SelectContent>
                 </Select>
               </div>
-              <div className="col-span-1">
+              <div className="col-span-2">
                 <Label className="text-xs">Cant.</Label>
                 <Input type="number" min="1" value={p.cantidad}
                   onChange={e => update({ cantidad: parseInt(e.target.value) || 1 })} />
               </div>
-              <div className="col-span-2">
+              <div className="col-span-3">
                 <Label className="text-xs">Fecha compra</Label>
                 <Input type="date" value={p.fecha_compra}
                   onChange={e => update({ fecha_compra: e.target.value })} />
               </div>
-              <div className="col-span-1">
+              <div className="col-span-2">
                 <Label className="text-xs">GA %</Label>
                 <Input type="number" min="0" value={p.ga_pct}
                   onChange={e => update({ ga_pct: parseFloat(e.target.value) || 0 })} />

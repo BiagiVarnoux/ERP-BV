@@ -272,7 +272,12 @@ export default function InventoryPage() {
                       return (
                         <TableRow key={p.id}>
                           <TableCell><Badge variant="outline">{p.codigo}</Badge></TableCell>
-                          <TableCell>{p.nombre}</TableCell>
+                          <TableCell>
+                            <span>{p.nombre}</span>
+                            {p.especificacion && (
+                              <div className="text-xs text-muted-foreground mt-0.5">{p.especificacion}</div>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">{s.saldo} {p.unidad_medida}</TableCell>
                           <TableCell className="text-right">Bs {fmt(s.costoUnitario)}</TableCell>
                           <TableCell className="text-right font-medium">Bs {fmt(s.saldoValorado)}</TableCell>
@@ -360,7 +365,12 @@ export default function InventoryPage() {
                           {archivedProducts.map(p => (
                             <TableRow key={p.id} className="text-muted-foreground">
                               <TableCell><Badge variant="outline">{p.codigo}</Badge></TableCell>
-                              <TableCell>{p.nombre}</TableCell>
+                              <TableCell>
+                                <span>{p.nombre}</span>
+                                {p.especificacion && (
+                                  <div className="text-xs text-muted-foreground mt-0.5">{p.especificacion}</div>
+                                )}
+                              </TableCell>
                               <TableCell>
                                 {p.status === 'archivado' ? (
                                   <Badge variant="secondary">Archivado</Badge>
