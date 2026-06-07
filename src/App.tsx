@@ -103,7 +103,8 @@ function AppContent() {
     return <AuthForm />;
   }
 
-  // If user has MFA enrolled but hasn't verified this session, block access
+  // If user has MFA enrolled but hasn't verified this session, block access.
+  // BrowserRouter stays mounted so the URL is preserved when MFA is resolved.
   if (mfaState === 'required') {
     return (
       <MfaVerifyModal
@@ -115,15 +116,13 @@ function AppContent() {
   }
 
   return (
-    <BrowserRouter>
-      <NavigationHistoryProvider>
-        <UserAccessProvider>
-          <AccountingProvider>
-            <AppRoutes />
-          </AccountingProvider>
-        </UserAccessProvider>
-      </NavigationHistoryProvider>
-    </BrowserRouter>
+    <NavigationHistoryProvider>
+      <UserAccessProvider>
+        <AccountingProvider>
+          <AppRoutes />
+        </AccountingProvider>
+      </UserAccessProvider>
+    </NavigationHistoryProvider>
   );
 }
 
@@ -132,9 +131,12 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
+      {/* BrowserRouter lives here — always mounted, never torn down by auth state changes */}
+      <BrowserRouter>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
 );
