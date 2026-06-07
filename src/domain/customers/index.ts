@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { resolveUserCompanyId } from '@/lib/resolveCompanyId';
 import type { CustomerRow, CreateCustomerInput } from '@/domain/sales/types';
+import { logAuditEntry } from '@/services/auditService';
 
 export type { CustomerRow, CreateCustomerInput } from '@/domain/sales/types';
 export type { CustomerTipo } from '@/domain/sales/types';
@@ -35,6 +36,13 @@ export async function createCustomer(
     .single();
 
   if (error) throw new Error(error.message);
+
+  await logAuditEntry('customers', data.id, 'INSERT', null, {
+    razon_social: data.razon_social,
+    nit: data.nit,
+    tipo: data.tipo,
+  });
+
   return data as CustomerRow;
 }
 
@@ -55,5 +63,8 @@ export async function updateCustomer(
     .select()
     .single();
   if (error) throw new Error(error.message);
+
+  await logAuditEntry('customers', id, 'UPDATE', null, { updated_fields: Object.keys(input) });
+
   return data as CustomerRow;
 }

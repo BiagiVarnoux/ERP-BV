@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { resolveUserCompanyId } from '@/lib/resolveCompanyId';
 import { round2 } from '@/accounting/utils';
+import { logAuditEntry } from '@/services/auditService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -82,6 +83,15 @@ export async function createPayable(input: CreatePayableInput): Promise<void> {
   } as any) as any);
 
   if (error) throw new Error(error.message);
+
+  // Audit trail
+  await logAuditEntry('payables', input.numero_documento, 'INSERT', null, {
+    proveedor_nombre: input.proveedor_nombre,
+    numero_documento: input.numero_documento,
+    monto_original: input.monto_original,
+    moneda: input.moneda,
+    fecha_emision: input.fecha_emision,
+  });
 }
 
 export async function registerPayablePayment(input: RegisterPayablePaymentInput): Promise<void> {
@@ -126,6 +136,12 @@ export async function registerPayablePayment(input: RegisterPayablePaymentInput)
     } as any)
     .eq('id', input.payable_id) as any);
   if (updErr) throw new Error(updErr.message);
+
+  // Audit trail
+  await logAuditEntry('payables', input.payable_id, 'UPDATE',
+    { monto_pendiente: currentPendiente, estado: 'open' },
+    { monto_pendiente: Math.max(0, newPendiente), estado: newEstado, pago_monto: input.monto }
+  );
 }
 
 export async function voidPayable(id: string): Promise<void> {
@@ -140,4 +156,9 @@ export async function voidPayable(id: string): Promise<void> {
     .eq('user_id', user.id)
     .eq('company_id', companyId) as any);
   if (error) throw new Error(error.message);
+
+  // Audit trail
+  await logAuditEntry('payables', id, 'UPDATE',
+    { estado: 'open' }, { estado: 'voided' }
+  );
 }

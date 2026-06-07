@@ -96,6 +96,11 @@ export function formatTableName(tableName: string): string {
     case 'accounts': return 'Cuentas';
     case 'auxiliary_ledger': return 'Libro auxiliar';
     case 'kardex_movements': return 'Movimientos Kardex';
+    case 'receivables': return 'Cuentas por Cobrar';
+    case 'payables': return 'Cuentas por Pagar';
+    case 'debt_payments': return 'Pagos';
+    case 'sales': return 'Ventas';
+    case 'customers': return 'Clientes';
     default: return tableName;
   }
 }

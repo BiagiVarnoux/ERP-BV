@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { resolveUserCompanyId } from '@/lib/resolveCompanyId';
 import { round2 } from '@/accounting/utils';
+import { logAuditEntry } from '@/services/auditService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,6 +93,14 @@ export async function createReceivable(input: CreateReceivableInput): Promise<vo
   });
 
   if (error) throw new Error(error.message);
+
+  // Audit trail
+  await logAuditEntry('receivables', input.numero_documento, 'INSERT', null, {
+    numero_documento: input.numero_documento,
+    monto_original: input.monto_original,
+    moneda: input.moneda,
+    fecha_emision: input.fecha_emision,
+  });
 }
 
 export async function registerPayment(input: RegisterPaymentInput): Promise<void> {
@@ -136,6 +145,12 @@ export async function registerPayment(input: RegisterPaymentInput): Promise<void
     })
     .eq('id', input.receivable_id);
   if (updErr) throw new Error(updErr.message);
+
+  // Audit trail
+  await logAuditEntry('receivables', input.receivable_id, 'UPDATE',
+    { monto_pendiente: currentPendiente, estado: 'open' },
+    { monto_pendiente: Math.max(0, newPendiente), estado: newEstado, pago_monto: input.monto }
+  );
 }
 
 export async function voidReceivable(id: string): Promise<void> {
@@ -144,4 +159,8 @@ export async function voidReceivable(id: string): Promise<void> {
     .update({ estado: 'voided', updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) throw new Error(error.message);
+
+  await logAuditEntry('receivables', id, 'UPDATE',
+    { estado: 'open' }, { estado: 'voided' }
+  );
 }

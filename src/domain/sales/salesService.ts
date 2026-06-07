@@ -3,6 +3,7 @@ import { calculateTaxes } from './calculateTaxes';
 import { resolveAccounts } from './resolveAccounts';
 import type { CreateSalePayload, SaleHeaderInput, SaleItemInput, SaleRow } from './types';
 import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { logAuditEntry } from '@/services/auditService';
 
 export interface CreateSaleResult {
   success: boolean;
@@ -35,13 +36,27 @@ export async function createSale(
 
   const { data, error } = await supabase.rpc('create_sale', { payload: payload as any });
   if (error) throw new Error(error.message);
-  return data as unknown as CreateSaleResult;
+
+  const result = data as unknown as CreateSaleResult;
+  await logAuditEntry('sales', result.sale_id, 'INSERT', null, {
+    numero: result.numero,
+    canal: header.canal,
+    tipo_pago: header.tipo_pago,
+    total_cobrado: totals.total_cobrado,
+    con_factura: header.con_factura,
+    n_items: items.length,
+  });
+  return result;
 }
 
 export async function voidSale(saleId: string, reason: string): Promise<void> {
   if (!reason.trim()) throw new Error('Motivo requerido');
   const { error } = await supabase.rpc('void_sale', { p_sale_id: saleId, p_reason: reason });
   if (error) throw new Error(error.message);
+
+  await logAuditEntry('sales', saleId, 'UPDATE',
+    { estado: 'confirmed' }, { estado: 'voided', motivo_anulacion: reason }
+  );
 }
 
 export async function listSales(): Promise<SaleRow[]> {
