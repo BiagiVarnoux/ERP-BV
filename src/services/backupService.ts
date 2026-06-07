@@ -2,6 +2,56 @@
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllPaginated } from '@/accounting/data-adapter';
 
+// ─── HMAC helpers (Web Crypto API — no external deps) ──────────────────────────
+
+/** Derives an HMAC-SHA256 key from the user's ID using PBKDF2. */
+async function deriveHmacKey(userId: string): Promise<CryptoKey> {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(userId),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: enc.encode('erpbv-backup-salt-v1'),
+      iterations: 100_000,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify']
+  );
+}
+
+/** Returns a hex HMAC-SHA256 of the given payload string. */
+async function signPayload(payload: string, userId: string): Promise<string> {
+  const key = await deriveHmacKey(userId);
+  const enc = new TextEncoder();
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(payload));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Returns true if the HMAC of payload matches the provided signature. */
+async function verifyPayload(payload: string, signature: string, userId: string): Promise<boolean> {
+  try {
+    const expected = await signPayload(payload, userId);
+    // Constant-time comparison to prevent timing attacks
+    if (expected.length !== signature.length) return false;
+    let diff = 0;
+    for (let i = 0; i < expected.length; i++) {
+      diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+    }
+    return diff === 0;
+  } catch {
+    return false;
+  }
+}
+
 /** Paginated SELECT * WHERE user_id = ? to bypass PostgREST 1000-row default limit. */
 async function fetchAllUserRows(table: string, userId: string): Promise<any[]> {
   return await fetchAllPaginated<any>((from, to) =>
@@ -55,6 +105,8 @@ async function fetchAllSaleItems(userId: string): Promise<any[]> {
 export interface BackupData {
   version: string;
   created_at: string;
+  /** HMAC-SHA256 signature of the backup payload (added at download time). Optional for backward compat with old backups. */
+  hmac?: string;
   accounts: any[];
   journal_entries: any[];
   journal_lines: any[];
@@ -192,8 +244,20 @@ export async function createFullBackup(): Promise<BackupData> {
   };
 }
 
-export function downloadBackup(data: BackupData): void {
-  const json = JSON.stringify(data, null, 2);
+export async function downloadBackup(data: BackupData): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Sign the payload (without any prior hmac field) so the signature covers all data
+  const { hmac: _existing, ...dataWithoutHmac } = data;
+  const payload = JSON.stringify(dataWithoutHmac);
+
+  let signedData: BackupData = dataWithoutHmac;
+  if (user) {
+    const hmac = await signPayload(payload, user.id);
+    signedData = { ...dataWithoutHmac, hmac };
+  }
+
+  const json = JSON.stringify(signedData, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -502,6 +566,27 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
       message: `Error en restauración: ${error.message}` 
     };
   }
+}
+
+/** Verifies the HMAC of a backup file. Returns null if no HMAC present (old format). */
+export async function verifyBackupIntegrity(data: any): Promise<{ valid: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { valid: false, error: 'Usuario no autenticado' };
+
+  if (!data.hmac) {
+    // Old backup without signature — warn but allow
+    return { valid: true, error: 'Advertencia: este backup no tiene firma de integridad (formato antiguo).' };
+  }
+
+  const { hmac, ...dataWithoutHmac } = data;
+  const payload = JSON.stringify(dataWithoutHmac);
+  const ok = await verifyPayload(payload, hmac, user.id);
+
+  if (!ok) {
+    return { valid: false, error: 'La firma del backup no es válida. El archivo puede haber sido alterado o pertenecer a otro usuario.' };
+  }
+
+  return { valid: true };
 }
 
 export function validateBackupFile(data: any): { valid: boolean; error?: string } {

@@ -12,12 +12,13 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Download, Upload, Loader2, AlertTriangle, Check } from 'lucide-react';
 import { toast } from 'sonner';
-import { 
-  createFullBackup, 
-  downloadBackup, 
-  restoreFromBackup, 
+import {
+  createFullBackup,
+  downloadBackup,
+  restoreFromBackup,
   validateBackupFile,
-  BackupData 
+  verifyBackupIntegrity,
+  BackupData
 } from '@/services/backupService';
 
 interface BackupRestoreModalProps {
@@ -36,8 +37,8 @@ export function BackupRestoreModal({ isOpen, onClose, onRestoreComplete }: Backu
     setLoading(true);
     try {
       const data = await createFullBackup();
-      downloadBackup(data);
-      toast.success('Backup descargado correctamente');
+      await downloadBackup(data);
+      toast.success('Backup descargado y firmado correctamente');
     } catch (error: any) {
       toast.error(error.message || 'Error creando backup');
     } finally {
@@ -50,14 +51,26 @@ export function BackupRestoreModal({ isOpen, onClose, onRestoreComplete }: Backu
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = JSON.parse(e.target?.result as string);
+
+        // Step 1: structural validation
         const validation = validateBackupFile(data);
-        
         if (!validation.valid) {
           toast.error(validation.error || 'Archivo inválido');
           return;
+        }
+
+        // Step 2: HMAC integrity check
+        const integrity = await verifyBackupIntegrity(data);
+        if (!integrity.valid) {
+          toast.error(integrity.error || 'Firma de integridad inválida');
+          return;
+        }
+        if (integrity.error) {
+          // Warning for old backups without signature
+          toast.warning(integrity.error);
         }
 
         setRestoreData(data as BackupData);
