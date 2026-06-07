@@ -42,10 +42,16 @@ export async function updateCustomer(
   id: string,
   input: Partial<CreateCustomerInput>
 ): Promise<CustomerRow> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('No autenticado');
+  const companyId = await resolveUserCompanyId();
+
   const { data, error } = await supabase
     .from('customers')
     .update(input)
     .eq('id', id)
+    .eq('user_id', user.id)
+    .eq('company_id', companyId)
     .select()
     .single();
   if (error) throw new Error(error.message);

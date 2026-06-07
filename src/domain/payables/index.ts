@@ -129,9 +129,15 @@ export async function registerPayablePayment(input: RegisterPayablePaymentInput)
 }
 
 export async function voidPayable(id: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('No autenticado');
+  const companyId = await resolveUserCompanyId();
+
   const { error } = await (supabase
     .from('payables' as any)
     .update({ estado: 'voided', updated_at: new Date().toISOString() } as any)
-    .eq('id', id) as any);
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .eq('company_id', companyId) as any);
   if (error) throw new Error(error.message);
 }

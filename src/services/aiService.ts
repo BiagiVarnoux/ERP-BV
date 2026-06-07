@@ -124,9 +124,24 @@ export async function generateJournalEntries(
     .replace(/```\n?/g, '')
     .trim();
 
+  let parsed: AIParseResult;
   try {
-    return JSON.parse(clean) as AIParseResult;
+    parsed = JSON.parse(clean) as AIParseResult;
   } catch {
     throw new Error('La IA devolvió una respuesta no válida. Intenta reformular tu descripción.');
   }
+
+  // H10: Validate that all account_ids suggested by AI exist in the user's chart of accounts
+  const validAccountIds = new Set(accounts.filter(a => a.is_active).map(a => a.id));
+  for (const suggestion of parsed.suggestions ?? []) {
+    for (const line of suggestion.lines ?? []) {
+      if (!validAccountIds.has(line.account_id)) {
+        throw new Error(
+          `La IA sugirió una cuenta inválida: "${line.account_id}". Por favor intenta de nuevo o reformula la descripción.`
+        );
+      }
+    }
+  }
+
+  return parsed;
 }

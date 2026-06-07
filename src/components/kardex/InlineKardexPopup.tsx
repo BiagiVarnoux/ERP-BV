@@ -95,7 +95,6 @@ export function InlineKardexPopup({
         kardexId = existingKardex.id;
       } else {
         // Si no existe kardex entry, el saldo es 0
-        console.log('No existe kardex entry para esta cuenta');
         setSaldoActual(0);
         setCostoUnitarioActual(0);
         return;
@@ -111,22 +110,13 @@ export function InlineKardexPopup({
         .order('created_at', { ascending: true });
 
       if (!movements || movements.length === 0) {
-        console.log('No hay movimientos de kardex para esta cuenta');
         setSaldoActual(0);
         setCostoUnitarioActual(0);
         return;
       }
 
-      console.log('📦 Movimientos del Kardex cargados:', movements.length);
-
       // CALCULAR EL SALDO ACTUAL usando utilidad centralizada
       const currentState = getCurrentKardexState(movements);
-
-      console.log('✅ Estado actual del Kardex:', {
-        saldo: currentState.currentBalance,
-        costoUnitario: currentState.currentUnitCost,
-        saldoValorado: currentState.currentValuedBalance
-      });
 
       // Establecer los valores calculados
       setSaldoActual(currentState.currentBalance);
