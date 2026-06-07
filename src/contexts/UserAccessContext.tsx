@@ -156,10 +156,16 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
     loadAccess();
-  }, [user]);
+  // Use user.id instead of the full user object so token refreshes (TOKEN_REFRESHED)
+  // don't re-trigger loadAccess and cause a race condition with loading stuck at true.
+  }, [user?.id]);
 
   const loadAccess = async (overrideCompanyId?: string) => {
     if (!user) return;
+
+    // Safety timeout: never leave loading=true for more than 10 seconds
+    const timeout = setTimeout(() => setLoading(false), 10_000);
+
     try {
       // 0. Cargar todas las empresas del usuario
       const { data: companiesData } = await supabase.rpc('get_my_companies');
@@ -246,6 +252,7 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
     } catch (error) {
       console.error('Error cargando permisos:', error);
     } finally {
+      clearTimeout(timeout);
       setLoading(false);
     }
   };
