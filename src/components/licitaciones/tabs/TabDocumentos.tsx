@@ -299,7 +299,7 @@ function CarpetaCategoria({ categoria, docs, onDownload, onDelete }: {
                 {formatSize(doc.size)}
                 {doc.descripcion && ` · ${doc.descripcion}`}
                 {' · '}
-                {new Date(doc.uploaded_at).toLocaleDateString('es-BO')}
+                {new Date(doc.uploaded_at).toLocaleDateString('es-BO', { timeZone: 'America/La_Paz' })}
               </p>
             </div>
             <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => onDownload(doc)}>

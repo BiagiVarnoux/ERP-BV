@@ -12,7 +12,8 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
-import { fmt, round2 } from '@/accounting/utils';
+import { fmt, round2, todayISO, nowInAppTZ } from '@/accounting/utils';
+import { getMonthEndDate } from '@/accounting/period-utils';
 import {
   listPayables,
   createPayable,
@@ -23,7 +24,7 @@ import {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayISO();
 
 function isVencido(row: PayableRow): boolean {
   if (!row.fecha_vencimiento) return false;
@@ -116,9 +117,9 @@ export default function PayablesPage() {
   }
 
   async function loadPagadoMes() {
-    const now  = new Date();
-    const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-    const to   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+    const { year, month } = nowInAppTZ();
+    const from = `${year}-${String(month).padStart(2, '0')}-01`;
+    const to   = getMonthEndDate(year, month);
     const { data } = await (supabase
       .from('debt_payments' as any)
       .select('monto')

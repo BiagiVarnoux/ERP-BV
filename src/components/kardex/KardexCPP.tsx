@@ -257,7 +257,7 @@ export function KardexCPP() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `kardex_${selectedKardexDef?.name}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `kardex_${selectedKardexDef?.name}_${todayISO()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success('Kárdex exportado');

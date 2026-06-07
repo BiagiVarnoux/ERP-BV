@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { FileDown, Scale } from 'lucide-react';
 import { PeriodSelector, PeriodType, getYearPeriod, isDateInYear } from './PeriodSelector';
 import { Account, JournalEntry } from '@/accounting/types';
-import { fmt, round2 } from '@/accounting/utils';
+import { fmt, round2, nowInAppTZ } from '@/accounting/utils';
 import { Quarter, isDateInQuarter } from '@/accounting/quarterly-utils';
 import { parseMonthString, isDateInMonth, MonthPeriod } from '@/accounting/period-utils';
 import { exportEquityChangesToPDF } from '@/services/pdfService';
@@ -234,7 +234,7 @@ export function EquityChangesReport({
   onMonthChange,
 }: EquityChangesReportProps) {
   const [periodTypeLocal, setPeriodTypeLocal] = useState<PeriodType>('annual');
-  const [selectedYearLocal, setSelectedYearLocal] = useState(new Date().getFullYear());
+  const [selectedYearLocal, setSelectedYearLocal] = useState(nowInAppTZ().year);
   const [selectedMonthLocal, setSelectedMonthLocal] = useState('');
   const { settings } = useReportSettings();
 

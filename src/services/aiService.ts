@@ -94,9 +94,9 @@ export async function generateJournalEntries(
   accounts: Account[]
 ): Promise<AIParseResult> {
   const today = todayISO();
-  const yesterdayDate = new Date();
-  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-  const yesterdayISO = yesterdayDate.toISOString().slice(0, 10);
+  const [ty, tm, td] = today.split('-').map(Number);
+  const yDate = new Date(ty, tm - 1, td - 1);
+  const yesterdayISO = `${yDate.getFullYear()}-${String(yDate.getMonth()+1).padStart(2,'0')}-${String(yDate.getDate()).padStart(2,'0')}`;
 
   const { data, error } = await supabase.functions.invoke('ai-journal', {
     body: {

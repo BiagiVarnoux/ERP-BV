@@ -128,8 +128,8 @@ export function TabGeneral({ licitacion: l, onUpdated }: Props) {
 
       {/* Meta */}
       <div className="text-xs text-muted-foreground space-y-1">
-        <p>Creado: {new Date(l.created_at).toLocaleString('es-BO')}</p>
-        <p>Última actualización: {new Date(l.updated_at).toLocaleString('es-BO')}</p>
+        <p>Creado: {new Date(l.created_at).toLocaleString('es-BO', { timeZone: 'America/La_Paz' })}</p>
+        <p>Última actualización: {new Date(l.updated_at).toLocaleString('es-BO', { timeZone: 'America/La_Paz' })}</p>
       </div>
 
       <div className="flex justify-end">

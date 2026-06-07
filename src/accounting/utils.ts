@@ -1,6 +1,7 @@
 // src/accounting/utils.ts
 import { AccountType, Side, Account, JournalEntry } from './types';
 import { getQuarterIdentifier } from './quarterly-utils';
+export { APP_TIMEZONE, nowInAppTZ, todayISO } from './timezone';
 
 /** Round to 2 decimal places - use for all financial calculations */
 export function round2(n: number): number {
@@ -12,12 +13,8 @@ export function round6(n: number): number {
   return Math.round(n * 1_000_000) / 1_000_000;
 }
 
-export function fmt(n: number) { 
-  return n.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); 
-}
-
-export function todayISO() { 
-  return new Date().toISOString().slice(0,10); 
+export function fmt(n: number) {
+  return n.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function yyyymm(date: string) { 

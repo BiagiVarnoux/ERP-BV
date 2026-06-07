@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { FileDown, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { PeriodSelector, PeriodType, getYearPeriod, isDateInYear, YearPeriod } from './PeriodSelector';
 import { Account, JournalEntry } from '@/accounting/types';
-import { fmt, round2 } from '@/accounting/utils';
+import { fmt, round2, nowInAppTZ } from '@/accounting/utils';
 import { Quarter, isDateInQuarter, getPreviousQuarter, parseQuarterString } from '@/accounting/quarterly-utils';
 import { parseMonthString, isDateInMonth, MonthPeriod } from '@/accounting/period-utils';
 import { exportIncomeStatementNIIFToPDF } from '@/services/pdfService';
@@ -305,7 +305,7 @@ export function IncomeStatementReport({
 }: IncomeStatementReportProps) {
   const { settings } = useReportSettings();
   const [periodTypeLocal, setPeriodTypeLocal] = useState<PeriodType>('quarterly');
-  const [selectedYearLocal, setSelectedYearLocal] = useState(new Date().getFullYear());
+  const [selectedYearLocal, setSelectedYearLocal] = useState(nowInAppTZ().year);
   const [selectedMonthLocal, setSelectedMonthLocal] = useState('');
 
   const periodType = periodTypeProp ?? periodTypeLocal;

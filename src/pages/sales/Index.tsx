@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserAccess } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
-import { fmt, round2 } from '@/accounting/utils';
+import { fmt, round2, nowInAppTZ, todayISO } from '@/accounting/utils';
 import { listSales, voidSale, CANAL_LABELS, type SaleRow } from '@/domain/sales';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { NuevaVentaModal } from '@/components/sales/NuevaVentaModal';
@@ -28,19 +28,20 @@ function periodLabel(p: PeriodFilter): string {
 }
 
 function isInPeriod(fecha: string, period: PeriodFilter): boolean {
-  const d = new Date(fecha);
-  const now = new Date();
   if (period === 'all') return true;
-  if (period === 'month') {
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }
+  const { year, month, day } = nowInAppTZ();
+  const fy = parseInt(fecha.slice(0, 4), 10);
+  const fm = parseInt(fecha.slice(5, 7), 10);
+  if (period === 'month') return fy === year && fm === month;
   if (period === 'prev_month') {
-    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    return d.getFullYear() === prev.getFullYear() && d.getMonth() === prev.getMonth();
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear  = month === 1 ? year - 1 : year;
+    return fy === prevYear && fm === prevMonth;
   }
   if (period === 'last30') {
-    const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    return d >= cutoff;
+    const cutoff = new Date(year, month - 1, day - 30);
+    const cutoffISO = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
+    return fecha >= cutoffISO;
   }
   return true;
 }

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { FileDown } from 'lucide-react';
 import { PeriodSelector, PeriodType } from './PeriodSelector';
 import { Account, JournalEntry, AccountType, Side } from '@/accounting/types';
-import { fmt } from '@/accounting/utils';
+import { fmt, nowInAppTZ } from '@/accounting/utils';
 import { Quarter, isDateInQuarter } from '@/accounting/quarterly-utils';
 import { parseMonthString, isDateInMonth, isDateInYear, getYearPeriod } from '@/accounting/period-utils';
 import { exportTrialBalanceToPDF } from '@/services/pdfService';
@@ -36,7 +36,7 @@ export function TrialBalanceReport({
   currentQuarter,
   periodType = 'quarterly',
   onPeriodTypeChange = () => {},
-  selectedYear = new Date().getFullYear(),
+  selectedYear = nowInAppTZ().year,
   onYearChange = () => {},
   selectedMonth = '',
   onMonthChange = () => {},

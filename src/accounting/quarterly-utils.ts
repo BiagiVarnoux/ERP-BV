@@ -1,4 +1,11 @@
 // src/accounting/quarterly-utils.ts
+import { nowInAppTZ } from './timezone';
+
+function nowPartsInTZ() {
+  const { year, month } = nowInAppTZ();
+  return { year, month };
+}
+
 export interface Quarter {
   year: number;
   quarter: number;
@@ -8,9 +15,7 @@ export interface Quarter {
 }
 
 export function getCurrentQuarter(): Quarter {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1; // getMonth() returns 0-11
+  const { year, month } = nowPartsInTZ();
   const quarter = Math.ceil(month / 3);
   
   return {
@@ -29,8 +34,11 @@ export function getQuarterStartDate(year: number, quarter: number): string {
 
 export function getQuarterEndDate(year: number, quarter: number): string {
   const month = quarter * 3;
-  const date = new Date(year, month, 0); // Last day of the quarter
-  return date.toISOString().slice(0, 10);
+  const date = new Date(year, month, 0); // Last day of the quarter (local time)
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 export function getPreviousQuarter(year: number, quarter: number): Quarter {

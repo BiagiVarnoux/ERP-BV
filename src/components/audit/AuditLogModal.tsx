@@ -52,6 +52,7 @@ export function AuditLogModal({ isOpen, onClose, recordId, tableName }: AuditLog
 
   function formatDate(dateStr: string): string {
     return new Date(dateStr).toLocaleString('es', {
+      timeZone: 'America/La_Paz',
       year: 'numeric',
       month: 'short',
       day: 'numeric',

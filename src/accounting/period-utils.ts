@@ -1,6 +1,7 @@
 // src/accounting/period-utils.ts
 // Unified period utilities supporting monthly, quarterly, and annual views.
 import { Quarter, getCurrentQuarter, parseQuarterString, isDateInQuarter, getAllQuartersFromStart } from './quarterly-utils';
+import { nowInAppTZ } from './utils';
 
 export type PeriodType = 'monthly' | 'quarterly' | 'annual';
 
@@ -48,15 +49,13 @@ export function buildMonth(year: number, month: number): MonthPeriod {
 }
 
 export function getCurrentMonth(): MonthPeriod {
-  const now = new Date();
-  return buildMonth(now.getFullYear(), now.getMonth() + 1);
+  const { year, month } = nowInAppTZ();
+  return buildMonth(year, month);
 }
 
 export function getAllMonthsFromStart(startYear: number = 2020): MonthPeriod[] {
   const months: MonthPeriod[] = [];
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1;
+  const { year: currentYear, month: currentMonth } = nowInAppTZ();
   for (let year = startYear; year <= currentYear; year++) {
     const maxMonth = year === currentYear ? currentMonth : 12;
     for (let month = 1; month <= maxMonth; month++) {
@@ -88,11 +87,11 @@ export function getYearPeriod(year: number): YearPeriod {
 }
 
 export function getCurrentYear(): YearPeriod {
-  return getYearPeriod(new Date().getFullYear());
+  return getYearPeriod(nowInAppTZ().year);
 }
 
 export function getAvailableYears(startYear: number = 2020): YearPeriod[] {
-  const currentYear = new Date().getFullYear();
+  const currentYear = nowInAppTZ().year;
   const years: YearPeriod[] = [];
   for (let y = currentYear; y >= startYear; y--) years.push(getYearPeriod(y));
   return years;
@@ -137,7 +136,7 @@ export function isDateInPeriod(date: string, period: PeriodValue | ResolvedPerio
 export function getDefaultPeriodValue(type: PeriodType): string {
   if (type === 'monthly') return getCurrentMonth().label;
   if (type === 'quarterly') return getCurrentQuarter().label;
-  return String(new Date().getFullYear());
+  return String(nowInAppTZ().year);
 }
 
 export function getDefaultPeriod(): PeriodValue {
