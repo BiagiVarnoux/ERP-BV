@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
-export type MfaState = 'idle' | 'required' | 'verified';
+export type MfaState = 'checking' | 'idle' | 'required' | 'verified';
 
 interface AuthContextType {
   user: User | null;
@@ -18,62 +18,46 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }
 
-interface AuthProviderProps {
-  children: React.ReactNode;
-}
-
-/** Check if the current session has already passed MFA (AAL2) or has a pending TOTP factor. */
 async function checkMfaRequired(): Promise<MfaState> {
   try {
     const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (!aalData) return 'idle';
-
-    const { currentLevel, nextLevel } = aalData;
-
-    // If the session is already at AAL2, MFA is satisfied
-    if (currentLevel === 'aal2') return 'verified';
-
-    // If the user has enrolled TOTP factors but session is only AAL1, require challenge
-    if (nextLevel === 'aal2') return 'required';
-
+    if (aalData.currentLevel === 'aal2') return 'verified';
+    if (aalData.nextLevel === 'aal2') return 'required';
     return 'idle';
   } catch {
     return 'idle';
   }
 }
 
-export function AuthProvider({ children }: AuthProviderProps) {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [mfaState, setMfaState] = useState<MfaState>('idle');
+  // Start as 'checking' so the app never renders routes before MFA is resolved
+  const [mfaState, setMfaState] = useState<MfaState>('checking');
 
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
+    if (!supabase) { setLoading(false); setMfaState('idle'); return; }
 
+    // ── Auth state listener — SYNCHRONOUS, no async/await here ──────────────
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
+        // These are synchronous state updates — safe inside onAuthStateChange
         setUser(session?.user ?? null);
         setLoading(false);
 
-        if (session?.user) {
-          // Check MFA status on every auth state change
-          const mfa = await checkMfaRequired();
-          setMfaState(mfa);
-        } else {
+        if (!session?.user) {
           setMfaState('idle');
+          return;
         }
 
-        // When user signs in, check for invitation code in URL
-        if (event === 'SIGNED_IN' && session?.user) {
+        // Handle invitation code on SIGNED_IN (use setTimeout to avoid
+        // calling Supabase inside the onAuthStateChange callback)
+        if (event === 'SIGNED_IN') {
           const urlParams = new URLSearchParams(window.location.search);
           const pendingCode = urlParams.get('invitation_code');
 
@@ -88,15 +72,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
               try {
                 const { data } = await supabase.rpc('redeem_invitation_code', {
                   _code: pendingCode,
-                  _user_id: session.user.id
+                  _user_id: session.user.id,
                 });
-
                 const result = data as Record<string, unknown> | null;
-                if (result?.success) {
-                  window.location.reload();
-                } else {
-                  console.error('Failed to redeem code:', (result as any)?.error);
-                }
+                if (result?.success) window.location.reload();
+                else console.error('Failed to redeem code:', (result as any)?.error);
               } catch (error) {
                 console.error('Error redeeming invitation code:', error);
               }
@@ -104,9 +84,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           } else {
             setTimeout(async () => {
               try {
-                await supabase.rpc('assign_default_owner_role', {
-                  _user_id: session.user.id
-                });
+                await supabase.rpc('assign_default_owner_role', { _user_id: session.user.id });
               } catch (error) {
                 console.error('Error assigning owner role:', error);
               }
@@ -116,17 +94,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     );
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    // Bootstrap: get existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      if (session?.user) {
-        const mfa = await checkMfaRequired();
-        setMfaState(mfa);
-      }
       setLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // ── MFA check — separate effect, runs only when user identity changes ─────
+  // Keeping this out of onAuthStateChange avoids async race conditions.
+  useEffect(() => {
+    if (!user) {
+      setMfaState('idle');
+      return;
+    }
+    setMfaState('checking');
+    checkMfaRequired().then(setMfaState);
+  }, [user?.id]);
 
   function mfaVerified() {
     setMfaState('verified');
@@ -140,11 +126,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const signUp = async (email: string, password: string, invitationCode?: string) => {
     if (!supabase) throw new Error('Supabase no disponible');
-
     const redirectTo = invitationCode
       ? `${window.location.origin}/?invitation_code=${encodeURIComponent(invitationCode)}`
       : `${window.location.origin}/`;
-
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -161,15 +145,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      loading,
-      mfaState,
-      mfaVerified,
-      signIn,
-      signUp,
-      signOut
-    }}>
+    <AuthContext.Provider value={{ user, loading, mfaState, mfaVerified, signIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   );

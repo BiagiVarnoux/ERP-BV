@@ -91,7 +91,8 @@ function AppRoutes() {
 function AppContent() {
   const { user, loading, mfaState, mfaVerified, signOut } = useAuth();
 
-  if (loading) {
+  // Wait for auth AND mfa check before rendering anything
+  if (loading || mfaState === 'checking') {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-lg">Cargando...</div>
@@ -103,8 +104,7 @@ function AppContent() {
     return <AuthForm />;
   }
 
-  // If user has MFA enrolled but hasn't verified this session, block access.
-  // BrowserRouter stays mounted so the URL is preserved when MFA is resolved.
+  // MFA enrolled but not yet verified this session — block all routes
   if (mfaState === 'required') {
     return (
       <MfaVerifyModal
