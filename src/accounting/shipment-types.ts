@@ -1,6 +1,15 @@
 // src/accounting/shipment-types.ts
 // Tipos para el módulo de Embarques (importaciones)
 
+// Referencia a un archivo subido a Supabase Storage
+export interface ShipmentFile {
+  id: string;
+  name: string;           // Nombre original del archivo
+  path: string;           // Ruta en storage (para descargar/eliminar)
+  size?: number;          // Bytes
+  uploaded_at: string;    // ISO date
+}
+
 export type ShipmentStatus =
   | 'EN_COMPRA'      // Acumulando compras, antes de enviar
   | 'FLETE_PAGADO'   // Flete pagado, en camino
@@ -36,6 +45,7 @@ export const DEFAULT_CATEGORY_LABELS: Record<string, string> = {
 
 // Un producto dentro de un embarque
 export interface ShipmentProduct {
+  archivos?: ShipmentFile[];  // Facturas u otros documentos del producto
   id: string;
   shipment_id: string;
 
@@ -80,6 +90,7 @@ export interface ShipmentExpense {
   concepto: string;         // "Almacenaje", "Examen Previo", "SUMA", "Agencia despachante"
   monto: number;            // En Bs
   fecha: string;
+  archivos?: ShipmentFile[];
 }
 
 // El embarque en sí
@@ -116,6 +127,10 @@ export interface Shipment {
 
   // Categorías personalizadas del embarque
   custom_categories?: Record<string, string>;
+
+  // Documentos adjuntos del embarque
+  flete_archivos?: ShipmentFile[];   // Documentos del flete aéreo
+  dim_archivos?: ShipmentFile[];     // DIM y documentos aduaneros
 
   // Asientos generados al cerrar
   journal_entry_ids?: string[];

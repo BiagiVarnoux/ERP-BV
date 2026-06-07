@@ -38,6 +38,7 @@ import {
   getAllCategories, saveCustomCategory,
 } from '@/accounting/shipment-utils';
 import { ShipmentCloseModal, ProductLink } from '@/components/inventory/ShipmentCloseModal';
+import { FileAttachments } from '@/components/shipments/FileAttachments';
 import { supabase } from '@/integrations/supabase/client';
 import { exportShipmentToPDF, ShipmentPDFData } from '@/services/pdfService';
 
@@ -1173,6 +1174,7 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
 
 function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean; onSave: (s: Shipment) => void }) {
   const allCategories = getAllCategories();
+  const { targetUserId } = useUserAccess();
   const [editingProduct, setEditingProduct] = useState<ShipmentProduct | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
@@ -1268,6 +1270,11 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
                   {p.tiene_bateria && (
                     <Badge variant="outline" className="ml-1 text-[10px]">🔋 bat.</Badge>
                   )}
+                  {(p.archivos?.length ?? 0) > 0 && (
+                    <Badge variant="secondary" className="ml-1 text-[10px]">
+                      📎 {p.archivos!.length}
+                    </Badge>
+                  )}
                 </TableCell>
                 <TableCell>
                   <span className="text-sm">{allCategories[p.categoria] ?? p.categoria}</span>
@@ -1306,6 +1313,8 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
         <ProductEditDialog
           product={editingProduct}
           tcParalelo={s.tc_paralelo}
+          shipmentId={s.id}
+          userId={targetUserId ?? ''}
           onSave={saveProduct}
           onCancel={() => setEditingProduct(null)}
         />
@@ -1316,9 +1325,11 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
 
 // ─── Dialog de edición de producto ────────────────────────────────────────────
 
-function ProductEditDialog({ product, tcParalelo, onSave, onCancel }: {
+function ProductEditDialog({ product, tcParalelo, shipmentId, userId, onSave, onCancel }: {
   product: ShipmentProduct;
   tcParalelo: number;
+  shipmentId: string;
+  userId: string;
   onSave: (p: ShipmentProduct) => void;
   onCancel: () => void;
 }) {
@@ -1532,6 +1543,17 @@ function ProductEditDialog({ product, tcParalelo, onSave, onCancel }: {
                 </p>
               )}
             </div>
+
+            {/* Documentos adjuntos del producto */}
+            <div>
+              <Label className="text-xs mb-1.5 block">Documentos adjuntos (facturas, invoices, etc.)</Label>
+              <FileAttachments
+                storagePath={`${userId}/${shipmentId}/productos/${p.id}`}
+                files={p.archivos ?? []}
+                onChange={archivos => update({ archivos })}
+                label="Adjuntar documento"
+              />
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
@@ -1569,6 +1591,7 @@ function ProductEditDialog({ product, tcParalelo, onSave, onCancel }: {
 
 function FleteTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean; onSave: (s: Shipment) => void }) {
   const canEdit = !isReadOnly && !['EN_ADUANA', 'EN_ALMACEN', 'CERRADO'].includes(s.status);
+  const { targetUserId } = useUserAccess();
 
   return (
     <div className="space-y-4">
@@ -1609,6 +1632,18 @@ function FleteTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean;
           El flete será prorrateado entre los {s.products.length} producto(s) según peso volumen al momento de cerrar el embarque.
         </div>
       )}
+
+      {/* Documentos del flete */}
+      <div>
+        <Label className="text-xs mb-1.5 block">Documentos del flete (AWB, invoice courier, etc.)</Label>
+        <FileAttachments
+          storagePath={`${targetUserId}/${s.id}/flete`}
+          files={s.flete_archivos ?? []}
+          onChange={flete_archivos => onSave({ ...s, flete_archivos })}
+          disabled={isReadOnly}
+          label="Adjuntar documento"
+        />
+      </div>
     </div>
   );
 }
@@ -1618,6 +1653,7 @@ function FleteTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean;
 function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean; onSave: (s: Shipment) => void }) {
   const canEditTributos = !isReadOnly && s.status === 'EN_ADUANA';
   const canEditGastos   = !isReadOnly && ['EN_ADUANA', 'EN_ALMACEN'].includes(s.status);
+  const { targetUserId } = useUserAccess();
 
   function updateProduct(id: string, patch: Partial<ShipmentProduct>) {
     onSave({ ...s, products: s.products.map(p => p.id === id ? { ...p, ...patch } : p) });
@@ -1641,10 +1677,22 @@ function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean
     <div className="space-y-5">
       {/* Tributos del DIM */}
       <div>
-        <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-          <FileText className="w-4 h-4" />
-          Tributos Aduaneros (DIM)
-        </h3>
+        <div className="flex items-start justify-between mb-2 gap-4">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <FileText className="w-4 h-4" />
+            Tributos Aduaneros (DIM)
+          </h3>
+          <div className="flex-1 max-w-sm">
+            <FileAttachments
+              storagePath={`${targetUserId}/${s.id}/aduana/dim`}
+              files={s.dim_archivos ?? []}
+              onChange={dim_archivos => onSave({ ...s, dim_archivos })}
+              disabled={isReadOnly}
+              label="Adjuntar DIM"
+              compact
+            />
+          </div>
+        </div>
         <p className="text-xs text-muted-foreground mb-3">
           Ingresa los montos exactos del DIM. El GA capitaliza a Inventario en Tránsito; el IVA va a Crédito Fiscal IVA.
         </p>
@@ -1773,29 +1821,39 @@ function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean
         ) : (
           <div className="space-y-2">
             {s.gastos_aduana.map(g => (
-              <div key={g.id} className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg">
-                {canEditGastos ? (
-                  <>
-                    <Input value={g.concepto} placeholder="Concepto (ej: Almacenaje)"
-                      onChange={e => updateGasto(g.id, { concepto: e.target.value })}
-                      className="flex-1 h-8" />
-                    <Input type="date" value={g.fecha}
-                      onChange={e => updateGasto(g.id, { fecha: e.target.value })}
-                      className="w-36 h-8" />
-                    <Input type="number" step="0.01" value={g.monto || ''}
-                      onChange={e => updateGasto(g.id, { monto: parseFloat(e.target.value) || 0 })}
-                      placeholder="Monto Bs" className="w-32 h-8 text-right" />
-                    <Button size="sm" variant="ghost" onClick={() => removeGasto(g.id)}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <span className="flex-1 text-sm">{g.concepto}</span>
-                    <span className="text-xs text-muted-foreground">{g.fecha}</span>
-                    <span className="font-medium text-sm">{fmt(g.monto)} Bs</span>
-                  </>
-                )}
+              <div key={g.id} className="p-2 bg-muted/30 rounded-lg space-y-1.5">
+                <div className="flex items-center gap-3">
+                  {canEditGastos ? (
+                    <>
+                      <Input value={g.concepto} placeholder="Concepto (ej: Almacenaje)"
+                        onChange={e => updateGasto(g.id, { concepto: e.target.value })}
+                        className="flex-1 h-8" />
+                      <Input type="date" value={g.fecha}
+                        onChange={e => updateGasto(g.id, { fecha: e.target.value })}
+                        className="w-36 h-8" />
+                      <Input type="number" step="0.01" value={g.monto || ''}
+                        onChange={e => updateGasto(g.id, { monto: parseFloat(e.target.value) || 0 })}
+                        placeholder="Monto Bs" className="w-32 h-8 text-right" />
+                      <Button size="sm" variant="ghost" onClick={() => removeGasto(g.id)}>
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 text-sm">{g.concepto}</span>
+                      <span className="text-xs text-muted-foreground">{g.fecha}</span>
+                      <span className="font-medium text-sm">{fmt(g.monto)} Bs</span>
+                    </>
+                  )}
+                </div>
+                <FileAttachments
+                  storagePath={`${targetUserId}/${s.id}/aduana/gastos/${g.id}`}
+                  files={g.archivos ?? []}
+                  onChange={archivos => updateGasto(g.id, { archivos })}
+                  disabled={isReadOnly}
+                  label="Adjuntar"
+                  compact
+                />
               </div>
             ))}
             <div className="flex justify-end pr-10 pt-1">
