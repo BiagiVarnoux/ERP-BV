@@ -172,12 +172,23 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
       const companiesList = (companiesData as CompanyInfo[]) || [];
       setCompanies(companiesList);
 
-      // 1. Obtener rol y empresa del usuario
-      const { data: memberData, error: memberError } = await supabase
+      // 1. Obtener rol y empresa del usuario.
+      // Do NOT filter by companiesList[0] here — get_my_companies may return []
+      // during session restore (JWT not fully propagated yet), which would cause
+      // the query to fall back to DEFAULT_COMPANY_ID and miss the real membership.
+      // Query by user_id only so we always find the actual membership.
+      const memberQuery = supabase
         .from('company_members')
         .select('id, company_id, role, role_typed')
-        .eq('user_id', user.id)
-        .eq('company_id', overrideCompanyId ?? (companiesList[0]?.company_id ?? '00000000-0000-0000-0000-000000000001'))
+        .eq('user_id', user.id);
+
+      if (overrideCompanyId) {
+        memberQuery.eq('company_id', overrideCompanyId);
+      }
+
+      const { data: memberData, error: memberError } = await memberQuery
+        .order('created_at' as any, { ascending: true })
+        .limit(1)
         .maybeSingle();
 
       if (memberError) throw memberError;
