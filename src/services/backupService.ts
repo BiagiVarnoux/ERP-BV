@@ -102,6 +102,28 @@ async function fetchAllSaleItems(userId: string): Promise<any[]> {
   return rows.map(({ sales, ...item }: any) => item);
 }
 
+/** Paginated licitacion_productos via inner join on licitaciones.user_id. */
+async function fetchAllLicitacionProductos(userId: string): Promise<any[]> {
+  const rows = await fetchAllPaginated<any>((from, to) =>
+    supabase.from('licitacion_productos')
+      .select('*, licitaciones!inner(user_id)')
+      .eq('licitaciones.user_id', userId)
+      .range(from, to)
+  );
+  return rows.map(({ licitaciones, ...row }: any) => row);
+}
+
+/** Paginated licitacion_documentos via inner join on licitaciones.user_id. */
+async function fetchAllLicitacionDocumentos(userId: string): Promise<any[]> {
+  const rows = await fetchAllPaginated<any>((from, to) =>
+    supabase.from('licitacion_documentos')
+      .select('*, licitaciones!inner(user_id)')
+      .eq('licitaciones.user_id', userId)
+      .range(from, to)
+  );
+  return rows.map(({ licitaciones, ...row }: any) => row);
+}
+
 export interface BackupData {
   version: string;
   created_at: string;
@@ -138,6 +160,10 @@ export interface BackupData {
   // v2.3 fields
   member_permissions?: any[];
   company_module_config?: any[];
+  // v2.4 fields
+  licitaciones?: any[];
+  licitacion_productos?: any[];
+  licitacion_documentos?: any[];
 }
 
 export async function createFullBackup(): Promise<BackupData> {
@@ -174,6 +200,9 @@ export async function createFullBackup(): Promise<BackupData> {
     debt_payments,
     member_permissions,
     company_module_config,
+    licitaciones,
+    licitacion_productos,
+    licitacion_documentos,
   ] = await Promise.all([
     fetchAllUserRows('accounts', user.id),
     fetchAllUserRows('journal_entries', user.id),
@@ -209,10 +238,14 @@ export async function createFullBackup(): Promise<BackupData> {
     ).then(rows => rows.map(({ company_members: _cm, id: _id, ...r }: any) => r)),
     fetchAllCompanyRows('company_module_config', companyId)
       .then(rows => rows.map(({ id: _id, ...r }) => r)),
+    // v2.4: licitaciones
+    fetchAllUserRows('licitaciones', user.id),
+    fetchAllLicitacionProductos(user.id),
+    fetchAllLicitacionDocumentos(user.id),
   ]);
 
   return {
-    version: '2.3',
+    version: '2.4',
     created_at: new Date().toISOString(),
     accounts,
     journal_entries,
@@ -241,6 +274,9 @@ export async function createFullBackup(): Promise<BackupData> {
     debt_payments,
     member_permissions,
     company_module_config,
+    licitaciones,
+    licitacion_productos,
+    licitacion_documentos,
   };
 }
 
@@ -323,6 +359,9 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
       .delete()
       .eq('company_id', userCompanyIdForRestore);
     if (fyDelError) throw new Error(`Error limpiando fiscal_years: ${fyDelError.message}`);
+
+    // v2.4: licitaciones (licitacion_productos y licitacion_documentos eliminados en cascade)
+    await safeDelete('licitaciones');
 
     await safeDelete('shipments');
     // debt_payments and receivables/payables must go before sales (FK references)
@@ -544,6 +583,32 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
       // Non-owners: skip silently — their permissions remain as set by the owner
     }
 
+    // v2.4: licitaciones — primero la cabecera, luego productos y documentos (FK)
+    if (backup.licitaciones?.length) {
+      const rows = backup.licitaciones.map((l: any) => ({
+        ...l,
+        user_id:    user.id,
+        company_id: userCompanyIdForRestore,
+      }));
+      await chunkedInsert('licitaciones', rows);
+    }
+
+    if (backup.licitacion_productos?.length) {
+      // Solo insertar hijos cuyos licitacion_id existen en las licitaciones recién restauradas.
+      // Esto previene que un backup manipulado inyecte registros bajo licitaciones de otro usuario.
+      const validLicitacionIds = new Set((backup.licitaciones ?? []).map((l: any) => l.id));
+      const safeProductos = backup.licitacion_productos.filter((r: any) => validLicitacionIds.has(r.licitacion_id));
+      if (safeProductos.length > 0) await chunkedInsert('licitacion_productos', safeProductos);
+    }
+
+    if (backup.licitacion_documentos?.length) {
+      // Misma protección: solo docs cuyo licitacion_id viene del backup actual.
+      // Los binarios en Storage no se restauran desde el JSON (limitación conocida).
+      const validLicitacionIds = new Set((backup.licitaciones ?? []).map((l: any) => l.id));
+      const safeDocs = backup.licitacion_documentos.filter((r: any) => validLicitacionIds.has(r.licitacion_id));
+      if (safeDocs.length > 0) await chunkedInsert('licitacion_documentos', safeDocs);
+    }
+
     const extras = [];
     if (backup.products?.length) extras.push(`${backup.products.length} productos`);
     if (backup.shipments?.length) extras.push(`${backup.shipments.length} embarques`);
@@ -555,6 +620,7 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
     if (backup.debt_payments?.length) extras.push(`${backup.debt_payments.length} pagos`);
     if (backup.member_permissions?.length) extras.push(`${backup.member_permissions.length} permisos`);
     if (backup.company_module_config?.length) extras.push(`${backup.company_module_config.length} configs de módulos`);
+    if (backup.licitaciones?.length) extras.push(`${backup.licitaciones.length} licitaciones`);
 
     return { 
       success: true, 
@@ -618,6 +684,7 @@ export function validateBackupFile(data: any): { valid: boolean; error?: string 
     'cost_sheets', 'cost_sheet_cells', 'report_settings', 'shipments',
     'sales', 'sale_items', 'fiscal_years', 'customers', 'receivables',
     'payables', 'debt_payments', 'member_permissions', 'company_module_config',
+    'licitaciones', 'licitacion_productos', 'licitacion_documentos',
   ];
 
   for (const key of optionalArrays) {

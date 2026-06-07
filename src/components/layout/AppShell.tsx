@@ -7,16 +7,17 @@ import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { CompanySwitcher } from '@/components/layout/CompanySwitcher';
 import {
   BarChart3, Package, ShoppingCart, Settings,
-  Eye, ChevronDown, ChevronRight, Menu, LogOut, Users, Building2,
+  Eye, ChevronDown, ChevronRight, Menu, LogOut, Users, Building2, FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const MODULE_PATHS: Record<string, string[]> = {
-  FI:       ['/accounts', '/journal', '/ledger', '/auxiliary-ledgers', '/receivables', '/payables', '/reports'],
-  MM:       ['/inventory', '/shipments'],
-  SD:       ['/dashboard', '/sales', '/customers'],
-  SETTINGS: ['/settings', '/fiscal-years'],
-  HOLDING:  ['/holding'],
+  FI:           ['/accounts', '/journal', '/ledger', '/auxiliary-ledgers', '/receivables', '/payables', '/reports'],
+  MM:           ['/inventory', '/shipments'],
+  SD:           ['/dashboard', '/sales', '/customers'],
+  LICITACIONES: ['/licitaciones'],
+  SETTINGS:     ['/settings', '/fiscal-years'],
+  HOLDING:      ['/holding'],
 };
 
 function getActiveModule(pathname: string): string | null {
@@ -194,6 +195,15 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
             {v('sales',     'dashboard') && <NavItem path="/dashboard" label="Dashboard" currentPath={location.pathname} onClick={close} />}
             {v('customers', 'customers') && <NavItem path="/customers" label="Clientes"  currentPath={location.pathname} onClick={close} />}
             {v('sales',     'sales')     && <NavItem path="/sales"     label="Ventas"    currentPath={location.pathname} onClick={close} />}
+          </ModuleSection>
+        )}
+
+        {!loading && canView('licitaciones') && (
+          <ModuleSection
+            label="Licitaciones" badge="" icon={FileText}
+            isExpanded={expanded.has('LICITACIONES')} onToggle={() => toggle('LICITACIONES')}
+          >
+            <NavItem path="/licitaciones" label="Licitaciones" currentPath={location.pathname} onClick={close} />
           </ModuleSection>
         )}
 

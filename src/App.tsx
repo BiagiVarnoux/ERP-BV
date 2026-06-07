@@ -27,6 +27,7 @@ import ReceivablesPage from "./pages/receivables/Index";
 import PayablesPage from "./pages/payables/Index";
 import UsersPage from "./pages/users/Index";
 import HoldingPage from "./pages/holding/Index";
+import LicitacionesPage from "./pages/licitaciones/Index";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -78,6 +79,9 @@ function AppRoutes() {
         {/* Configuración */}
         {canView('settings')   && <Route path="settings"   element={<SettingsPage />} />}
         {isOwner               && <Route path="users"      element={<UsersPage />} />}
+
+        {/* Licitaciones */}
+        {canView('licitaciones') && <Route path="licitaciones/*" element={<LicitacionesPage />} />}
 
         {/* Holding */}
         {canView('holding')    && <Route path="holding"    element={<HoldingPage />} />}

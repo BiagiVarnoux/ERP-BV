@@ -32,7 +32,8 @@ export type ErpModule =
   | 'payables'
   | 'shipments'
   | 'settings'
-  | 'holding';
+  | 'holding'
+  | 'licitaciones';
 
 export type ModuleAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export';
 

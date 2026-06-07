@@ -1220,3 +1220,236 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
 
   doc.save(`embarque-${data.numero.toLowerCase()}${includeIVA ? '-con-iva' : ''}.pdf`);
 }
+
+// ─── Exportar Cotización de Licitación a PDF ──────────────────────────────────
+
+export interface CotizacionProductoPDF {
+  nombre: string;
+  cantidad: number;
+  precio_usd: number;
+  tc: number;
+  total_individual: number;
+  precio_piso: number;
+  precio_ofertado: number;
+  total_ofertado: number;
+  ganancia: number;
+  roi: number;
+}
+
+export interface CotizacionResumenPDF {
+  total_import: number;
+  total_ofertado: number;
+  iva_pagar: number;
+  it_pagar: number;
+  costos: number;
+  ganancia: number;
+  roi: number;
+}
+
+export interface CotizacionPDFData {
+  licitacion: {
+    nombre: string;
+    entidad?: string;
+    numero_sicoes?: string;
+    tipo_proceso: string;
+    fecha_presentacion?: string;
+    precio_referencial?: number;
+  };
+  productos: CotizacionProductoPDF[];
+  resumen: CotizacionResumenPDF;
+}
+
+const LIC_CLR = {
+  navy:      [15, 52, 96]    as [number, number, number],
+  teal:      [14, 116, 144]  as [number, number, number],
+  green:     [22, 101, 52]   as [number, number, number],
+  red:       [153, 27, 27]   as [number, number, number],
+  amber:     [146, 64, 14]   as [number, number, number],
+  lightgray: [243, 244, 246] as [number, number, number],
+  totalrow:  [209, 233, 222] as [number, number, number],
+};
+
+export function exportCotizacionToPDF(data: CotizacionPDFData): void {
+  const doc = new jsPDF('landscape', 'mm', 'letter');
+  const pageWidth  = doc.internal.pageSize.getWidth();
+  const ML = 12;
+  const MR = 12;
+
+  const fmtN = (n: number) =>
+    n.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtPct = (n: number) =>
+    `${(n * 100).toFixed(1)}%`;
+
+  // ── ENCABEZADO ───────────────────────────────────────────────────────────────
+  doc.setFillColor(...LIC_CLR.navy);
+  doc.rect(0, 0, pageWidth, 22, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(17);
+  doc.setTextColor(255, 255, 255);
+  doc.text('Cotización de Licitación', ML, 10);
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(180, 210, 235);
+  const meta = [
+    data.licitacion.entidad && `Entidad: ${data.licitacion.entidad}`,
+    data.licitacion.numero_sicoes && `N° SICOES: ${data.licitacion.numero_sicoes}`,
+    data.licitacion.tipo_proceso && `Tipo: ${data.licitacion.tipo_proceso}`,
+    data.licitacion.fecha_presentacion && `Presentación: ${data.licitacion.fecha_presentacion}`,
+  ].filter(Boolean).join('   ·   ');
+  doc.text(meta || '', ML, 17);
+
+  // Precio referencial (badge derecha)
+  if (data.licitacion.precio_referencial) {
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    const refTxt = `Precio Ref: Bs ${fmtN(data.licitacion.precio_referencial)}`;
+    doc.setFillColor(255, 255, 255);
+    const rw = doc.getTextWidth(refTxt) + 8;
+    doc.roundedRect(pageWidth - MR - rw, 7, rw, 9, 2, 2, 'F');
+    doc.setTextColor(...LIC_CLR.navy);
+    doc.text(refTxt, pageWidth - MR - rw + 4, 13);
+  }
+
+  doc.setTextColor(0, 0, 0);
+
+  // Título de la licitación
+  let currentY = 27;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(30, 30, 30);
+  doc.text(data.licitacion.nombre, ML, currentY);
+  currentY += 7;
+
+  doc.setLineWidth(0.4);
+  doc.setDrawColor(...LIC_CLR.navy);
+  doc.line(ML, currentY, pageWidth - MR, currentY);
+  currentY += 5;
+
+  // ── TABLA DE PRODUCTOS ───────────────────────────────────────────────────────
+  const prodBody: any[][] = data.productos.map((p, i) => {
+    const isBad = p.ganancia < 0;
+    const color = isBad ? LIC_CLR.red : LIC_CLR.green;
+    return [
+      { content: String(i + 1), styles: { halign: 'center' as const } },
+      p.nombre || '—',
+      { content: String(p.cantidad), styles: { halign: 'center' as const } },
+      { content: `$${fmtN(p.precio_usd)}`, styles: { halign: 'right' as const } },
+      { content: `${p.tc}`, styles: { halign: 'center' as const } },
+      { content: `Bs ${fmtN(p.total_individual)}`, styles: { halign: 'right' as const } },
+      { content: `Bs ${fmtN(p.precio_piso)}`, styles: { halign: 'right' as const, textColor: LIC_CLR.amber } },
+      { content: `Bs ${fmtN(p.precio_ofertado)}`, styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
+      { content: `Bs ${fmtN(p.total_ofertado)}`, styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
+      { content: `Bs ${fmtN(p.ganancia)}`, styles: { halign: 'right' as const, textColor: color, fontStyle: 'bold' as const } },
+      { content: fmtPct(p.roi), styles: { halign: 'center' as const, textColor: color, fontStyle: 'bold' as const } },
+    ];
+  });
+
+  // Fila de totales resumen
+  const hasNegGanancia = data.resumen.ganancia < 0;
+  prodBody.push([
+    { content: '', styles: { fillColor: LIC_CLR.totalrow } },
+    { content: 'TOTALES', styles: { fontStyle: 'bold' as const, fillColor: LIC_CLR.totalrow } },
+    { content: `${data.productos.reduce((s, p) => s + p.cantidad, 0)}`, styles: { halign: 'center' as const, fillColor: LIC_CLR.totalrow, fontStyle: 'bold' as const } },
+    { content: '', styles: { fillColor: LIC_CLR.totalrow } },
+    { content: '', styles: { fillColor: LIC_CLR.totalrow } },
+    { content: `Bs ${fmtN(data.resumen.total_import)}`, styles: { halign: 'right' as const, fillColor: LIC_CLR.totalrow, fontStyle: 'bold' as const } },
+    { content: '', styles: { fillColor: LIC_CLR.totalrow } },
+    { content: '', styles: { fillColor: LIC_CLR.totalrow } },
+    { content: `Bs ${fmtN(data.resumen.total_ofertado)}`, styles: { halign: 'right' as const, fillColor: LIC_CLR.totalrow, fontStyle: 'bold' as const } },
+    { content: `Bs ${fmtN(data.resumen.ganancia)}`, styles: { halign: 'right' as const, fillColor: LIC_CLR.totalrow, fontStyle: 'bold' as const, textColor: hasNegGanancia ? LIC_CLR.red : LIC_CLR.green } },
+    { content: fmtPct(data.resumen.roi), styles: { halign: 'center' as const, fillColor: LIC_CLR.totalrow, fontStyle: 'bold' as const, textColor: hasNegGanancia ? LIC_CLR.red : LIC_CLR.green } },
+  ]);
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [['#', 'Producto', 'Q', 'USD Unit.', 'T/C', 'Costo Unit. (Bs)', 'Precio Piso', 'Ofertado Unit.', 'Total Ofertado', 'Ganancia', 'ROI']],
+    body: prodBody as any,
+    headStyles: { fillColor: LIC_CLR.teal, fontSize: 8, textColor: [255, 255, 255] },
+    styles: { fontSize: 8.5, cellPadding: 2.5 },
+    columnStyles: {
+      0:  { cellWidth: 8 },
+      2:  { cellWidth: 12 },
+      3:  { cellWidth: 22 },
+      4:  { cellWidth: 14 },
+      5:  { cellWidth: 28 },
+      6:  { cellWidth: 24 },
+      7:  { cellWidth: 28 },
+      8:  { cellWidth: 28 },
+      9:  { cellWidth: 26 },
+      10: { cellWidth: 16 },
+    },
+    margin: { left: ML, right: MR },
+  });
+
+  // @ts-ignore
+  currentY = doc.lastAutoTable.finalY + 7;
+
+  // ── RESUMEN DE IMPUESTOS ─────────────────────────────────────────────────────
+  doc.setFillColor(...LIC_CLR.navy);
+  doc.rect(ML, currentY - 3, pageWidth - ML - MR, 6, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(255, 255, 255);
+  doc.text('RESUMEN FINANCIERO', ML + 2, currentY + 0.5);
+  doc.setTextColor(0, 0, 0);
+  currentY += 7;
+
+  const summaryData = [
+    ['Costo de importación', `Bs ${fmtN(data.resumen.total_import)}`],
+    ['Total ofertado', `Bs ${fmtN(data.resumen.total_ofertado)}`],
+    ['IVA a pagar (crédito fiscal)', `Bs ${fmtN(data.resumen.iva_pagar)}`],
+    ['IT a pagar (3%)', `Bs ${fmtN(data.resumen.it_pagar)}`],
+    ['Costos totales', `Bs ${fmtN(data.resumen.costos)}`],
+    ['Ganancia neta', `Bs ${fmtN(data.resumen.ganancia)}`],
+    ['ROI global', fmtPct(data.resumen.roi)],
+  ];
+
+  autoTable(doc, {
+    startY: currentY,
+    body: summaryData.map(([k, v], idx) => {
+      const isGanancia = idx === 5;
+      const isRoi = idx === 6;
+      const isBad = (isGanancia || isRoi) && data.resumen.ganancia < 0;
+      return [
+        { content: k, styles: { fontStyle: (idx >= 4 ? 'bold' : 'normal') as any, fillColor: idx % 2 === 0 ? LIC_CLR.lightgray : undefined } },
+        { content: v, styles: {
+            halign: 'right' as const,
+            fontStyle: (idx >= 4 ? 'bold' : 'normal') as any,
+            fillColor: idx % 2 === 0 ? LIC_CLR.lightgray : undefined,
+            textColor: (isGanancia || isRoi) ? (isBad ? LIC_CLR.red : LIC_CLR.green) : undefined,
+          }
+        },
+      ];
+    }),
+    styles: { fontSize: 9, cellPadding: 3 },
+    columnStyles: { 0: { cellWidth: 70 }, 1: { cellWidth: 40 } },
+    margin: { left: ML, right: MR },
+    tableWidth: 115,
+  });
+
+  // ── PIE DE PÁGINA ────────────────────────────────────────────────────────────
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    const ph = doc.internal.pageSize.getHeight();
+    doc.setFillColor(...LIC_CLR.navy);
+    doc.rect(0, ph - 9, pageWidth, 9, 'F');
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(180, 210, 235);
+    doc.text(
+      `${data.licitacion.nombre}  ·  Cotización  ·  Página ${i} de ${pageCount}  ·  ERP BV  ·  ${new Date().toLocaleString('es-BO')}`,
+      pageWidth / 2,
+      ph - 3,
+      { align: 'center' }
+    );
+    doc.setTextColor(0, 0, 0);
+  }
+
+  const slug = data.licitacion.numero_sicoes
+    ? data.licitacion.numero_sicoes.toLowerCase().replace(/\s+/g, '-')
+    : 'cotizacion';
+  doc.save(`cotizacion-${slug}-${new Date().toISOString().split('T')[0]}.pdf`);
+}
