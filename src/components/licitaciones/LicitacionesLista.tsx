@@ -9,7 +9,7 @@ import {
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Search, Trash2, ChevronRight, FileText } from 'lucide-react';
+import { Plus, Search, Trash2, ChevronRight, FileText, Clock, AlertTriangle, CalendarClock } from 'lucide-react';
 import { Licitacion, LicitacionEstado, LICITACION_ESTADO_LABELS, LICITACION_ESTADO_COLORS, TIPO_PROCESO_LABELS } from '@/accounting/licitacion-types';
 import { fmt } from '@/accounting/utils';
 import { NuevaLicitacionModal } from './NuevaLicitacionModal';
@@ -194,12 +194,8 @@ function LicitacionRow({ licitacion: l, onOpen, onDelete, dimmed }: {
         </span>
       )}
 
-      {/* Fecha presentación */}
-      {l.fecha_presentacion && (
-        <span className="hidden lg:block text-xs text-muted-foreground shrink-0">
-          {new Date(l.fecha_presentacion + 'T12:00:00').toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' })}
-        </span>
-      )}
+      {/* Cuenta regresiva */}
+      <CountdownChip licitacion={l} />
 
       {/* Acciones */}
       <Button
@@ -212,6 +208,93 @@ function LicitacionRow({ licitacion: l, onOpen, onDelete, dimmed }: {
       </Button>
       <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
     </div>
+  );
+}
+
+// ─── Chip de cuenta regresiva ──────────────────────────────────────────────────
+
+/** Calcula días entre hoy (medianoche) y una fecha ISO YYYY-MM-DD. Negativo = vencido. */
+function diasHasta(fechaIso: string): number {
+  const hoy   = new Date(); hoy.setHours(0, 0, 0, 0);
+  const fecha = new Date(fechaIso + 'T12:00:00');
+  return Math.round((fecha.getTime() - hoy.getTime()) / 86_400_000);
+}
+
+function CountdownChip({ licitacion: l }: { licitacion: Licitacion }) {
+  // Determinar qué fecha y etiqueta mostrar según el estado
+  let fechaIso: string | undefined;
+  let etiqueta: string;
+  let icono: 'clock' | 'alert' | 'calendar' = 'calendar';
+
+  if (l.estado === 'BORRADOR' || l.estado === 'PRESENTADA') {
+    fechaIso = l.fecha_presentacion;
+    etiqueta = 'para presentar';
+    icono    = 'clock';
+  } else if (l.estado === 'ADJUDICADA') {
+    // Prioridad: fecha_limite_entrega > fecha_contrato + plazo > fecha_contrato
+    if (l.fecha_limite_entrega) {
+      fechaIso = l.fecha_limite_entrega;
+      etiqueta = 'para entregar';
+      icono    = 'alert';
+    } else if (l.fecha_contrato && l.plazo_entrega_dias) {
+      // Calcular fecha límite desde el contrato + plazo
+      const d = new Date(l.fecha_contrato + 'T12:00:00');
+      d.setDate(d.getDate() + l.plazo_entrega_dias);
+      fechaIso = d.toISOString().slice(0, 10);
+      etiqueta = 'para entregar';
+      icono    = 'alert';
+    } else if (l.fecha_contrato) {
+      fechaIso = l.fecha_contrato;
+      etiqueta = 'para firma contrato';
+      icono    = 'calendar';
+    }
+  }
+
+  if (!fechaIso) return null;
+
+  const dias = diasHasta(fechaIso);
+
+  // Colores y texto según urgencia
+  let chip: { bg: string; text: string; label: string };
+  if (dias < 0) {
+    chip = {
+      bg:    'bg-red-100 dark:bg-red-950/60 border border-red-300 dark:border-red-800',
+      text:  'text-red-700 dark:text-red-400',
+      label: `Vencido hace ${Math.abs(dias)} día${Math.abs(dias) !== 1 ? 's' : ''}`,
+    };
+  } else if (dias === 0) {
+    chip = {
+      bg:    'bg-red-100 dark:bg-red-950/60 border border-red-300 dark:border-red-800',
+      text:  'text-red-700 dark:text-red-400',
+      label: `¡Hoy! ${etiqueta}`,
+    };
+  } else if (dias <= 2) {
+    chip = {
+      bg:    'bg-orange-100 dark:bg-orange-950/60 border border-orange-300 dark:border-orange-800',
+      text:  'text-orange-700 dark:text-orange-400',
+      label: `${dias} día${dias !== 1 ? 's' : ''} ${etiqueta}`,
+    };
+  } else if (dias <= 7) {
+    chip = {
+      bg:    'bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800',
+      text:  'text-amber-700 dark:text-amber-400',
+      label: `${dias} días ${etiqueta}`,
+    };
+  } else {
+    chip = {
+      bg:    'bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800',
+      text:  'text-blue-600 dark:text-blue-400',
+      label: `${dias} días ${etiqueta}`,
+    };
+  }
+
+  const Icon = icono === 'alert' ? AlertTriangle : icono === 'clock' ? Clock : CalendarClock;
+
+  return (
+    <span className={`hidden sm:inline-flex items-center gap-1 shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${chip.bg} ${chip.text}`}>
+      <Icon className="h-3 w-3" />
+      {chip.label}
+    </span>
   );
 }
 
