@@ -107,8 +107,26 @@ export function AuthForm() {
           toast.success('¡Cuenta creada exitosamente! Revisa tu email para confirmar.');
         }
       }
-    } catch {
-      toast.error('Error en la autenticación. Por favor verifica tus credenciales.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+
+      // Traducir los mensajes de error más comunes de Supabase Auth
+      if (/user already registered/i.test(msg) || /already been registered/i.test(msg)) {
+        toast.error('Este email ya tiene una cuenta registrada. Inicia sesión en lugar de registrarte.');
+      } else if (/invalid login credentials/i.test(msg) || /invalid credentials/i.test(msg)) {
+        toast.error('Email o contraseña incorrectos.');
+      } else if (/email not confirmed/i.test(msg)) {
+        toast.error('Debes confirmar tu email antes de iniciar sesión. Revisa tu bandeja de entrada.');
+      } else if (/password.*characters/i.test(msg) || /weak password/i.test(msg)) {
+        toast.error('La contraseña no cumple los requisitos mínimos de seguridad.');
+      } else if (/rate limit/i.test(msg) || /too many requests/i.test(msg)) {
+        toast.error('Demasiados intentos. Espera unos minutos antes de volver a intentarlo.');
+      } else if (/network/i.test(msg) || /fetch/i.test(msg)) {
+        toast.error('Error de conexión. Verifica tu internet e intenta de nuevo.');
+      } else {
+        // Mostrar el error real para facilitar diagnóstico
+        toast.error(`Error: ${msg}`);
+      }
     } finally {
       setLoading(false);
     }
