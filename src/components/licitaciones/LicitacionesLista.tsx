@@ -213,10 +213,11 @@ function LicitacionRow({ licitacion: l, onOpen, onDelete, dimmed }: {
 
 // ─── Chip de cuenta regresiva ──────────────────────────────────────────────────
 
-/** Calcula días entre hoy (medianoche) y una fecha ISO YYYY-MM-DD. Negativo = vencido. */
+/** Calcula días entre hoy (medianoche) y una fecha ISO YYYY-MM-DD. Negativo = vencido.
+ *  Usa timezone Bolivia (UTC-4) explícita para evitar desfases si el cliente está en otra zona. */
 function diasHasta(fechaIso: string): number {
   const hoy   = new Date(); hoy.setHours(0, 0, 0, 0);
-  const fecha = new Date(fechaIso + 'T12:00:00');
+  const fecha = new Date(fechaIso + 'T12:00:00-04:00'); // mediodía Bolivia, siempre UTC-4
   return Math.round((fecha.getTime() - hoy.getTime()) / 86_400_000);
 }
 

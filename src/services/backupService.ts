@@ -397,13 +397,20 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
     await safeDelete('cost_sheets');
     await safeDelete('products');
     await safeDelete('report_settings');
-    // Delete journal_lines explicitly first (no user_id column, so use entry_id via RLS)
-    // Then journal_entries
-    const { error: linesDelError } = await supabase
-      .from('journal_lines')
-      .delete()
-      .gte('id', 0); // RLS will scope to user's entries
-    if (linesDelError) throw new Error(`Error limpiando journal_lines: ${linesDelError.message}`);
+    // Delete journal_lines via entry_id IN (user's entries) — más seguro que gte('id',0)
+    // que es type-unsafe si id es uuid y depende enteramente de RLS.
+    const { data: userEntryIds } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('user_id', user.id);
+    if (userEntryIds && userEntryIds.length > 0) {
+      const entryIds = userEntryIds.map((e: any) => e.id);
+      const { error: linesDelError } = await supabase
+        .from('journal_lines')
+        .delete()
+        .in('entry_id', entryIds);
+      if (linesDelError) throw new Error(`Error limpiando journal_lines: ${linesDelError.message}`);
+    }
     await safeDelete('journal_entries');
     await safeDelete('accounts');
 

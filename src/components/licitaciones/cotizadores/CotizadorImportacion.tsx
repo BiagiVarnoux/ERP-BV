@@ -108,7 +108,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
       // Eliminar los que fueron quitados (están en licitacion.productos pero no en productos)
       const idsActuales = new Set(productos.map(p => p.id));
       for (const p of licitacion.productos) {
-        if (!idsActuales.has(p.id)) await LicitacionStorage.deleteProducto(p.id);
+        if (!idsActuales.has(p.id)) await LicitacionStorage.deleteProducto(p.id, p.licitacion_id);
       }
       onUpdated({ ...licitacion, productos });
       toast.success('Cotización guardada');
@@ -253,7 +253,7 @@ function ProductoRow({ producto: p, calc, expanded, onToggle, onChange, onRemove
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="font-medium text-sm truncate">{p.nombre || <span className="italic text-muted-foreground">Sin nombre</span>}</span>
-              {p.link_producto && (
+              {p.link_producto && /^https?:\/\//i.test(p.link_producto) && (
                 <a
                   href={p.link_producto}
                   target="_blank"

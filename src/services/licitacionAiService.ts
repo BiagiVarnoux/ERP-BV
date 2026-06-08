@@ -130,7 +130,8 @@ export async function extractTextFromDocx(file: File): Promise<string> {
         return parteII.slice(0, LIMITE_CHARS);
       }
 
-      offset = dataEnd > offset + 30 ? dataEnd : offset + 1;
+      // Avanzar siempre al menos más allá de este entry (previene loop infinito con compSize=0)
+      offset = Math.max(dataEnd, offset + 30 + nameLen + extraLen + 1);
     } else {
       // Saltar hasta el próximo 'PK' en lugar de avanzar byte a byte (O(n) vs O(n²))
       let next = offset + 1;

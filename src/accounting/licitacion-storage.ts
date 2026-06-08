@@ -183,7 +183,19 @@ export const LicitacionStorage = {
 
   async upsertProductos(productos: LicitacionProducto[]): Promise<void> {
     if (productos.length === 0) return;
-    const rows = productos.map(p => ({
+    const user = await getUser();
+    // Verificar que todos los licitacion_id pertenecen al usuario antes de upsertear
+    const licitacionIds = [...new Set(productos.map(p => p.licitacion_id))];
+    const { data: owned, error: ownerErr } = await supabase
+      .from('licitaciones')
+      .select('id')
+      .in('id', licitacionIds)
+      .eq('user_id', user.id);
+    if (ownerErr) throw ownerErr;
+    const ownedIds = new Set((owned ?? []).map((r: any) => r.id));
+    const safe = productos.filter(p => ownedIds.has(p.licitacion_id));
+    if (safe.length === 0) return;
+    const rows = safe.map(p => ({
       id:               p.id,
       licitacion_id:    p.licitacion_id,
       orden:            p.orden,
@@ -215,8 +227,13 @@ export const LicitacionStorage = {
     if (error) throw error;
   },
 
-  async deleteProducto(id: string): Promise<void> {
-    const { error } = await supabase.from('licitacion_productos').delete().eq('id', id);
+  async deleteProducto(id: string, licitacionId: string): Promise<void> {
+    // Filtrar por licitacion_id además del id para prevenir borrado de productos ajenos
+    const { error } = await supabase
+      .from('licitacion_productos')
+      .delete()
+      .eq('id', id)
+      .eq('licitacion_id', licitacionId);
     if (error) throw error;
   },
 
