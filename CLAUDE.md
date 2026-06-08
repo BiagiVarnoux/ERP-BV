@@ -73,3 +73,59 @@ Client lives in `src/integrations/supabase/client.ts`. Migrations are in `supaba
 ### Locale & currency
 
 All amounts are in Bolivianos (Bs). Number formatting uses `es-BO` locale (dot as thousands separator, comma as decimal). Input parsing in `toDecimal()` handles both `1.234,56` and `1234.56` forms. Use `round2()` for all monetary arithmetic to avoid floating-point drift.
+
+---
+
+## Standing rules — apply automatically on every change
+
+These rules are always in effect. They do not need to be requested each session.
+
+### 1 · Multi-company (Holding) architecture
+
+The system is structured as a **Holding with multiple companies underneath**.
+
+- Every new table must have a `company_id uuid REFERENCES companies(id)` column (or inherit ownership via a parent table that does).
+- Every new client-side query must be scoped to the active `company_id` — never query data across companies without an explicit holding-level view.
+- RLS policies must filter by `company_id` (or by `user_id` via a join to a table that has `company_id`). A policy that only filters by `user_id` without respecting company scope is a bug.
+- When a user switches companies (`switchCompany`), all module data must reload for the new company. Do not cache cross-company data.
+- Config tables (e.g. `company_module_config`) are always keyed by `company_id`, never globally.
+
+### 2 · Backup coverage
+
+`src/services/backupService.ts` is the single source of truth for data portability.
+
+- **Every new Supabase table must be added to the backup** in the same PR/commit that introduces it — no exceptions unless explicitly told otherwise.
+- Follow the existing pattern: add a `fetch*` helper, include it in `Promise.all` inside `createFullBackup()`, add the field to `BackupData`, add the delete block in `_performRestoreInternal()` (respecting FK order), and add the insert block in `_performRestoreInternal()`.
+- If a table has no `user_id` (owned via FK to a parent table), use an inner-join query like `fetchAllJournalLines()` or `fetchAllLicitacionProductos()` and strip the join column before storing.
+- Tables that are scoped by `company_id` instead of `user_id` use `fetchAllCompanyRows()`.
+- After adding backup support, update `validateBackupFile()` to list the new field in `optionalArrays`.
+- Storage bucket files (binaries) are not included in the JSON backup — document this as a known limitation in a comment.
+
+### 3 · Security checklist — verify before every commit
+
+Run through this list mentally before finishing any change. Flag issues in code comments or fix them before committing.
+
+| # | Check |
+|---|-------|
+| S1 | **IDOR**: every UPDATE/DELETE includes `.eq('user_id', user.id)` (or `.eq('company_id', ...)` for company-scoped tables). Never rely solely on RLS as the only guard — defence in depth. |
+| S2 | **Child table IDOR**: operations on tables without `user_id` (e.g. `journal_lines`, `licitacion_productos`) must validate ownership via the parent row's `user_id` before mutating. |
+| S3 | **XSS via URLs**: any field that renders as an `<a href>` must be validated with `/^https?:\/\//i` before rendering. Never render `javascript:` or `data:` URLs. |
+| S4 | **Open redirect**: navigation targets derived from user input or URL params must be validated against an allowlist of internal routes. |
+| S5 | **Injection in AI prompts**: text sent to Groq or any LLM must be sanitized (strip control characters) and length-limited. Never concatenate raw user HTML into prompts. |
+| S6 | **RLS double-check**: any new Supabase table must have RLS enabled and at least one SELECT policy scoped to the authenticated user's company. |
+| S7 | **Secrets**: `.env` values are never hardcoded. Edge function secrets go through Supabase Dashboard → Secrets, never in function source. |
+
+### 4 · Code quality checklist — verify before every commit
+
+| # | Check |
+|---|-------|
+| Q1 | Run `tsc --noEmit` — zero type errors required before committing. |
+| Q2 | No `console.log` left in production paths (use `console.warn`/`console.error` only for genuine warnings/errors). |
+| Q3 | Monetary arithmetic uses `round2()`. Never use raw floating-point addition/subtraction for Bs amounts. |
+| Q4 | New paginated queries use `fetchAllPaginated()` — never assume PostgREST returns all rows without pagination. |
+| Q5 | React components that accept URLs from user data validate the URL before rendering links (see S3). |
+| Q6 | No dead imports or unused variables (ESLint will catch most of these; run `npm run lint` if in doubt). |
+
+### 5 · When to skip these rules
+
+Only skip a rule when the user **explicitly** says so in the current message (e.g. "skip backup for this one", "this is a read-only table, no restore needed"). Never skip silently.
