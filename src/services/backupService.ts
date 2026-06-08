@@ -229,13 +229,17 @@ export async function createFullBackup(): Promise<BackupData> {
     fetchAllUserRows('receivables', user.id),
     fetchAllUserRows('payables', user.id),
     fetchAllUserRows('debt_payments', user.id),
-    // member_permissions: join a través de company_members para filtrar por empresa
+    // member_permissions: join a través de company_members; guarda _member_user_id
+    // para poder remapear company_member_id correctamente al restaurar en otra cuenta.
     fetchAllPaginated<any>((from, to) =>
       supabase.from('member_permissions')
-        .select('*, company_members!inner(company_id)')
+        .select('*, company_members!inner(company_id, user_id)')
         .eq('company_members.company_id', companyId)
         .range(from, to)
-    ).then(rows => rows.map(({ company_members: _cm, id: _id, ...r }: any) => r)),
+    ).then(rows => rows.map(({ company_members: cm, id: _id, ...r }: any) => ({
+      ...r,
+      _member_user_id: cm?.user_id ?? null,  // stored for restore remap; prefixed _ so it's clearly metadata
+    }))),
     fetchAllCompanyRows('company_module_config', companyId)
       .then(rows => rows.map(({ id: _id, ...r }) => r)),
     // v2.4: licitaciones
@@ -305,318 +309,314 @@ export async function downloadBackup(data: BackupData): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+// ─── Restore internals ────────────────────────────────────────────────────────
+
+/** Helper: delete all rows for a user in a table. Throws on DB error. */
+async function safeDelete(table: string, userId: string): Promise<void> {
+  const { error } = await (supabase.from(table as any) as any).delete().eq('user_id', userId);
+  if (error) throw new Error(`Error limpiando ${table}: ${error.message}`);
+}
+
+/** Helper: chunked insert to avoid payload limits. Throws on DB error. */
+async function chunkedInsert(table: string, rows: any[], chunkSize = 500): Promise<void> {
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
+    const { error } = await (supabase.from(table as any) as any).insert(chunk);
+    if (error) throw new Error(`Error insertando en ${table} (lote ${Math.floor(i / chunkSize) + 1}): ${error.message}`);
+  }
+}
+
+/**
+ * Core restore logic — extracted so it can be called both for the main restore
+ * and for the automatic rollback-to-snapshot if the main restore fails.
+ *
+ * NOTE: This is NOT a true DB transaction. Supabase/PostgREST does not expose
+ * multi-statement transactions over HTTP. To mitigate partial-failure risk,
+ * `restoreFromBackup` takes a pre-restore snapshot and re-calls this function
+ * if the restore fails, which recovers the user's data in most failure scenarios.
+ */
+async function _performRestoreInternal(
+  backup: BackupData,
+  userId: string,
+  companyId: string
+): Promise<void> {
+
+  // ── 1. DELETE phase (reverse dependency order) ────────────────────────────
+
+  // company_module_config: scoped by company_id
+  const { error: cmcDelError } = await supabase
+    .from('company_module_config')
+    .delete()
+    .eq('company_id', companyId);
+  if (cmcDelError) throw new Error(`Error limpiando company_module_config: ${cmcDelError.message}`);
+
+  // member_permissions: delete via company_members join
+  const { data: memberIds } = await supabase
+    .from('company_members')
+    .select('id')
+    .eq('company_id', companyId);
+  if (memberIds && memberIds.length > 0) {
+    const ids = memberIds.map((m: any) => m.id);
+    const { error: mpDelError } = await supabase
+      .from('member_permissions')
+      .delete()
+      .in('company_member_id', ids);
+    if (mpDelError) throw new Error(`Error limpiando member_permissions: ${mpDelError.message}`);
+  }
+
+  // fiscal_years: scoped by company_id
+  const { error: fyDelError } = await supabase
+    .from('fiscal_years')
+    .delete()
+    .eq('company_id', companyId);
+  if (fyDelError) throw new Error(`Error limpiando fiscal_years: ${fyDelError.message}`);
+
+  // licitaciones → cascades to licitacion_productos + licitacion_documentos
+  await safeDelete('licitaciones', userId);
+
+  await safeDelete('shipments', userId);
+  await safeDelete('debt_payments', userId);
+  await safeDelete('receivables', userId);
+  await safeDelete('payables', userId);
+  await safeDelete('customers', userId);
+
+  // sale_items: no user_id — delete by matching sale IDs
+  const { data: userSaleIds } = await supabase
+    .from('sales')
+    .select('id')
+    .eq('user_id', userId);
+  if (userSaleIds && userSaleIds.length > 0) {
+    const saleIds = userSaleIds.map((s: any) => s.id);
+    const { error: saleItemsDelError } = await supabase
+      .from('sale_items')
+      .delete()
+      .in('sale_id', saleIds);
+    if (saleItemsDelError) throw new Error(`Error limpiando sale_items: ${saleItemsDelError.message}`);
+  }
+  await safeDelete('sales', userId);
+
+  await safeDelete('auxiliary_movement_details', userId);
+  await safeDelete('auxiliary_ledger', userId);
+  await safeDelete('auxiliary_ledger_definitions', userId);
+  await safeDelete('kardex_movements', userId);
+  await safeDelete('kardex_entries', userId);
+  await safeDelete('kardex_definitions', userId);
+  await safeDelete('quarterly_closures', userId);
+  await safeDelete('inventory_movements', userId);
+  await safeDelete('inventory_lots', userId);
+  await safeDelete('import_lots', userId);
+  await safeDelete('cost_sheet_cells', userId);
+  await safeDelete('cost_sheets', userId);
+  await safeDelete('products', userId);
+  await safeDelete('report_settings', userId);
+
+  // journal_lines: delete via entry_id IN (user's entries)
+  const { data: userEntryIds } = await supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('user_id', userId);
+  if (userEntryIds && userEntryIds.length > 0) {
+    const entryIds = userEntryIds.map((e: any) => e.id);
+    const { error: linesDelError } = await supabase
+      .from('journal_lines')
+      .delete()
+      .in('entry_id', entryIds);
+    if (linesDelError) throw new Error(`Error limpiando journal_lines: ${linesDelError.message}`);
+  }
+  await safeDelete('journal_entries', userId);
+  await safeDelete('accounts', userId);
+
+  // ── 2. INSERT phase (forward dependency order) ────────────────────────────
+
+  if (backup.accounts.length > 0) {
+    await chunkedInsert('accounts', backup.accounts.map(a => ({ ...a, user_id: userId })));
+  }
+
+  if (backup.journal_entries.length > 0) {
+    await chunkedInsert('journal_entries', backup.journal_entries.map(e => ({ ...e, user_id: userId })));
+  }
+
+  if (backup.journal_lines.length > 0) {
+    // Strip auto-generated id to let DB regenerate (avoids sequence conflicts)
+    await chunkedInsert('journal_lines', backup.journal_lines.map(({ id: _id, ...rest }: any) => rest));
+  }
+
+  if (backup.auxiliary_ledger_definitions?.length) {
+    await chunkedInsert('auxiliary_ledger_definitions', backup.auxiliary_ledger_definitions.map(d => ({ ...d, user_id: userId })));
+  }
+  if (backup.auxiliary_ledger?.length) {
+    await chunkedInsert('auxiliary_ledger', backup.auxiliary_ledger.map(l => ({ ...l, user_id: userId })));
+  }
+  if (backup.auxiliary_movement_details?.length) {
+    await chunkedInsert('auxiliary_movement_details', backup.auxiliary_movement_details.map(m => ({ ...m, user_id: userId })));
+  }
+  if (backup.kardex_definitions?.length) {
+    await chunkedInsert('kardex_definitions', backup.kardex_definitions.map(d => ({ ...d, user_id: userId })));
+  }
+  if (backup.kardex_entries?.length) {
+    await chunkedInsert('kardex_entries', backup.kardex_entries.map(e => ({ ...e, user_id: userId })));
+  }
+  if (backup.kardex_movements?.length) {
+    await chunkedInsert('kardex_movements', backup.kardex_movements.map(m => ({ ...m, user_id: userId })));
+  }
+  if (backup.quarterly_closures?.length) {
+    await chunkedInsert('quarterly_closures', backup.quarterly_closures.map(c => ({ ...c, user_id: userId })));
+  }
+
+  // v2.0 tables
+  if (backup.products?.length) {
+    await chunkedInsert('products', backup.products.map(p => ({ ...p, user_id: userId })));
+  }
+  if (backup.import_lots?.length) {
+    await chunkedInsert('import_lots', backup.import_lots.map(l => ({ ...l, user_id: userId })));
+  }
+  if (backup.inventory_lots?.length) {
+    await chunkedInsert('inventory_lots', backup.inventory_lots.map(l => ({ ...l, user_id: userId })));
+  }
+  if (backup.inventory_movements?.length) {
+    await chunkedInsert('inventory_movements', backup.inventory_movements.map(m => ({ ...m, user_id: userId })));
+  }
+  if (backup.cost_sheets?.length) {
+    await chunkedInsert('cost_sheets', backup.cost_sheets.map(s => ({ ...s, user_id: userId })));
+  }
+  if (backup.cost_sheet_cells?.length) {
+    await chunkedInsert('cost_sheet_cells', backup.cost_sheet_cells.map(c => ({ ...c, user_id: userId })));
+  }
+  if (backup.report_settings?.length) {
+    await chunkedInsert('report_settings', backup.report_settings.map(s => ({ ...s, user_id: userId })));
+  }
+
+  if (backup.shipments?.length) {
+    const shipmentRows = backup.shipments.map((s: any) => {
+      if (s.user_id && s.data) return { ...s, user_id: userId };
+      // Old localStorage format — convert
+      const { id, numero, status, ...rest } = s;
+      return { id, user_id: userId, numero, status, data: rest };
+    });
+    await chunkedInsert('shipments', shipmentRows);
+  }
+
+  if (backup.sales?.length) {
+    await chunkedInsert('sales', backup.sales.map((s: any) => ({ ...s, user_id: userId })));
+  }
+  if (backup.sale_items?.length) {
+    await chunkedInsert('sale_items', backup.sale_items);
+  }
+
+  // v2.1: fiscal_years
+  if (backup.fiscal_years?.length) {
+    await chunkedInsert('fiscal_years', backup.fiscal_years.map((fy: any) => ({
+      ...fy,
+      company_id: companyId,
+    })));
+  }
+
+  // v2.2: customers, receivables, payables, debt_payments
+  if (backup.customers?.length) {
+    await chunkedInsert('customers', backup.customers.map((c: any) => ({ ...c, user_id: userId })));
+  }
+  if (backup.receivables?.length) {
+    await chunkedInsert('receivables', backup.receivables.map((r: any) => ({ ...r, user_id: userId })));
+  }
+  if (backup.payables?.length) {
+    await chunkedInsert('payables', backup.payables.map((p: any) => ({ ...p, user_id: userId })));
+  }
+  if (backup.debt_payments?.length) {
+    await chunkedInsert('debt_payments', backup.debt_payments.map((d: any) => ({ ...d, user_id: userId })));
+  }
+
+  // v2.3: company_module_config
+  if (backup.company_module_config?.length) {
+    await chunkedInsert('company_module_config', backup.company_module_config.map((r: any) => ({
+      ...r,
+      company_id: companyId,
+    })));
+  }
+
+  // v2.3: member_permissions — remap company_member_id by _member_user_id
+  if (backup.member_permissions?.length) {
+    const { data: ownerCheck } = await supabase
+      .from('company_members')
+      .select('id, role')
+      .eq('company_id', companyId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (ownerCheck?.role === 'owner') {
+      // Build a user_id → company_member_id map for the current company
+      const { data: currentMembers } = await supabase
+        .from('company_members')
+        .select('id, user_id')
+        .eq('company_id', companyId);
+      const memberMap = new Map<string, string>(
+        (currentMembers ?? []).map((m: any) => [m.user_id, m.id])
+      );
+
+      const rows = backup.member_permissions
+        .map((r: any) => {
+          const { id: _id, _member_user_id, ...rest } = r;
+          if (_member_user_id && memberMap.has(_member_user_id)) {
+            // Found the matching member in the current company
+            return { ...rest, company_member_id: memberMap.get(_member_user_id) };
+          }
+          // _member_user_id not found in current company (e.g., restored to a different account)
+          // Skip this permission rather than assigning it to the wrong member.
+          return null;
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null);
+
+      if (rows.length > 0) await chunkedInsert('member_permissions', rows);
+    }
+    // Non-owners: skip silently
+  }
+
+  // v2.4: licitaciones
+  if (backup.licitaciones?.length) {
+    await chunkedInsert('licitaciones', backup.licitaciones.map((l: any) => ({
+      ...l,
+      user_id: userId,
+      company_id: companyId,
+    })));
+  }
+
+  if (backup.licitacion_productos?.length) {
+    const validIds = new Set((backup.licitaciones ?? []).map((l: any) => l.id));
+    const safe = backup.licitacion_productos.filter((r: any) => validIds.has(r.licitacion_id));
+    if (safe.length > 0) await chunkedInsert('licitacion_productos', safe);
+  }
+
+  if (backup.licitacion_documentos?.length) {
+    const validIds = new Set((backup.licitaciones ?? []).map((l: any) => l.id));
+    const safe = backup.licitacion_documentos.filter((r: any) => validIds.has(r.licitacion_id));
+    if (safe.length > 0) await chunkedInsert('licitacion_documentos', safe);
+  }
+}
+
+// ─── Public API ────────────────────────────────────────────────────────────────
+
 export async function restoreFromBackup(backup: BackupData): Promise<{ success: boolean; message: string }> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Usuario no autenticado');
 
-  // Helper: delete with error check
-  const safeDelete = async (table: string) => {
-    const { error } = await (supabase.from(table as any) as any).delete().eq('user_id', user.id);
-    if (error) throw new Error(`Error limpiando ${table}: ${error.message}`);
-  };
+  const companyId = await getUserCompanyId(user.id);
 
-  // Helper: chunked insert to avoid payload limits & partial failures
-  const chunkedInsert = async (table: string, rows: any[], chunkSize = 500) => {
-    for (let i = 0; i < rows.length; i += chunkSize) {
-      const chunk = rows.slice(i, i + chunkSize);
-      const { error } = await (supabase.from(table as any) as any).insert(chunk);
-      if (error) throw new Error(`Error insertando en ${table} (lote ${i / chunkSize + 1}): ${error.message}`);
-    }
-  };
+  // ── Pre-restore snapshot ────────────────────────────────────────────────────
+  // Because PostgREST does not expose multi-statement transactions, we mitigate
+  // partial-failure risk by taking a snapshot of the current data before any
+  // deletions. If the restore fails midway we automatically attempt to restore
+  // from the snapshot, effectively rolling back to the pre-restore state.
+  let preRestoreSnapshot: BackupData | null = null;
+  try {
+    preRestoreSnapshot = await createFullBackup();
+  } catch (snapshotErr) {
+    // Non-fatal: proceed without rollback capability. The user should be warned.
+    console.warn('[backup] Could not create pre-restore snapshot — rollback disabled:', snapshotErr);
+  }
 
   try {
-    // Resolve company scope for tables that use company_id instead of user_id
-    const userCompanyIdForRestore = await getUserCompanyId(user.id);
+    await _performRestoreInternal(backup, user.id, companyId);
 
-    // Delete existing data in reverse order of dependencies
-    // journal_lines are deleted via CASCADE when journal_entries are deleted
-    // auxiliary_movement_details and inventory_movements are deleted via triggers on journal_entries delete
-
-    // company_module_config: scoped by company_id
-    const { error: cmcDelError } = await supabase
-      .from('company_module_config')
-      .delete()
-      .eq('company_id', userCompanyIdForRestore);
-    if (cmcDelError) throw new Error(`Error limpiando company_module_config: ${cmcDelError.message}`);
-
-    // member_permissions: borrar via company_members de la empresa
-    const { data: memberIds } = await supabase
-      .from('company_members')
-      .select('id')
-      .eq('company_id', userCompanyIdForRestore);
-    if (memberIds && memberIds.length > 0) {
-      const ids = memberIds.map((m: any) => m.id);
-      const { error: mpDelError } = await supabase
-        .from('member_permissions')
-        .delete()
-        .in('company_member_id', ids);
-      if (mpDelError) throw new Error(`Error limpiando member_permissions: ${mpDelError.message}`);
-    }
-
-    // fiscal_years: scoped by company_id, not user_id
-    const { error: fyDelError } = await supabase
-      .from('fiscal_years')
-      .delete()
-      .eq('company_id', userCompanyIdForRestore);
-    if (fyDelError) throw new Error(`Error limpiando fiscal_years: ${fyDelError.message}`);
-
-    // v2.4: licitaciones (licitacion_productos y licitacion_documentos eliminados en cascade)
-    await safeDelete('licitaciones');
-
-    await safeDelete('shipments');
-    // debt_payments and receivables/payables must go before sales (FK references)
-    await safeDelete('debt_payments');
-    await safeDelete('receivables');
-    await safeDelete('payables');
-    await safeDelete('customers');
-    // sale_items must go before sales (no user_id column — delete by matching sale IDs)
-    const { data: userSaleIds } = await supabase
-      .from('sales')
-      .select('id')
-      .eq('user_id', user.id);
-    if (userSaleIds && userSaleIds.length > 0) {
-      const saleIds = userSaleIds.map((s: any) => s.id);
-      const { error: saleItemsDelError } = await supabase
-        .from('sale_items')
-        .delete()
-        .in('sale_id', saleIds);
-      if (saleItemsDelError) throw new Error(`Error limpiando sale_items: ${saleItemsDelError.message}`);
-    }
-    await safeDelete('sales');
-    await safeDelete('auxiliary_movement_details');
-    await safeDelete('auxiliary_ledger');
-    await safeDelete('auxiliary_ledger_definitions');
-    await safeDelete('kardex_movements');
-    await safeDelete('kardex_entries');
-    await safeDelete('kardex_definitions');
-    await safeDelete('quarterly_closures');
-    await safeDelete('inventory_movements');
-    await safeDelete('inventory_lots');
-    await safeDelete('import_lots');
-    await safeDelete('cost_sheet_cells');
-    await safeDelete('cost_sheets');
-    await safeDelete('products');
-    await safeDelete('report_settings');
-    // Delete journal_lines via entry_id IN (user's entries) — más seguro que gte('id',0)
-    // que es type-unsafe si id es uuid y depende enteramente de RLS.
-    const { data: userEntryIds } = await supabase
-      .from('journal_entries')
-      .select('id')
-      .eq('user_id', user.id);
-    if (userEntryIds && userEntryIds.length > 0) {
-      const entryIds = userEntryIds.map((e: any) => e.id);
-      const { error: linesDelError } = await supabase
-        .from('journal_lines')
-        .delete()
-        .in('entry_id', entryIds);
-      if (linesDelError) throw new Error(`Error limpiando journal_lines: ${linesDelError.message}`);
-    }
-    await safeDelete('journal_entries');
-    await safeDelete('accounts');
-
-    // Insert new data with correct user_id
-    if (backup.accounts.length > 0) {
-      const accounts = backup.accounts.map(a => ({ ...a, user_id: user.id }));
-      await chunkedInsert('accounts', accounts);
-    }
-
-    if (backup.journal_entries.length > 0) {
-      const entries = backup.journal_entries.map(e => ({ ...e, user_id: user.id }));
-      await chunkedInsert('journal_entries', entries);
-    }
-
-    if (backup.journal_lines.length > 0) {
-      // Strip auto-generated id to let DB regenerate (avoids sequence conflicts)
-      const lines = backup.journal_lines.map(({ id, ...rest }: any) => rest);
-      await chunkedInsert('journal_lines', lines);
-    }
-
-    if (backup.auxiliary_ledger_definitions?.length) {
-      const defs = backup.auxiliary_ledger_definitions.map(d => ({ ...d, user_id: user.id }));
-      await chunkedInsert('auxiliary_ledger_definitions', defs);
-    }
-
-    if (backup.auxiliary_ledger?.length) {
-      const ledger = backup.auxiliary_ledger.map(l => ({ ...l, user_id: user.id }));
-      await chunkedInsert('auxiliary_ledger', ledger);
-    }
-
-    if (backup.auxiliary_movement_details?.length) {
-      const movements = backup.auxiliary_movement_details.map(m => ({ ...m, user_id: user.id }));
-      await chunkedInsert('auxiliary_movement_details', movements);
-    }
-
-    if (backup.kardex_definitions?.length) {
-      const defs = backup.kardex_definitions.map(d => ({ ...d, user_id: user.id }));
-      await chunkedInsert('kardex_definitions', defs);
-    }
-
-    if (backup.kardex_entries?.length) {
-      const entries = backup.kardex_entries.map(e => ({ ...e, user_id: user.id }));
-      await chunkedInsert('kardex_entries', entries);
-    }
-
-    if (backup.kardex_movements?.length) {
-      const movements = backup.kardex_movements.map(m => ({ ...m, user_id: user.id }));
-      await chunkedInsert('kardex_movements', movements);
-    }
-
-    if (backup.quarterly_closures?.length) {
-      const closures = backup.quarterly_closures.map(c => ({ ...c, user_id: user.id }));
-      await chunkedInsert('quarterly_closures', closures);
-    }
-
-    // v2.0 tables
-    if (backup.products?.length) {
-      const products = backup.products.map(p => ({ ...p, user_id: user.id }));
-      await chunkedInsert('products', products);
-    }
-
-    if (backup.import_lots?.length) {
-      const lots = backup.import_lots.map(l => ({ ...l, user_id: user.id }));
-      await chunkedInsert('import_lots', lots);
-    }
-
-    if (backup.inventory_lots?.length) {
-      const lots = backup.inventory_lots.map(l => ({ ...l, user_id: user.id }));
-      await chunkedInsert('inventory_lots', lots);
-    }
-
-    if (backup.inventory_movements?.length) {
-      const movements = backup.inventory_movements.map(m => ({ ...m, user_id: user.id }));
-      await chunkedInsert('inventory_movements', movements);
-    }
-
-    if (backup.cost_sheets?.length) {
-      const sheets = backup.cost_sheets.map(s => ({ ...s, user_id: user.id }));
-      await chunkedInsert('cost_sheets', sheets);
-    }
-
-    if (backup.cost_sheet_cells?.length) {
-      const cells = backup.cost_sheet_cells.map(c => ({ ...c, user_id: user.id }));
-      await chunkedInsert('cost_sheet_cells', cells);
-    }
-
-    if (backup.report_settings?.length) {
-      const settings = backup.report_settings.map(s => ({ ...s, user_id: user.id }));
-      await chunkedInsert('report_settings', settings);
-    }
-
-    // Shipments (now in Supabase)
-    if (backup.shipments?.length) {
-      // Handle both old format (full Shipment objects) and new format (DB rows)
-      const shipmentRows = backup.shipments.map((s: any) => {
-        if (s.user_id && s.data) {
-          // Already in DB row format
-          return { ...s, user_id: user.id };
-        }
-        // Old localStorage format — convert
-        const { id, numero, status, ...rest } = s;
-        return { id, user_id: user.id, numero, status, data: rest };
-      });
-      await chunkedInsert('shipments', shipmentRows);
-    }
-
-    // Sales (must come AFTER journal_entries since they reference journal_entry_id)
-    if (backup.sales?.length) {
-      const sales = backup.sales.map((s: any) => ({ ...s, user_id: user.id }));
-      await chunkedInsert('sales', sales);
-    }
-
-    if (backup.sale_items?.length) {
-      // sale_items has no user_id; just reinsert as-is
-      await chunkedInsert('sale_items', backup.sale_items);
-    }
-
-    // v2.1: fiscal_years (scoped by company_id, not user_id)
-    if (backup.fiscal_years?.length) {
-      const fiscalYears = backup.fiscal_years.map((fy: any) => ({
-        ...fy,
-        company_id: userCompanyIdForRestore,
-        // closed_by is preserved as-is (may be null or a valid user UUID)
-      }));
-      await chunkedInsert('fiscal_years', fiscalYears);
-    }
-
-    // v2.2: customers, receivables, payables, debt_payments
-    // customers must come before receivables (FK: receivables.customer_id → customers.id)
-    if (backup.customers?.length) {
-      const rows = backup.customers.map((c: any) => ({ ...c, user_id: user.id }));
-      await chunkedInsert('customers', rows);
-    }
-
-    // receivables and payables are independent of each other
-    if (backup.receivables?.length) {
-      const rows = backup.receivables.map((r: any) => ({ ...r, user_id: user.id }));
-      await chunkedInsert('receivables', rows);
-    }
-
-    if (backup.payables?.length) {
-      const rows = backup.payables.map((p: any) => ({ ...p, user_id: user.id }));
-      await chunkedInsert('payables', rows);
-    }
-
-    // debt_payments must come after receivables and payables (FKs to both)
-    if (backup.debt_payments?.length) {
-      const rows = backup.debt_payments.map((d: any) => ({ ...d, user_id: user.id }));
-      await chunkedInsert('debt_payments', rows);
-    }
-
-    // v2.3: member_permissions y company_module_config
-    if (backup.company_module_config?.length) {
-      const rows = backup.company_module_config.map((r: any) => ({
-        ...r,
-        company_id: userCompanyIdForRestore,
-      }));
-      await chunkedInsert('company_module_config', rows);
-    }
-
-    if (backup.member_permissions?.length) {
-      // Solo el owner de la empresa puede restaurar permisos de miembros
-      const { data: ownerCheck } = await supabase
-        .from('company_members')
-        .select('id, role')
-        .eq('company_id', userCompanyIdForRestore)
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (ownerCheck?.role === 'owner') {
-        // Strip id to avoid PK conflicts; company_member_id is remapped to current member
-        const rows = backup.member_permissions.map((r: any) => {
-          const { id: _id, ...rest } = r;
-          return { ...rest, company_member_id: ownerCheck.id };
-        });
-        await chunkedInsert('member_permissions', rows);
-      }
-      // Non-owners: skip silently — their permissions remain as set by the owner
-    }
-
-    // v2.4: licitaciones — primero la cabecera, luego productos y documentos (FK)
-    if (backup.licitaciones?.length) {
-      const rows = backup.licitaciones.map((l: any) => ({
-        ...l,
-        user_id:    user.id,
-        company_id: userCompanyIdForRestore,
-      }));
-      await chunkedInsert('licitaciones', rows);
-    }
-
-    if (backup.licitacion_productos?.length) {
-      // Solo insertar hijos cuyos licitacion_id existen en las licitaciones recién restauradas.
-      // Esto previene que un backup manipulado inyecte registros bajo licitaciones de otro usuario.
-      const validLicitacionIds = new Set((backup.licitaciones ?? []).map((l: any) => l.id));
-      const safeProductos = backup.licitacion_productos.filter((r: any) => validLicitacionIds.has(r.licitacion_id));
-      if (safeProductos.length > 0) await chunkedInsert('licitacion_productos', safeProductos);
-    }
-
-    if (backup.licitacion_documentos?.length) {
-      // Misma protección: solo docs cuyo licitacion_id viene del backup actual.
-      // Los binarios en Storage no se restauran desde el JSON (limitación conocida).
-      const validLicitacionIds = new Set((backup.licitaciones ?? []).map((l: any) => l.id));
-      const safeDocs = backup.licitacion_documentos.filter((r: any) => validLicitacionIds.has(r.licitacion_id));
-      if (safeDocs.length > 0) await chunkedInsert('licitacion_documentos', safeDocs);
-    }
-
-    const extras = [];
+    const extras: string[] = [];
     if (backup.products?.length) extras.push(`${backup.products.length} productos`);
     if (backup.shipments?.length) extras.push(`${backup.shipments.length} embarques`);
     if (backup.sales?.length) extras.push(`${backup.sales.length} ventas`);
@@ -629,14 +629,32 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
     if (backup.company_module_config?.length) extras.push(`${backup.company_module_config.length} configs de módulos`);
     if (backup.licitaciones?.length) extras.push(`${backup.licitaciones.length} licitaciones`);
 
-    return { 
-      success: true, 
-      message: `Restauración completada: ${backup.accounts.length} cuentas, ${backup.journal_entries.length} asientos${extras.length ? ', ' + extras.join(', ') : ''}` 
+    return {
+      success: true,
+      message: `Restauración completada: ${backup.accounts.length} cuentas, ${backup.journal_entries.length} asientos${extras.length ? ', ' + extras.join(', ') : ''}`,
     };
-  } catch (error: any) {
-    return { 
-      success: false, 
-      message: `Error en restauración: ${error.message}` 
+  } catch (restoreError: any) {
+    // ── Automatic rollback ────────────────────────────────────────────────────
+    if (preRestoreSnapshot) {
+      console.warn('[backup] Restore failed — attempting automatic rollback to pre-restore snapshot...');
+      try {
+        await _performRestoreInternal(preRestoreSnapshot, user.id, companyId);
+        return {
+          success: false,
+          message: `Error en restauración: ${restoreError.message}. Los datos originales fueron recuperados automáticamente.`,
+        };
+      } catch (rollbackError: any) {
+        console.error('[backup] Rollback also failed:', rollbackError);
+        return {
+          success: false,
+          message: `Error crítico en restauración: ${restoreError.message}. La recuperación automática también falló (${rollbackError.message}). Por favor restaure manualmente desde otro backup.`,
+        };
+      }
+    }
+
+    return {
+      success: false,
+      message: `Error en restauración: ${restoreError.message}`,
     };
   }
 }
