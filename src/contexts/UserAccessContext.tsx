@@ -90,6 +90,7 @@ interface UserAccessContextType {
   // Configuración de módulos por empresa (visibilidad de submódulos)
   moduleConfig: Record<string, boolean>;           // submodule → is_visible
   isSubmoduleVisible: (submodule: string) => boolean;
+  getModuleConfigValue: (submodule: string) => string | undefined;
   reloadModuleConfig: () => Promise<void>;
 
   // Permisos legados (retrocompatibilidad con AppShell y shared_access)
@@ -148,7 +149,8 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
   const [activeCompany, setActiveCompany] = useState<CompanyInfo | null>(null);
 
   // Config de módulos por empresa
-  const [moduleConfig, setModuleConfig] = useState<Record<string, boolean>>({});
+  const [moduleConfig, setModuleConfig]       = useState<Record<string, boolean>>({});
+  const [moduleConfigValues, setModuleConfigValues] = useState<Record<string, string>>({});
 
   // Legado
   const [sharedAccessList, setSharedAccessList] = useState<SharedAccessInfo[]>([]);
@@ -274,13 +276,17 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
       const { data, error } = await supabase.rpc('get_company_module_config', { p_company_id: cid });
       if (error) throw error;
       const cfg: Record<string, boolean> = {};
+      const vals: Record<string, string>  = {};
       for (const row of (data || [])) {
-        cfg[row.submodule] = row.is_visible;
+        cfg[row.submodule]  = row.is_visible;
+        if (row.config_value != null) vals[row.submodule] = row.config_value;
       }
       setModuleConfig(cfg);
+      setModuleConfigValues(vals);
     } catch (e) {
       console.warn('No se pudo cargar module config:', e);
       setModuleConfig({});
+      setModuleConfigValues({});
     }
   };
 
@@ -322,6 +328,11 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
     return moduleConfig[submodule] ?? true;
   }, [moduleConfig]);
 
+  // Lee el config_value de un submódulo (undefined si no existe)
+  const getModuleConfigValue = useCallback((submodule: string): string | undefined => {
+    return moduleConfigValues[submodule];
+  }, [moduleConfigValues]);
+
   // ─── Valores derivados ─────────────────────────────────────────────────────
 
   const isOwner = role === 'owner';
@@ -357,6 +368,7 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
       canView,
       moduleConfig,
       isSubmoduleVisible,
+      getModuleConfigValue,
       reloadModuleConfig,
       permissions,
       sharedAccessList,
