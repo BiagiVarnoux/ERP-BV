@@ -83,6 +83,9 @@ export default function SalesPage() {
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
 
+  // Estado de cobro del detalle (solo para ventas CxC)
+  const [receivableEstado, setReceivableEstado] = useState<string | null>(null);
+
   // Anulación
   const [voidTarget, setVoidTarget] = useState<SaleRow | null>(null);
   const [voidStep, setVoidStep] = useState<1 | 2>(1);
@@ -157,12 +160,19 @@ export default function SalesPage() {
     setDetailSale(sale);
     setLoadingItems(true);
     setSaleItems([]);
-    const { data } = await supabase
-      .from('sale_items')
-      .select('*')
-      .eq('sale_id', sale.id)
-      .order('created_at');
-    setSaleItems((data ?? []) as SaleItem[]);
+    setReceivableEstado(null);
+
+    const isCxC = sale.tipo_pago === 'cxc' || sale.tipo_pago === 'cxc_licitaciones';
+
+    const [itemsRes, receivableRes] = await Promise.all([
+      supabase.from('sale_items').select('*').eq('sale_id', sale.id).order('created_at'),
+      isCxC
+        ? supabase.from('receivables').select('estado').eq('sale_id', sale.id).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    setSaleItems((itemsRes.data ?? []) as SaleItem[]);
+    setReceivableEstado((receivableRes as any).data?.estado ?? null);
     setLoadingItems(false);
   }
 
@@ -195,9 +205,17 @@ export default function SalesPage() {
     if (!detailSale || saleItems.length === 0) return null;
     // Usar costo_total precalculado por el RPC (correcto para FIFO multi-lote)
     const costo = round2(saleItems.reduce((sum, it) => sum + (it.costo_total ?? 0), 0));
-    const margen = round2(detailSale.precio_neto_total - costo);
-    const pct = detailSale.precio_neto_total > 0 ? round2((margen / detailSale.precio_neto_total) * 100) : 0;
-    return { costo, margen, pct };
+    const margenBruto = round2(detailSale.precio_neto_total - costo);
+    const margenBrutoPct = detailSale.precio_neto_total > 0
+      ? round2((margenBruto / detailSale.precio_neto_total) * 100)
+      : 0;
+    // IT ya está calculado y guardado por el RPC al crear la venta
+    const it = detailSale.total_it;
+    const margenNeto = round2(margenBruto - it);
+    const margenNetoPct = detailSale.precio_neto_total > 0
+      ? round2((margenNeto / detailSale.precio_neto_total) * 100)
+      : 0;
+    return { costo, margenBruto, margenBrutoPct, it, margenNeto, margenNetoPct };
   }, [detailSale, saleItems]);
 
   return (
@@ -463,15 +481,53 @@ export default function SalesPage() {
               )}
 
               {detailTotals && (
-                <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-                  <div className="flex gap-4 flex-wrap">
-                    <span>Total cobrado: <strong>Bs {fmt(detailSale.total_cobrado)}</strong></span>
-                    <span>Costo: <strong>Bs {fmt(detailTotals.costo)}</strong></span>
-                    <span>Margen: <strong>Bs {fmt(detailTotals.margen)}</strong>
-                      <Badge variant="outline" className={`ml-1 text-xs ${margenBadgeClass(detailTotals.pct)}`}>
-                        {detailTotals.pct.toFixed(1)}%
+                <div className="rounded-lg border bg-muted/30 p-4 text-sm space-y-2">
+                  {/* Fila 1: Totales de la venta */}
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-1">
+                    <span className="text-muted-foreground">Total cobrado</span>
+                    <span className="text-right font-semibold">Bs {fmt(detailSale.total_cobrado)}</span>
+                    <span className="text-muted-foreground">Costo de venta</span>
+                    <span className="text-right">Bs {fmt(detailTotals.costo)}</span>
+                  </div>
+
+                  <div className="border-t pt-2 grid grid-cols-2 gap-x-8 gap-y-1">
+                    {/* Margen bruto */}
+                    <span className="text-muted-foreground">Margen bruto</span>
+                    <span className="text-right font-semibold flex items-center justify-end gap-1.5">
+                      Bs {fmt(detailTotals.margenBruto)}
+                      <Badge variant="outline" className={`text-xs ${margenBadgeClass(detailTotals.margenBrutoPct)}`}>
+                        {detailTotals.margenBrutoPct.toFixed(1)}%
                       </Badge>
                     </span>
+                    {/* IT */}
+                    <span className="text-muted-foreground">IT (3%)</span>
+                    <span className="text-right text-red-600">− Bs {fmt(detailTotals.it)}</span>
+                    {/* Margen neto */}
+                    <span className="font-medium">Margen neto</span>
+                    <span className="text-right font-bold flex items-center justify-end gap-1.5">
+                      Bs {fmt(detailTotals.margenNeto)}
+                      <Badge variant="outline" className={`text-xs ${margenBadgeClass(detailTotals.margenNetoPct)}`}>
+                        {detailTotals.margenNetoPct.toFixed(1)}%
+                      </Badge>
+                    </span>
+                  </div>
+
+                  {/* Estado de cobro */}
+                  <div className="border-t pt-2 flex items-center justify-between">
+                    <span className="text-muted-foreground">Estado de cobro</span>
+                    {(() => {
+                      const isCxC = detailSale.tipo_pago === 'cxc' || detailSale.tipo_pago === 'cxc_licitaciones';
+                      if (!isCxC) {
+                        return <Badge className="bg-green-600 hover:bg-green-700 text-white">Cobrada</Badge>;
+                      }
+                      switch (receivableEstado) {
+                        case 'paid':    return <Badge className="bg-green-600 hover:bg-green-700 text-white">Cobrada</Badge>;
+                        case 'partial': return <Badge className="bg-amber-500 hover:bg-amber-600 text-white">Cobro parcial</Badge>;
+                        case 'open':    return <Badge className="bg-amber-500 hover:bg-amber-600 text-white">Pendiente</Badge>;
+                        case 'voided':  return <Badge variant="destructive">Anulada</Badge>;
+                        default:        return <span className="text-muted-foreground text-xs">—</span>;
+                      }
+                    })()}
                   </div>
                 </div>
               )}
