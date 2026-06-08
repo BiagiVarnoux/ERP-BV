@@ -241,6 +241,26 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
           can_export: p.can_export,
         };
       }
+
+      // Garantía: los owners siempre tienen permisos completos en todos los módulos.
+      // El RPC puede devolver vacío si no hay filas en member_permissions para este
+      // usuario (e.g. cuenta antigua o creada sin pasar por el flujo de invitación).
+      // Sin este fallback, canView() devuelve false → rutas no se registran → 404.
+      if (userRole === 'owner') {
+        const ALL_MODULES: ErpModule[] = [
+          'accounts', 'journal', 'ledger', 'auxiliary_ledgers', 'reports',
+          'fiscal_years', 'inventory', 'sales', 'customers', 'receivables',
+          'payables', 'shipments', 'settings', 'holding', 'licitaciones',
+        ];
+        const fullPerm = (module: ErpModule): ModulePermission => ({
+          module, can_view: true, can_create: true, can_edit: true,
+          can_delete: true, can_approve: true, can_export: true,
+        });
+        for (const mod of ALL_MODULES) {
+          if (!map[mod]) map[mod] = fullPerm(mod);
+        }
+      }
+
       setPermissionsMap(map);
 
       // 3. Cargar shared_access legado (para viewers migrados)
