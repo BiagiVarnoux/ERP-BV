@@ -58,7 +58,6 @@ export async function updateCustomer(
     .from('customers')
     .update(input)
     .eq('id', id)
-    .eq('user_id', user.id)
     .eq('company_id', companyId)
     .select()
     .single();

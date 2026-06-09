@@ -106,7 +106,6 @@ export const LicitacionStorage = {
     const { data, error } = await supabase
       .from('licitaciones')
       .select('*')
-      .eq('user_id', user.id)
       .eq('company_id', companyId)
       .order('created_at', { ascending: false });
 
@@ -117,10 +116,8 @@ export const LicitacionStorage = {
   // ── Detalle completo (con productos y documentos) ──────────────────────────
 
   async loadOne(id: string): Promise<Licitacion> {
-    const user = await getUser();
-
     const [litRes, prodsRes, docsRes] = await Promise.all([
-      supabase.from('licitaciones').select('*').eq('id', id).eq('user_id', user.id).single(),
+      supabase.from('licitaciones').select('*').eq('id', id).single(),
       supabase.from('licitacion_productos').select('*').eq('licitacion_id', id).order('orden'),
       supabase.from('licitacion_documentos').select('*').eq('licitacion_id', id).order('uploaded_at'),
     ]);
@@ -162,20 +159,20 @@ export const LicitacionStorage = {
   // ── Actualizar cabecera ────────────────────────────────────────────────────
 
   async update(id: string, changes: Partial<Omit<Licitacion, 'id' | 'company_id' | 'user_id' | 'productos' | 'documentos'>>): Promise<void> {
-    const user = await getUser();
+    const companyId = await resolveUserCompanyId();
     const { error } = await supabase
       .from('licitaciones')
       .update({ ...changes, updated_at: new Date().toISOString() })
       .eq('id', id)
-      .eq('user_id', user.id);
+      .eq('company_id', companyId);
     if (error) throw error;
   },
 
   // ── Eliminar ───────────────────────────────────────────────────────────────
 
   async delete(id: string): Promise<void> {
-    const user = await getUser();
-    const { error } = await supabase.from('licitaciones').delete().eq('id', id).eq('user_id', user.id);
+    const companyId = await resolveUserCompanyId();
+    const { error } = await supabase.from('licitaciones').delete().eq('id', id).eq('company_id', companyId);
     if (error) throw error;
   },
 
@@ -183,14 +180,14 @@ export const LicitacionStorage = {
 
   async upsertProductos(productos: LicitacionProducto[]): Promise<void> {
     if (productos.length === 0) return;
-    const user = await getUser();
-    // Verificar que todos los licitacion_id pertenecen al usuario antes de upsertear
+    const companyId = await resolveUserCompanyId();
+    // Verificar que todos los licitacion_id pertenecen a la empresa antes de upsertear (S2 IDOR)
     const licitacionIds = [...new Set(productos.map(p => p.licitacion_id))];
     const { data: owned, error: ownerErr } = await supabase
       .from('licitaciones')
       .select('id')
       .in('id', licitacionIds)
-      .eq('user_id', user.id);
+      .eq('company_id', companyId);
     if (ownerErr) throw ownerErr;
     const ownedIds = new Set((owned ?? []).map((r: any) => r.id));
     const safe = productos.filter(p => ownedIds.has(p.licitacion_id));

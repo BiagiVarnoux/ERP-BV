@@ -39,11 +39,11 @@ async function getUserId(): Promise<string> {
 
 export const ShipmentStorage = {
   async load(): Promise<Shipment[]> {
-    const userId = await getUserId();
+    const companyId = await resolveUserCompanyId();
     const { data, error } = await supabase
       .from('shipments')
       .select('*')
-      .eq('user_id', userId)
+      .eq('company_id', companyId)
       .order('created_at', { ascending: false });
     if (error) throw error;
     return (data || []).map(rowToShipment);
@@ -51,7 +51,8 @@ export const ShipmentStorage = {
 
   async save(shipments: Shipment[]): Promise<void> {
     const userId = await getUserId();
-    await supabase.from('shipments').delete().eq('user_id', userId);
+    const companyId = await resolveUserCompanyId();
+    await supabase.from('shipments').delete().eq('company_id', companyId);
     if (shipments.length > 0) {
       const rows = await Promise.all(shipments.map(s => shipmentToRow(s, userId)));
       const { error } = await supabase.from('shipments').insert(rows);

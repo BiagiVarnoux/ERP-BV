@@ -35,7 +35,7 @@ export function useReportSettings() {
       const { data, error } = await supabase
         .from('report_settings')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('company_id', activeCompanyId)
         .maybeSingle();
 
       if (error) throw error;
@@ -88,7 +88,7 @@ export function useReportSettings() {
       const { error } = await supabase
         .from('report_settings')
         .update(updates)
-        .eq('user_id', user.id);
+        .eq('company_id', activeCompanyId);
 
       if (error) throw error;
 
@@ -108,7 +108,7 @@ export function useReportSettings() {
       });
       return false;
     }
-  }, [user, settings, toast]);
+  }, [user, settings, toast, activeCompanyId]);
 
   return {
     settings: settings || { ...defaultSettings, id: '' },

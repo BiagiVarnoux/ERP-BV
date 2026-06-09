@@ -235,7 +235,7 @@ export default function JournalPage() {
               .from('kardex_entries')
               .select('id')
               .eq('account_id', line.account_id)
-              .eq('user_id', user.id)
+              .eq('company_id', activeCompanyId)
               .maybeSingle();
             
             if (kardexError) throw kardexError;
@@ -256,7 +256,7 @@ export default function JournalPage() {
               .from('kardex_movements')
               .select('*')
               .eq('kardex_id', kardexId)
-              .eq('user_id', user.id)
+              .eq('company_id', activeCompanyId)
               .order('fecha', { ascending: true })
               .order('created_at', { ascending: true });
             

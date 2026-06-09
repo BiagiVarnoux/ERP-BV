@@ -68,7 +68,7 @@ export function KardexCPP() {
           .from('kardex_entries')
           .select('id')
           .eq('account_id', selectedKardexDef.account_id)
-          .eq('user_id', user.id)
+          .eq('company_id', activeCompanyId)
           .maybeSingle();
 
         if (kardexError) throw kardexError;

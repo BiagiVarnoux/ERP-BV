@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { supabase } from '@/integrations/supabase/client';
 import { KardexMovement } from '@/accounting/types';
 import { getCurrentKardexState } from '@/accounting/kardex-utils';
@@ -37,6 +38,7 @@ export function InlineKardexPopup({
   initialConcepto,
 }: InlineKardexPopupProps) {
   const { accounts, kardexDefinitions } = useAccounting();
+  const activeCompanyId = useActiveCompanyId();
   const [movementType, setMovementType] = useState<'entrada' | 'salida'>('entrada');
   const [concepto, setConcepto] = useState('');
   const [cantidad, setCantidad] = useState('');
@@ -88,7 +90,7 @@ export function InlineKardexPopup({
         .from('kardex_entries')
         .select('id')
         .eq('account_id', accountId)
-        .eq('user_id', user.id)
+        .eq('company_id', activeCompanyId)
         .maybeSingle();
 
       if (existingKardex) {
@@ -105,7 +107,7 @@ export function InlineKardexPopup({
         .from('kardex_movements')
         .select('*')
         .eq('kardex_id', kardexId)
-        .eq('user_id', user.id)
+        .eq('company_id', activeCompanyId)
         .order('fecha', { ascending: true })
         .order('created_at', { ascending: true });
 

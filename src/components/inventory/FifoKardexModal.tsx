@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Package, TrendingDown, Layers } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { fmt, round2 } from '@/accounting/utils';
 import { InventoryLot, calcularEstadoFifo } from './fifo-utils';
 import { FifoExitModal } from './FifoExitModal';
@@ -25,23 +26,21 @@ export function FifoKardexModal({ isOpen, onClose, product, isReadOnly, onSaved 
   const [movs, setMovs] = useState<InventoryMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [showExit, setShowExit] = useState(false);
+  const activeCompanyId = useActiveCompanyId();
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
       const [{ data: lotsData }, { data: movsData }] = await Promise.all([
-        supabase.from('inventory_lots').select('*').eq('product_id', product.id).eq('user_id', user.id).order('fecha_ingreso', { ascending: true }),
-        supabase.from('inventory_movements').select('*').eq('product_id', product.id).eq('user_id', user.id).order('fecha', { ascending: true }),
+        supabase.from('inventory_lots').select('*').eq('product_id', product.id).eq('company_id', activeCompanyId).order('fecha_ingreso', { ascending: true }),
+        supabase.from('inventory_movements').select('*').eq('product_id', product.id).eq('company_id', activeCompanyId).order('fecha', { ascending: true }),
       ]);
       setLots((lotsData ?? []) as InventoryLot[]);
       setMovs((movsData ?? []) as InventoryMovement[]);
     } finally {
       setLoading(false);
     }
-  }, [product.id]);
+  }, [product.id, activeCompanyId]);
 
   useEffect(() => {
     if (isOpen) loadData();

@@ -118,7 +118,7 @@ export function KardexModal({
           .from('kardex_entries')
           .select('id')
           .eq('account_id', line.accountId)
-          .eq('user_id', user.id)
+          .eq('company_id', activeCompanyId)
           .maybeSingle();
 
         if (kardexError) throw kardexError;

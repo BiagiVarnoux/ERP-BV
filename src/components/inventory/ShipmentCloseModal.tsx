@@ -12,6 +12,7 @@ import { CheckCircle, ArrowLeft, ArrowRight, Plus, LinkIcon } from 'lucide-react
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAccounting } from '@/accounting/AccountingProvider';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { fmt, round2 } from '@/accounting/utils';
 import type { Shipment, ShipmentProduct } from '@/accounting/shipment-types';
 import type { CostoDetalle } from '@/accounting/shipment-utils';
@@ -46,6 +47,7 @@ interface SupaProduct {
 
 export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCancel }: Props) {
   const { accounts } = useAccounting();
+  const activeCompanyId = useActiveCompanyId();
   const [tab, setTab] = useState<'link' | 'preview'>('link');
   const [links, setLinks] = useState<ProductLink[]>([]);
   const [supaProducts, setSupaProducts] = useState<SupaProduct[]>([]);
@@ -65,12 +67,10 @@ export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCanc
   }, [isOpen]);
 
   async function loadProducts() {
-    const { data: user } = await supabase.auth.getUser();
-    if (!user.user) return;
     const { data } = await supabase
       .from('products')
       .select('id, nombre, codigo, cuenta_inventario_id')
-      .eq('user_id', user.user.id)
+      .eq('company_id', activeCompanyId)
       .eq('status', 'activo');
 
     const prods = (data ?? []) as SupaProduct[];

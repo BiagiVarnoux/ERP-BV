@@ -153,7 +153,6 @@ export async function voidPayable(id: string): Promise<void> {
     .from('payables' as any)
     .update({ estado: 'voided', updated_at: new Date().toISOString() } as any)
     .eq('id', id)
-    .eq('user_id', user.id)
     .eq('company_id', companyId) as any);
   if (error) throw new Error(error.message);
 

@@ -73,7 +73,7 @@ export default function InventoryPage() {
 
       const [prodsRes, movsRes] = await Promise.all([
         supabase.from('products').select('*').eq('company_id', activeCompanyId).eq('status', 'activo'),
-        supabase.from('inventory_movements').select('*').eq('user_id', user.id),
+        supabase.from('inventory_movements').select('*').eq('company_id', activeCompanyId),
       ]);
 
       setProducts((prodsRes.data || []) as ProductData[]);

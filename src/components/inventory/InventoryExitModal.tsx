@@ -48,19 +48,17 @@ export function InventoryExitModal({ isOpen, onClose, journalEntryId, journalDat
   }, [isOpen]);
 
   async function loadProducts() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
     const { data: prods } = await supabase
       .from('products')
       .select('id, nombre, codigo')
-      .eq('user_id', user.id)
+      .eq('company_id', activeCompanyId)
       .eq('status', 'activo');
     setProducts(prods || []);
 
     const { data: movs } = await supabase
       .from('inventory_movements')
       .select('*')
-      .eq('user_id', user.id);
+      .eq('company_id', activeCompanyId);
     setAllMovements((movs || []) as InventoryMovement[]);
   }
 
