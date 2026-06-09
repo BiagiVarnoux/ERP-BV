@@ -48,7 +48,10 @@ import { useJournalForm, LineDraft } from '@/hooks/useJournalForm';
 
 export default function JournalPage() {
   const { accounts, entries, setEntries, adapter, auxiliaryDefinitions, kardexDefinitions, fiscalYears } = useAccounting();
-  const { isReadOnly } = useUserAccess();
+  const { can } = useUserAccess();
+  const canCreate  = can('journal', 'create');
+  const canEdit    = can('journal', 'edit');
+  const isReadOnly = !canCreate && !canEdit;
   const activeCompanyId = useActiveCompanyId();
   
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');

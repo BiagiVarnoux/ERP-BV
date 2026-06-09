@@ -81,7 +81,11 @@ function newShipment(existingShipments: Shipment[] = []): Shipment {
 
 export default function ShipmentsPage() {
   const { entries, setEntries, adapter } = useAccounting();
-  const { isReadOnly } = useUserAccess();
+  const { can } = useUserAccess();
+  const canCreate  = can('shipments', 'create');
+  const canEdit    = can('shipments', 'edit');
+  const canDelete  = can('shipments', 'delete');
+  const isReadOnly = !canCreate && !canEdit && !canDelete;
   const activeCompanyId = useActiveCompanyId();
 
   const [shipments, setShipments] = useState<Shipment[]>([]);
@@ -557,7 +561,7 @@ export default function ShipmentsPage() {
             Gestión de importaciones por etapas
           </p>
         </div>
-        {!isReadOnly && (
+        {canCreate && (
           <Button onClick={() => { setDraft(newShipment(shipments)); setShowNewDialog(true); }}>
             <Plus className="w-4 h-4 mr-2" />
             Nuevo Embarque
@@ -1175,7 +1179,7 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
 
 function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean; onSave: (s: Shipment) => void }) {
   const allCategories = getAllCategories();
-  const { targetUserId } = useUserAccess();
+  const activeCompanyId = useActiveCompanyId();
   const [editingProduct, setEditingProduct] = useState<ShipmentProduct | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
@@ -1318,7 +1322,7 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
           product={editingProduct}
           tcParalelo={s.tc_paralelo}
           shipmentId={s.id}
-          userId={targetUserId ?? ''}
+          companyId={activeCompanyId}
           onSave={saveProduct}
           onCancel={() => setEditingProduct(null)}
         />
@@ -1329,11 +1333,11 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
 
 // ─── Dialog de edición de producto ────────────────────────────────────────────
 
-function ProductEditDialog({ product, tcParalelo, shipmentId, userId, onSave, onCancel }: {
+function ProductEditDialog({ product, tcParalelo, shipmentId, companyId, onSave, onCancel }: {
   product: ShipmentProduct;
   tcParalelo: number;
   shipmentId: string;
-  userId: string;
+  companyId: string;
   onSave: (p: ShipmentProduct) => void;
   onCancel: () => void;
 }) {
@@ -1563,7 +1567,7 @@ function ProductEditDialog({ product, tcParalelo, shipmentId, userId, onSave, on
             <div>
               <Label className="text-xs mb-1.5 block">Documentos adjuntos (facturas, invoices, etc.)</Label>
               <FileAttachments
-                storagePath={`${userId}/${shipmentId}/productos/${p.id}`}
+                storagePath={`${companyId}/${shipmentId}/productos/${p.id}`}
                 files={p.archivos ?? []}
                 onChange={archivos => update({ archivos })}
                 label="Adjuntar documento"
@@ -1606,7 +1610,7 @@ function ProductEditDialog({ product, tcParalelo, shipmentId, userId, onSave, on
 
 function FleteTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean; onSave: (s: Shipment) => void }) {
   const canEdit = !isReadOnly && !['EN_ADUANA', 'EN_ALMACEN', 'CERRADO'].includes(s.status);
-  const { targetUserId } = useUserAccess();
+  const activeCompanyId = useActiveCompanyId();
 
   return (
     <div className="space-y-4">
@@ -1652,7 +1656,7 @@ function FleteTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean;
       <div>
         <Label className="text-xs mb-1.5 block">Documentos del flete (AWB, invoice courier, etc.)</Label>
         <FileAttachments
-          storagePath={`${targetUserId}/${s.id}/flete`}
+          storagePath={`${activeCompanyId}/${s.id}/flete`}
           files={s.flete_archivos ?? []}
           onChange={flete_archivos => onSave({ ...s, flete_archivos })}
           disabled={isReadOnly}
@@ -1668,7 +1672,7 @@ function FleteTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean;
 function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean; onSave: (s: Shipment) => void }) {
   const canEditTributos = !isReadOnly && s.status === 'EN_ADUANA';
   const canEditGastos   = !isReadOnly && ['EN_ADUANA', 'EN_ALMACEN'].includes(s.status);
-  const { targetUserId } = useUserAccess();
+  const activeCompanyId = useActiveCompanyId();
 
   function updateProduct(id: string, patch: Partial<ShipmentProduct>) {
     onSave({ ...s, products: s.products.map(p => p.id === id ? { ...p, ...patch } : p) });
@@ -1699,7 +1703,7 @@ function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean
           </h3>
           <div className="flex-1 max-w-sm">
             <FileAttachments
-              storagePath={`${targetUserId}/${s.id}/aduana/dim`}
+              storagePath={`${activeCompanyId}/${s.id}/aduana/dim`}
               files={s.dim_archivos ?? []}
               onChange={dim_archivos => onSave({ ...s, dim_archivos })}
               disabled={isReadOnly}
@@ -1862,7 +1866,7 @@ function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean
                   )}
                 </div>
                 <FileAttachments
-                  storagePath={`${targetUserId}/${s.id}/aduana/gastos/${g.id}`}
+                  storagePath={`${activeCompanyId}/${s.id}/aduana/gastos/${g.id}`}
                   files={g.archivos ?? []}
                   onChange={archivos => updateGasto(g.id, { archivos })}
                   disabled={isReadOnly}

@@ -28,7 +28,8 @@ import {
 
 export function KardexCPP() {
   const { accounts, kardexDefinitions } = useAccounting();
-  const { isReadOnly } = useUserAccess();
+  const { can } = useUserAccess();
+  const isReadOnly = !can('auxiliary_ledgers', 'create') && !can('auxiliary_ledgers', 'edit') && !can('auxiliary_ledgers', 'delete');
   const activeCompanyId = useActiveCompanyId();
   const [selectedKardexDefId, setSelectedKardexDefId] = useState<string>('');
   const [kardexId, setKardexId] = useState<string>('');

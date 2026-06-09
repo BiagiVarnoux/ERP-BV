@@ -73,7 +73,9 @@ function estadoFilterLabel(f: EstadoFilter): string {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ReceivablesPage() {
-  const { isReadOnly } = useUserAccess();
+  const { can } = useUserAccess();
+  const canCreate = can('receivables', 'create');
+  const canEdit   = can('receivables', 'edit');
   const activeCompanyId = useActiveCompanyId();
   const [rows, setRows]       = useState<ReceivableRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -250,7 +252,7 @@ export default function ReceivablesPage() {
         <h1 className="text-2xl font-semibold flex items-center gap-2">
           <ReceiptText className="w-6 h-6" /> Cuentas por Cobrar
         </h1>
-        {!isReadOnly && (
+        {canCreate && (
           <Button onClick={openCreateModal}>
             <Plus className="w-4 h-4 mr-2" /> Nueva CxC
           </Button>
@@ -336,7 +338,7 @@ export default function ReceivablesPage() {
             <TableBody>
               {filtered.map(row => {
                 const venc = isVencido(row);
-                const canPay = !isReadOnly && row.estado !== 'paid' && row.estado !== 'voided';
+                const canPay = canEdit && row.estado !== 'paid' && row.estado !== 'voided';
                 return (
                   <TableRow key={row.id} className={row.estado === 'voided' ? 'opacity-60' : ''}>
                     <TableCell className="font-mono text-xs">{row.numero_documento}</TableCell>

@@ -9,12 +9,12 @@ import { useUserAccess } from '@/contexts/UserAccessContext';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Eye, FileText, Calculator, BookOpen, BarChart3, ClipboardList, KeyRound } from 'lucide-react';
+import { FileText, Calculator, BookOpen, BarChart3, ClipboardList, KeyRound } from 'lucide-react';
 
 export default function ViewerDashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { isViewer, isOwner, sharedAccessList, currentAccess, selectAccess, permissions, loading } = useUserAccess();
+  const { isViewer, isOwner, permissions, loading } = useUserAccess();
   const [invitationCode, setInvitationCode] = useState('');
   const [redeeming, setRedeeming] = useState(false);
 
@@ -71,44 +71,7 @@ export default function ViewerDashboardPage() {
     );
   }
 
-  // Show welcome screen for new viewers without access
-  if (isViewer && sharedAccessList.length === 0) {
-    return (
-      <div className="max-w-md mx-auto mt-12 space-y-6">
-        <Card>
-          <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-              <KeyRound className="w-6 h-6 text-primary" />
-            </div>
-            <CardTitle>Bienvenido</CardTitle>
-            <CardDescription>
-              Ingresa un código de invitación para acceder a una contabilidad compartida
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="code">Código de Invitación</Label>
-              <Input
-                id="code"
-                value={invitationCode}
-                onChange={(e) => setInvitationCode(e.target.value)}
-                placeholder="Ingresa el código"
-              />
-            </div>
-            <Button 
-              onClick={handleRedeemCode} 
-              disabled={!invitationCode.trim() || redeeming}
-              className="w-full"
-            >
-              {redeeming ? 'Procesando...' : 'Canjear Código'}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Show redeem code form for users without role yet
+  // Show redeem code form for users without role yet (no company membership)
   if (!isViewer && !isOwner) {
     return (
       <div className="max-w-md mx-auto mt-12 space-y-6">
@@ -154,44 +117,6 @@ export default function ViewerDashboardPage() {
           Tienes acceso de solo lectura a la contabilidad compartida
         </p>
       </div>
-
-      {/* Access selector if multiple accesses */}
-      {sharedAccessList.length > 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Seleccionar Contabilidad</CardTitle>
-            <CardDescription>Tienes acceso a múltiples contabilidades</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {sharedAccessList.map((access) => (
-                <Button
-                  key={access.owner_id}
-                  variant={currentAccess?.owner_id === access.owner_id ? "default" : "outline"}
-                  onClick={() => selectAccess(access.owner_id)}
-                >
-                  {access.owner_email || access.owner_id.substring(0, 8)}...
-                </Button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Current access info */}
-      {currentAccess && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Eye className="w-5 h-5 text-primary" />
-              <CardTitle className="text-lg">Acceso Actual</CardTitle>
-            </div>
-            <CardDescription>
-              Viendo contabilidad de: {currentAccess.owner_email || currentAccess.owner_id.substring(0, 8)}...
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
 
       {/* Available sections */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

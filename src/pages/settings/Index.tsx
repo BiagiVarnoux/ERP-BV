@@ -8,7 +8,8 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useAccounting } from '@/accounting/AccountingProvider';
-import { Copy, Plus, Trash2, Users, UserMinus, Database, History, LayoutGrid, ShieldCheck } from 'lucide-react';
+import { useUserAccess } from '@/contexts/UserAccessContext';
+import { Copy, Plus, Trash2, Database, History, LayoutGrid, ShieldCheck } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ModuleConfigTab } from '@/components/settings/ModuleConfigTab';
 import {
@@ -20,16 +21,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { BackupRestoreModal } from '@/components/backup/BackupRestoreModal';
 import { AuditLogModal } from '@/components/audit/AuditLogModal';
 import { MfaEnrollModal } from '@/components/auth/MfaEnrollModal';
@@ -49,27 +40,12 @@ interface InvitationCode {
   created_at: string;
 }
 
-interface SharedAccess {
-  id: string;
-  viewer_id: string;
-  can_view_accounts: boolean;
-  can_view_journal: boolean;
-  can_view_auxiliary: boolean;
-  can_view_ledger: boolean;
-  can_view_reports: boolean;
-  created_at: string;
-}
-
 export default function SettingsPage() {
   const { user } = useAuth();
   const { setAccounts, setEntries, adapter } = useAccounting();
   const { toast } = useToast();
-  const [isOwner, setIsOwner] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const { isOwner, loading } = useUserAccess();
   const [invitationCodes, setInvitationCodes] = useState<InvitationCode[]>([]);
-  const [sharedAccess, setSharedAccess] = useState<SharedAccess[]>([]);
-  const [revokeDialogOpen, setRevokeDialogOpen] = useState(false);
-  const [accessToRevoke, setAccessToRevoke] = useState<SharedAccess | null>(null);
   const [backupModalOpen, setBackupModalOpen] = useState(false);
   const [auditModalOpen, setAuditModalOpen] = useState(false);
   const [mfaModalOpen, setMfaModalOpen] = useState(false);
@@ -92,30 +68,8 @@ export default function SettingsPage() {
   const [expirationDays, setExpirationDays] = useState(7);
 
   useEffect(() => {
-    checkUserRole();
     fetchInvitationCodes();
-    fetchSharedAccess();
   }, [user]);
-
-  const checkUserRole = async () => {
-    if (!user) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (error) throw error;
-      setIsOwner(data?.role === 'owner');
-    } catch (error) {
-      // Role check failed - default to non-owner
-      setIsOwner(false);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const fetchInvitationCodes = async () => {
     if (!user) return;
@@ -131,23 +85,6 @@ export default function SettingsPage() {
       setInvitationCodes(data || []);
     } catch (error) {
       // Failed to fetch invitation codes
-    }
-  };
-
-  const fetchSharedAccess = async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('shared_access')
-        .select('*')
-        .eq('owner_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setSharedAccess(data || []);
-    } catch (error) {
-      // Failed to fetch shared access
     }
   };
 
@@ -206,40 +143,6 @@ export default function SettingsPage() {
         description: error.message,
         variant: 'destructive',
       });
-    }
-  };
-
-  const handleRevokeClick = (access: SharedAccess) => {
-    setAccessToRevoke(access);
-    setRevokeDialogOpen(true);
-  };
-
-  const handleRevokeConfirm = async () => {
-    if (!accessToRevoke || !user) return;
-
-    try {
-      const { error } = await supabase.rpc('revoke_shared_access', {
-        _owner_id: user.id,
-        _viewer_id: accessToRevoke.viewer_id
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: 'Acceso revocado',
-        description: 'El usuario ya no tiene acceso a tu contabilidad.',
-      });
-
-      fetchSharedAccess();
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      });
-    } finally {
-      setRevokeDialogOpen(false);
-      setAccessToRevoke(null);
     }
   };
 
@@ -517,81 +420,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Shared Access List */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Usuarios con Acceso
-          </CardTitle>
-          <CardDescription>Usuarios que tienen acceso a tu contabilidad</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {sharedAccess.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">
-              No hay usuarios con acceso compartido
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Usuario ID</TableHead>
-                  <TableHead>Permisos</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sharedAccess.map((access) => (
-                  <TableRow key={access.id}>
-                    <TableCell className="font-mono text-sm">{access.viewer_id.substring(0, 8)}...</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1 flex-wrap">
-                        {access.can_view_accounts && <Badge variant="outline" className="text-xs">Cuentas</Badge>}
-                        {access.can_view_journal && <Badge variant="outline" className="text-xs">Diario</Badge>}
-                        {access.can_view_auxiliary && <Badge variant="outline" className="text-xs">Auxiliar</Badge>}
-                        {access.can_view_ledger && <Badge variant="outline" className="text-xs">Mayor</Badge>}
-                        {access.can_view_reports && <Badge variant="outline" className="text-xs">Reportes</Badge>}
-                      </div>
-                    </TableCell>
-                    <TableCell>{new Date(access.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRevokeClick(access)}
-                        className="text-destructive hover:text-destructive"
-                        title="Revocar acceso"
-                      >
-                        <UserMinus className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Revoke Access Dialog */}
-      <AlertDialog open={revokeDialogOpen} onOpenChange={setRevokeDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Revocar acceso?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta acción eliminará el acceso de este usuario a tu contabilidad. 
-              Ya no podrá ver ninguno de tus datos contables.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRevokeConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Revocar Acceso
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* La gestión detallada de miembros se hace desde /users */}
 
       <BackupRestoreModal
         isOpen={backupModalOpen}

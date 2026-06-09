@@ -25,7 +25,7 @@ function formatSize(bytes?: number) {
 }
 
 interface Props {
-  /** Ruta base en storage: ej. "{userId}/{shipmentId}/productos/{productId}" */
+  /** Ruta base en storage: ej. "{companyId}/{shipmentId}/productos/{productId}" */
   storagePath: string;
   files: ShipmentFile[];
   onChange: (files: ShipmentFile[]) => void;

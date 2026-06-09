@@ -35,7 +35,11 @@ type ArchiveAction = 'archivado' | 'descontinuado';
 
 export default function InventoryPage() {
   const { accounts } = useAccounting();
-  const { isReadOnly } = useUserAccess();
+  const { can } = useUserAccess();
+  const canCreate  = can('inventory', 'create');
+  const canEdit    = can('inventory', 'edit');
+  const canDelete  = can('inventory', 'delete');
+  const isReadOnly = !canCreate && !canEdit && !canDelete;
   const activeCompanyId = useActiveCompanyId();
   const [products, setProducts] = useState<ProductData[]>([]);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
@@ -203,7 +207,7 @@ export default function InventoryPage() {
       <ReadOnlyBanner />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Inventario</h1>
-        {!isReadOnly && (
+        {canCreate && (
           <Button onClick={() => { setEditProduct(null); setShowNewProduct(true); }}>
             <Plus className="w-4 h-4 mr-2" /> Nuevo Producto
           </Button>
@@ -292,7 +296,7 @@ export default function InventoryPage() {
                                   <Layers className="w-4 h-4 mr-1" /> FIFO
                                 </Button>
                               </div>
-                              {!isReadOnly && (
+                              {(canEdit || canDelete) && (
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
                                     <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -358,7 +362,7 @@ export default function InventoryPage() {
                             <TableHead>Estado</TableHead>
                             <TableHead>Fecha archivado</TableHead>
                             <TableHead>Razón</TableHead>
-                            {!isReadOnly && <TableHead></TableHead>}
+                            {canEdit && <TableHead></TableHead>}
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -382,7 +386,7 @@ export default function InventoryPage() {
                                 {p.archived_at ? new Date(p.archived_at).toLocaleDateString('es-BO') : '—'}
                               </TableCell>
                               <TableCell className="text-xs max-w-[160px] truncate">{p.archived_reason || '—'}</TableCell>
-                              {!isReadOnly && (
+                              {canEdit && (
                                 <TableCell>
                                   {p.status === 'archivado' && (
                                     <Button

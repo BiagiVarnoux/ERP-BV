@@ -67,7 +67,10 @@ interface SaleItem {
 }
 
 export default function SalesPage() {
-  const { isReadOnly } = useUserAccess();
+  const { can } = useUserAccess();
+  const canCreate = can('sales', 'create');
+  const canEdit   = can('sales', 'edit');
+  const canDelete = can('sales', 'delete');
   const { reloadEntries } = useAccounting();
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -226,7 +229,7 @@ export default function SalesPage() {
         <h1 className="text-2xl font-semibold flex items-center gap-2">
           <ShoppingCart className="w-6 h-6" /> Ventas
         </h1>
-        {!isReadOnly && (
+        {canCreate && (
           <Button onClick={() => setShowNew(true)}>
             <Plus className="w-4 h-4 mr-2" /> Nueva Venta
           </Button>
@@ -534,7 +537,7 @@ export default function SalesPage() {
             </div>
           )}
 
-          {detailSale && !isReadOnly && detailSale.estado === 'confirmed' && (
+          {detailSale && canEdit && detailSale.estado === 'confirmed' && (
             <DialogFooter>
               <Button
                 variant="destructive"

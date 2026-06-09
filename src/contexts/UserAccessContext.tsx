@@ -51,19 +51,13 @@ export interface ModulePermission {
 
 export type PermissionsMap = Partial<Record<ErpModule, ModulePermission>>;
 
-/** Permisos legados — mantenidos para compatibilidad con componentes existentes */
+/** Permisos legados — mantenidos para compatibilidad con viewer-dashboard */
 export interface UserPermissions {
   can_view_accounts: boolean;
   can_view_journal: boolean;
   can_view_auxiliary: boolean;
   can_view_ledger: boolean;
   can_view_reports: boolean;
-}
-
-export interface SharedAccessInfo {
-  owner_id: string;
-  owner_email?: string;
-  permissions: UserPermissions;
 }
 
 interface UserAccessContextType {
@@ -93,12 +87,8 @@ interface UserAccessContextType {
   getModuleConfigValue: (submodule: string) => string | undefined;
   reloadModuleConfig: () => Promise<void>;
 
-  // Permisos legados (retrocompatibilidad con AppShell y shared_access)
+  // Permisos legacy mapeados desde permissionsMap (retrocompatibilidad viewer-dashboard)
   permissions: UserPermissions;
-  sharedAccessList: SharedAccessInfo[];
-  currentAccess: SharedAccessInfo | null;
-  selectAccess: (ownerId: string) => void;
-  targetUserId: string | null;
 }
 
 // ─── Valores por defecto ───────────────────────────────────────────────────────
@@ -152,10 +142,6 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
   const [moduleConfig, setModuleConfig]       = useState<Record<string, boolean>>({});
   const [moduleConfigValues, setModuleConfigValues] = useState<Record<string, string>>({});
 
-  // Legado
-  const [sharedAccessList, setSharedAccessList] = useState<SharedAccessInfo[]>([]);
-  const [currentAccess, setCurrentAccess] = useState<SharedAccessInfo | null>(null);
-
   useEffect(() => {
     if (!user) { setLoading(false); return; }
     loadAccess();
@@ -197,17 +183,7 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
       if (memberError) throw memberError;
 
       if (!memberData) {
-        // Fallback: intentar user_roles (tabla legada)
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role, company_id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        if (roleData) {
-          setRole(roleData.role as CompanyRole);
-          setCompanyId(roleData.company_id);
-        }
+        // Usuario sin membresía activa — estado sin empresa
         setLoading(false);
         return;
       }
@@ -263,26 +239,6 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
 
       setPermissionsMap(map);
 
-      // 3. Cargar shared_access legado (para viewers migrados)
-      if (userRole === 'viewer') {
-        const { data: accessData } = await supabase
-          .from('shared_access')
-          .select('*')
-          .eq('viewer_id', user.id);
-
-        const accessList: SharedAccessInfo[] = (accessData || []).map(a => ({
-          owner_id: a.owner_id,
-          permissions: {
-            can_view_accounts: a.can_view_accounts,
-            can_view_journal: a.can_view_journal,
-            can_view_auxiliary: a.can_view_auxiliary,
-            can_view_ledger: a.can_view_ledger,
-            can_view_reports: a.can_view_reports,
-          },
-        }));
-        setSharedAccessList(accessList);
-        if (accessList.length > 0) setCurrentAccess(accessList[0]);
-      }
     } catch (error) {
       console.error('Error cargando permisos:', error);
     } finally {
@@ -338,11 +294,6 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
     return permissionsMap[module]?.can_view ?? false;
   }, [permissionsMap]);
 
-  const selectAccess = (ownerId: string) => {
-    const access = sharedAccessList.find(a => a.owner_id === ownerId);
-    if (access) setCurrentAccess(access);
-  };
-
   // Si no hay config guardada para ese submódulo, por defecto es visible (true)
   const isSubmoduleVisible = useCallback((submodule: string): boolean => {
     return moduleConfig[submodule] ?? true;
@@ -356,8 +307,18 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
   // ─── Valores derivados ─────────────────────────────────────────────────────
 
   const isOwner = role === 'owner';
+  // isViewer: rol fijo de solo lectura (viewer/auditor). Los roles custom con
+  // permisos granulares NO son viewers aunque no tengan acceso a journal/accounts.
   const isViewer = role === 'viewer' || role === 'auditor';
-  const isReadOnly = !can('journal', 'create') && !can('accounts', 'create');
+
+  // isReadOnly: true solo cuando el usuario no tiene ningún permiso de escritura
+  // en absolutamente ningún módulo. Se usa para el banner global y el footer.
+  // Cada página individual debe usar can(module, action) para sus propios botones.
+  const isReadOnly = Object.values(permissionsMap).length > 0
+    ? !Object.values(permissionsMap).some(
+        p => p.can_create || p.can_edit || p.can_delete || p.can_approve
+      )
+    : false; // sin permisos cargados aún → no mostrar banner prematuramente
 
   // Permisos legados mapeados desde el nuevo sistema
   const permissions: UserPermissions = isOwner
@@ -369,8 +330,6 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
         can_view_ledger:    canView('ledger'),
         can_view_reports:   canView('reports'),
       };
-
-  const targetUserId = isViewer && currentAccess ? currentAccess.owner_id : user?.id ?? null;
 
   return (
     <UserAccessContext.Provider value={{
@@ -391,10 +350,6 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
       getModuleConfigValue,
       reloadModuleConfig,
       permissions,
-      sharedAccessList,
-      currentAccess,
-      selectAccess,
-      targetUserId,
     }}>
       {children}
     </UserAccessContext.Provider>

@@ -59,7 +59,11 @@ function getDefaultDraft(): Partial<Account> {
 
 export default function AccountsPage() {
   const { accounts, entries, setAccounts, adapter } = useAccounting();
-  const { isReadOnly } = useUserAccess();
+  const { can } = useUserAccess();
+  const canCreate  = can('accounts', 'create');
+  const canEdit    = can('accounts', 'edit');
+  const canDelete  = can('accounts', 'delete');
+  const isReadOnly = !canCreate && !canEdit && !canDelete;
   const [accDraft, setAccDraft] = useState<Partial<Account>>(getDefaultDraft());
   const [editingAccId, setEditingAccId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);

@@ -37,7 +37,11 @@ export default function AuxiliaryLedgersPage() {
     adapter, 
     entries: journalEntries 
   } = useAccounting();
-  const { isReadOnly } = useUserAccess();
+  const { can } = useUserAccess();
+  const canCreate  = can('auxiliary_ledgers', 'create');
+  const canEdit    = can('auxiliary_ledgers', 'edit');
+  const canDelete  = can('auxiliary_ledgers', 'delete');
+  const isReadOnly = !canCreate && !canEdit && !canDelete;
   const [selectedDefinitionId, setSelectedDefinitionId] = usePersistedState<string>('auxiliary:definition', '');
   const [period, setPeriod] = usePersistedState<{ periodType: PeriodType; quarter: string; year: number; month: string }>(
     'auxiliary:period',

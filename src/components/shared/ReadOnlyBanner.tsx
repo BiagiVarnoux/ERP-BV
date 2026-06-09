@@ -4,9 +4,9 @@ import { Eye } from 'lucide-react';
 import { useUserAccess } from '@/contexts/UserAccessContext';
 
 export function ReadOnlyBanner() {
-  const { isReadOnly, currentAccess } = useUserAccess();
+  const { isReadOnly } = useUserAccess();
 
-  if (!isReadOnly || !currentAccess) return null;
+  if (!isReadOnly) return null;
 
   return (
     <Alert className="mb-4 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">

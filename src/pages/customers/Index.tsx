@@ -20,7 +20,10 @@ const TIPO_LABELS: Record<string, string> = {
 };
 
 export default function CustomersPage() {
-  const { isReadOnly } = useUserAccess();
+  const { can } = useUserAccess();
+  const canCreate = can('customers', 'create');
+  const canEdit   = can('customers', 'edit');
+  const canDelete = can('customers', 'delete');
   const activeCompanyId = useActiveCompanyId();
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,7 +122,7 @@ export default function CustomersPage() {
         <h1 className="text-2xl font-semibold flex items-center gap-2">
           <Users className="w-6 h-6" /> Clientes
         </h1>
-        {!isReadOnly && (
+        {canCreate && (
           <Button onClick={openNew}>
             <Plus className="w-4 h-4 mr-2" /> Nuevo Cliente
           </Button>
@@ -165,7 +168,7 @@ export default function CustomersPage() {
                 <TableHead>Ciudad</TableHead>
                 <TableHead>Teléfono</TableHead>
                 <TableHead className="text-right">Crédito autorizado</TableHead>
-                {!isReadOnly && <TableHead className="text-center">Acciones</TableHead>}
+                {(canEdit || canDelete) && <TableHead className="text-center">Acciones</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -185,7 +188,7 @@ export default function CustomersPage() {
                   <TableCell className="text-right text-sm">
                     {c.credito_autorizado > 0 ? `Bs ${fmt(c.credito_autorizado)}` : '—'}
                   </TableCell>
-                  {!isReadOnly && (
+                  {(canEdit || canDelete) && (
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-1">
                         <Button
