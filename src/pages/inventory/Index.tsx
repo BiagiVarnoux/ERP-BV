@@ -160,7 +160,7 @@ export default function InventoryPage() {
         status: archiveAction,
         archived_at: new Date().toISOString(),
         archived_reason: archiveReason.trim() || null,
-      }).eq('id', archiveTarget.id);
+      }).eq('id', archiveTarget.id).eq('company_id', activeCompanyId);
       if (error) throw error;
       const label = archiveAction === 'archivado' ? 'archivado' : 'marcado como descontinuado';
       toast.success(`Producto "${archiveTarget.nombre}" ${label}`);
@@ -183,7 +183,7 @@ export default function InventoryPage() {
         status: 'activo',
         archived_at: null,
         archived_reason: null,
-      }).eq('id', product.id);
+      }).eq('id', product.id).eq('company_id', activeCompanyId);
       if (error) throw error;
       toast.success(`Producto "${product.nombre}" restaurado`);
       loadData();

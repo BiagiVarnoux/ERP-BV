@@ -101,7 +101,7 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
       };
 
       if (isEditing) {
-        const { error } = await supabase.from('products').update(payload).eq('id', editProduct!.id);
+        const { error } = await supabase.from('products').update(payload).eq('id', editProduct!.id).eq('company_id', activeCompanyId);
         if (error) throw error;
         toast.success('Producto actualizado');
       } else {

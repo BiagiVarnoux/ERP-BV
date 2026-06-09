@@ -299,7 +299,8 @@ export default function ShipmentsPage() {
             if (existing.status === 'archivado') {
               await supabase.from('products')
                 .update({ status: 'activo', archived_at: null, archived_reason: null })
-                .eq('id', existing.id);
+                .eq('id', existing.id)
+                .eq('company_id', activeCompanyId);
               toast.info(`Producto "${existing.nombre}" reactivado automáticamente`);
             } else if (existing.status === 'descontinuado') {
               toast.warning(`Producto "${existing.nombre}" está marcado como descontinuado. Se vinculó al embarque pero permanece descontinuado.`);

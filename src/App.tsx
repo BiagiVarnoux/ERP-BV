@@ -49,7 +49,23 @@ function AppRoutes() {
     );
   }
 
-  const defaultRoute = isViewer ? "/viewer-dashboard" : "/accounts";
+  // Elige la primera ruta que el usuario realmente puede ver.
+  // Orden de prioridad: FI → SD → MM → Licitaciones → viewer-dashboard
+  const defaultRoute = (() => {
+    if (isViewer)                    return "/viewer-dashboard";
+    if (canView('accounts'))         return "/accounts";
+    if (canView('journal'))          return "/journal";
+    if (canView('sales'))            return "/sales";
+    if (canView('customers'))        return "/customers";
+    if (canView('inventory'))        return "/inventory";
+    if (canView('shipments'))        return "/shipments";
+    if (canView('receivables'))      return "/receivables";
+    if (canView('payables'))         return "/payables";
+    if (canView('reports'))          return "/reports";
+    if (canView('licitaciones'))     return "/licitaciones";
+    if (canView('holding'))          return "/holding";
+    return "/viewer-dashboard";      // fallback: sin permisos → pantalla de código
+  })();
 
   return (
     <Routes>

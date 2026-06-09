@@ -537,16 +537,12 @@ export function createSupaAdapter(companyId: string): IDataAdapter {
     },
     async closeAuxiliaryEntry(id: string, closureDate: string): Promise<void> {
       const supa = await getSupabase(); if (!supa) return LocalAdapter.closeAuxiliaryEntry(id, closureDate);
-      const { data: { user } } = await supa.auth.getUser();
-      if (!user) throw new Error("Usuario no autenticado");
-      const { error } = await supa.from('auxiliary_ledger').update({ closed_date: closureDate }).eq('id', id).eq('user_id', user.id);
+      const { error } = await supa.from('auxiliary_ledger').update({ closed_date: closureDate }).eq('id', id).eq('company_id', companyId);
       if (error) throw error;
     },
     async reopenAuxiliaryEntry(id: string): Promise<void> {
       const supa = await getSupabase(); if (!supa) return LocalAdapter.reopenAuxiliaryEntry(id);
-      const { data: { user } } = await supa.auth.getUser();
-      if (!user) throw new Error("Usuario no autenticado");
-      const { error } = await supa.from('auxiliary_ledger').update({ closed_date: null }).eq('id', id).eq('user_id', user.id);
+      const { error } = await supa.from('auxiliary_ledger').update({ closed_date: null }).eq('id', id).eq('company_id', companyId);
       if (error) throw error;
     },
   };

@@ -62,7 +62,8 @@ export function FifoExitModal({ isOpen, onClose, product, lots, onSaved, journal
         const { error: lotErr } = await supabase
           .from('inventory_lots')
           .update({ cantidad_disponible: nuevaDisponible })
-          .eq('id', linea.lot.id);
+          .eq('id', linea.lot.id)
+          .eq('company_id', activeCompanyId);
         if (lotErr) throw lotErr;
 
         const { error: movErr } = await supabase.from('inventory_movements').insert({
