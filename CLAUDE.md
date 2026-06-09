@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+---
+
 ## Commands
 
 ```bash
@@ -9,70 +11,411 @@ npm run dev        # Start dev server (Vite)
 npm run build      # Production build
 npm run lint       # ESLint
 npm run preview    # Preview production build locally
+tsc --noEmit       # Type-check without emitting (required to pass before every commit)
 ```
 
 There is no test suite. Type-checking is done via `tsc --noEmit` (implied by the build step).
 
-## Architecture Overview
+---
 
-This is a Spanish-language accounting SPA (Libro Diario / ERP BV) built with React + TypeScript + Vite, backed by Supabase. The UI uses shadcn/ui components throughout.
+## Technology Stack
 
-### Data layer — `src/accounting/`
+| Layer | Technology |
+|---|---|
+| Frontend | React 18 + TypeScript + Vite |
+| UI components | shadcn/ui (Radix primitives + Tailwind) |
+| Backend / DB | Supabase (PostgreSQL + Auth + Storage + RLS) |
+| PDF export | jsPDF |
+| AI assistant | Groq (via `aiService.ts` / `licitacionAiService.ts`) |
+| Locale | `es-BO` — Bolivian Spanish, Bolivianos (Bs) |
 
-All persistence goes through the `IDataAdapter` interface in `data-adapter.ts`. There are two implementations:
+---
 
-- **`LocalAdapter`** — reads/writes `localStorage`. Used as fallback when Supabase is unreachable.
-- **`SupaAdapter`** — reads/writes Supabase tables. Uses `fetchAllPaginated()` (1000-row chunks) to bypass PostgREST's silent 1000-row limit.
+## High-Level Architecture
 
-`pickAdapter()` probes Supabase at startup and returns `SupaAdapter` if reachable, otherwise `LocalAdapter`.
+```
+Browser
+ └── React SPA (Vite)
+      ├── AuthProvider          (Supabase auth session)
+      ├── UserAccessProvider    (company membership, role, per-module permissions)
+      ├── AccountingProvider    (all accounting data for active company, loaded once)
+      └── Pages / Components
+           └── IDataAdapter ──► SupaAdapter  (Supabase, primary)
+                             └► LocalAdapter (localStorage, offline fallback)
+```
 
-**`AccountingProvider`** (React context) loads all data once at startup via the adapter and exposes it plus setters. Every page reads from this context via `useAccounting()`.
+**Multi-company (Holding) model:**  
+One user → many `company_members` rows → many companies. The *active* company is
+selected via `switchCompany()` and stored in `UserAccessContext`. All queries are
+scoped to `activeCompanyId`. Never mix data from different companies in a single
+query or cache.
+
+---
+
+## Data Layer — `src/accounting/`
+
+### `data-adapter.ts` — `IDataAdapter` interface
+
+Two concrete implementations:
+
+| Adapter | Storage | When used |
+|---|---|---|
+| `SupaAdapter` | Supabase tables | Supabase reachable (default) |
+| `LocalAdapter` | `localStorage` | Supabase unreachable (fallback) |
+
+`pickAdapter()` probes Supabase at startup and chooses accordingly.
+
+`fetchAllPaginated<T>(queryFn, from, to)` — always use this for any query that
+could return > 1000 rows. PostgREST silently truncates at 1000; this function
+loops in 1000-row chunks until done.
+
+**`AccountingProvider`** (React context) loads all data once at startup via the
+adapter and exposes it plus setters. Every accounting page reads from this context
+via `useAccounting()`.
 
 ### Core domain types — `src/accounting/types.ts`
 
-Key entities:
-- `Account` — chart of accounts; `type` ∈ `{ACTIVO, PASIVO, PATRIMONIO, INGRESO, GASTO}`, `normal_side` ∈ `{DEBE, HABER}`.
-- `JournalEntry` + `JournalLine` — double-entry ledger entries; `id` format is `NNN-QN-YY` (e.g. `001-Q1-25`).
-- `AuxiliaryLedgerDefinition` / `AuxiliaryLedgerEntry` / `AuxiliaryMovementDetail` — sub-ledgers linked to specific accounts.
-- `KardexDefinition` / `KardexMovement` — inventory kardex (perpetual inventory) per account.
-- `Shipment` / `ShipmentProduct` — import shipment module (see `shipment-types.ts`).
+| Type | Description |
+|---|---|
+| `Account` | Chart of accounts; `type` ∈ `{ACTIVO,PASIVO,PATRIMONIO,INGRESO,GASTO}`, `normal_side` ∈ `{DEBE,HABER}` |
+| `JournalEntry` + `JournalLine` | Double-entry ledger; entry `id` format `NNN-QN-YY` (e.g. `001-Q1-25`) |
+| `AuxiliaryLedgerDefinition` / `AuxiliaryLedgerEntry` / `AuxiliaryMovementDetail` | Sub-ledgers linked to specific accounts |
+| `KardexDefinition` / `KardexMovement` | Perpetual inventory per account (CPP method) |
+| `FiscalYear` | Yearly accounting period with open/closed state |
 
-### Financial calculation utilities — `src/accounting/`
+Shipment and licitación types live in separate files:
+- `shipment-types.ts` — `Shipment`, `ShipmentProduct`, `CostSheet`, `ImportLot`
+- `licitacion-types.ts` — `Licitacion`, `LicitacionProducto`, `LicitacionDocumento`
 
-- `utils.ts` — `round2()` for all monetary values, `round6()` for unit costs, `generateEntryId()` / `generateChronologicalEntryId()`, `signedBalanceFor()`, locale-aware `fmt()` (Bolivian locale `es-BO`).
-- `kardex-utils.ts` — `calculateCPP()` computes Weighted Average Cost (Costo Promedio Ponderado) for a sequence of kardex movements.
-- `period-utils.ts` — unified monthly/quarterly/annual period resolution; `resolvePeriod()` is the entry point for report filtering.
-- `quarterly-utils.ts` — quarter boundaries; `getQuarterIdentifier(date)` returns the `QN-YY` suffix used in entry IDs.
+### Calculation utilities
 
-### Auth & access control — `src/components/auth/` + `src/contexts/UserAccessContext.tsx`
+| File | Key exports |
+|---|---|
+| `utils.ts` | `round2()` (monetary), `round6()` (unit costs), `fmt()` (es-BO format), `toDecimal()` (parse both locales), `generateEntryId()`, `generateChronologicalEntryId()`, `signedBalanceFor()`, `todayISO()` |
+| `kardex-utils.ts` | `calculateCPP()` — Weighted Average Cost (Costo Promedio Ponderado) |
+| `period-utils.ts` | `resolvePeriod()` — unified monthly/quarterly/annual period resolution for reports |
+| `quarterly-utils.ts` | `getQuarterIdentifier(date)` → `QN-YY` suffix used in entry IDs |
+| `fiscal-year-utils.ts` | Fiscal year boundary helpers |
+| `shipment-utils.ts` | Cost sheet arithmetic for import shipments |
+| `licitacion-utils.ts` | Quotation calculations (floor price, ROI, GA%, freight) |
+| `shipment-storage.ts` | Supabase Storage helpers for `shipment-docs` bucket (path: `{company_id}/{shipment_id}/`) |
+| `licitacion-storage.ts` | Supabase Storage helpers for licitación documents |
+| `timezone.ts` | Bolivia timezone offset utilities |
 
-- `AuthProvider` wraps Supabase auth.
-- `UserAccessProvider` checks `user_roles` table for `owner` vs `viewer` role.
-  - **owners** see all routes including `/settings`, `/shipments`, `/inventory`, `/sales`.
-  - **viewers** only see their dashboard plus permitted accounting views; `targetUserId` switches to the owner's data.
-- Route guarding lives in `App.tsx` (not in `router.tsx`, which is an older unused file).
+---
 
-### Pages and components
+## Auth & Access Control — `src/contexts/UserAccessContext.tsx`
 
-Pages are thin shells in `src/pages/<module>/Index.tsx`; heavy logic lives in components under `src/components/<module>/`.
+### Key concepts
 
-The journal entry form uses `useJournalForm` hook (`src/hooks/useJournalForm.ts`) which manages line drafts, account selection, and kardex popup coordination. Kardex popup state is held in the journal page and passed down.
+```
+UserAccessContext
+ ├── companies[]         list of companies the user belongs to
+ ├── activeCompanyId     currently selected company
+ ├── role                'owner'|'manager'|'accountant'|'auditor'|'viewer'|'custom'
+ ├── permissionsMap      Partial<Record<ErpModule, ModulePermission>>
+ ├── isOwner             role === 'owner'
+ ├── isViewer            role === 'viewer' || role === 'auditor'  (read-only roles)
+ ├── isReadOnly          true if permissionsMap has ZERO write permissions anywhere
+ ├── can(module, action) granular check: reads from permissionsMap
+ ├── canView(module)     permissionsMap[module]?.can_view ?? false
+ └── switchCompany(id)   reload all data for a different company
+```
+
+### `ErpModule` enum
+
+```typescript
+type ErpModule =
+  | 'accounts' | 'journal' | 'ledger' | 'auxiliary_ledgers' | 'reports'
+  | 'fiscal_years' | 'inventory' | 'sales' | 'customers' | 'receivables'
+  | 'payables' | 'shipments' | 'settings' | 'holding' | 'licitaciones';
+```
+
+### `ModuleAction` enum
+
+```typescript
+type ModuleAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export';
+```
+
+### How permissions are loaded
+
+1. On mount / company switch, `UserAccessContext` queries `company_members` to get `role` and `company_id`.
+2. Calls `get_my_permissions(p_company_id)` RPC → returns rows from `member_permissions` table.
+3. Builds `permissionsMap`. For **owners**, all modules get full permissions (no `member_permissions` rows needed).
+4. For custom roles: permissions come entirely from `member_permissions` rows. If no rows exist yet, the RPC returns empty → fallback grants all modules at `can_view=true` only (read-only until configured).
+
+### `isReadOnly` vs `can(module, action)`
+
+- **`isReadOnly`** — global flag. Used only for UI chrome (e.g. `<ReadOnlyBanner>`). Computed by scanning ALL modules' permissions — if no module has any write perm, `isReadOnly = true`.
+- **`can(module, action)`** — use this in individual pages for showing/hiding buttons. A user with write access to `sales` but not `journal` is NOT `isReadOnly`, but `can('journal', 'create')` returns false.
+
+### Route guarding
+
+Route guarding lives in `src/App.tsx` (NOT `router.tsx` — that file is unused).
+
+`defaultRoute` is computed dynamically: first accessible module based on `canView()`, fallback to `/viewer-dashboard`.
+
+```typescript
+// Pattern used in every module page:
+const { can } = useUserAccess();
+const canCreate = can('sales', 'create');
+const canEdit   = can('sales', 'edit');
+const canDelete = can('sales', 'delete');
+```
+
+### Database tables for access control
+
+| Table | Purpose | Ownership |
+|---|---|---|
+| `companies` | Company registry | `user_id` (owner) |
+| `company_members` | User ↔ company membership with role | FK → `companies` |
+| `member_permissions` | Per-module permissions for non-owner members | FK → `company_members` |
+| `company_module_config` | Per-company feature flags (enable/disable modules) | `company_id` |
+| `company_invitations` | Invitation codes for joining a company | FK → `companies` |
+
+---
+
+## Database Table Inventory
+
+Complete list of all Supabase tables. Every table must:
+1. Have `company_id` (or inherit it via FK) — **never** store data without company scope.
+2. Have RLS enabled with a policy scoped to `company_members WHERE user_id = auth.uid()`.
+3. Be included in backup (see Rule 2 below).
+
+### Accounting core
+
+| Table | `company_id` | RLS policy type | In backup | Notes |
+|---|---|---|---|---|
+| `accounts` | direct | company_member | ✅ | Chart of accounts |
+| `journal_entries` | direct | company_member | ✅ | Header row; id = `NNN-QN-YY` |
+| `journal_lines` | via `journal_entries` | child (join) | ✅ | Debit/credit lines; fetched via join |
+| `auxiliary_ledger_definitions` | direct | company_member | ✅ | Sub-ledger definitions |
+| `auxiliary_ledger` | direct | company_member | ✅ | Sub-ledger entries |
+| `auxiliary_movement_details` | direct | company_member | ✅ | Movement detail rows |
+| `kardex_definitions` | direct | company_member | ✅ | Kardex (inventory) definitions |
+| `kardex_entries` | direct | company_member | ✅ | Kardex period entries |
+| `kardex_movements` | direct | company_member | ✅ | Individual stock movements |
+| `quarterly_closures` | direct | company_member | ✅ | Quarter close records |
+| `fiscal_years` | direct | company_member | ✅ | Annual fiscal periods |
+| `report_settings` | direct | company_member | ✅ | Saved report configs |
+
+### Inventory & shipments
+
+| Table | `company_id` | RLS policy type | In backup | Notes |
+|---|---|---|---|---|
+| `products` | direct | company_member | ✅ | Product catalog with archiving support |
+| `inventory_lots` | direct | company_member | ✅ | FIFO cost lots |
+| `inventory_movements` | direct | company_member | ✅ | FIFO in/out movements |
+| `shipments` | direct | company_member | ✅ | Import shipment headers |
+| `import_lots` | direct | company_member | ✅ | Shipment import lots |
+| `cost_sheets` | direct | company_member | ✅ | Cost sheet headers |
+| `cost_sheet_cells` | direct | company_member | ✅ | Cost sheet cell values |
+
+Storage bucket: `shipment-docs` — paths use `{company_id}/{shipment_id}/filename`.  
+⚠️ Binary files are NOT included in the JSON backup (documented limitation).
+
+### Sales & receivables
+
+| Table | `company_id` | RLS policy type | In backup | Notes |
+|---|---|---|---|---|
+| `customers` | direct | company_member | ✅ | Customer registry |
+| `sales` | direct | company_member | ✅ | Sale headers |
+| `sale_items` | via `sales` | child (join) | ✅ | Line items; fetched via join |
+| `receivables` | direct | company_member | ✅ | Accounts receivable |
+| `payables` | direct | company_member | ✅ | Accounts payable |
+| `debt_payments` | direct | company_member | ✅ | Payment records for receivables/payables |
+
+### Licitaciones (tenders)
+
+| Table | `company_id` | RLS policy type | In backup | Notes |
+|---|---|---|---|---|
+| `licitaciones` | direct | company_member | ✅ | Tender/bid headers |
+| `licitacion_productos` | via `licitaciones` | child (join) | ✅ | Quoted products per tender |
+| `licitacion_documentos` | via `licitaciones` | child (join) | ✅ | Attached documents |
+
+### System / multi-company
+
+| Table | Ownership | RLS policy type | In backup | Notes |
+|---|---|---|---|---|
+| `companies` | `user_id` (owner) | owner only | ✅ (company row) | Company registry |
+| `company_members` | FK → companies | via companies | ✅ | Membership + roles |
+| `member_permissions` | FK → company_members | via company_members | ✅ | Granular module permissions |
+| `company_module_config` | `company_id` | company_member | ✅ | Feature flags per company |
+| `company_invitations` | FK → companies | owner only | — | Short-lived; not backed up |
+| `audit_log` | `company_id` | company_member | — | Append-only; not restored |
+
+---
+
+## Module Map
+
+Each module = one page shell + one component folder (usually). Find any module's code here:
+
+### Accounting modules
+
+| Module | Route | Page | Components | Domain files |
+|---|---|---|---|---|
+| Chart of Accounts | `/accounts` | `src/pages/accounts/Index.tsx` | `src/components/accounts/` | `types.ts` |
+| Journal (Libro Diario) | `/journal` | `src/pages/journal/Index.tsx` | `src/components/journal/` | `types.ts`, `useJournalForm.ts` |
+| Ledger (Mayor) | `/ledger` | `src/pages/ledger/Index.tsx` | `src/components/reports/` | `period-utils.ts` |
+| Auxiliary Ledgers | `/auxiliary-ledgers` | `src/pages/auxiliary-ledgers/Index.tsx` | `src/components/auxiliary-ledger/` | `types.ts` |
+| Kardex | (embedded in journal) | — | `src/components/kardex/` | `kardex-utils.ts` |
+| Reports | `/reports` | `src/pages/reports/Index.tsx` | `src/components/reports/` | `period-utils.ts`, `pdfService.ts` |
+| Fiscal Years | `/fiscal-years` | `src/pages/fiscal-years/Index.tsx` | `src/components/settings/` | `fiscal-year-utils.ts` |
+
+### Operations modules
+
+| Module | Route | Page | Components | Domain files |
+|---|---|---|---|---|
+| Inventory | `/inventory` | `src/pages/inventory/Index.tsx` | `src/components/inventory/` | `types.ts`, `fifo-utils.ts` |
+| Sales (Ventas) | `/sales` | `src/pages/sales/Index.tsx` | `src/components/sales/` | `types.ts` |
+| Customers | `/customers` | `src/pages/customers/Index.tsx` | `src/components/customers/` | `src/accounting/domain/customers.ts` |
+| Receivables (Cobros) | `/receivables` | `src/pages/receivables/Index.tsx` | `src/components/` (inline) | `src/accounting/domain/receivables.ts` |
+| Payables (Pagos) | `/payables` | `src/pages/payables/Index.tsx` | `src/components/` (inline) | `src/accounting/domain/payables.ts` |
+| Shipments (Embarques) | `/shipments` | `src/pages/shipments/Index.tsx` | `src/components/shipments/` | `shipment-types.ts`, `shipment-utils.ts`, `shipment-storage.ts` |
+| Licitaciones | `/licitaciones` | `src/pages/licitaciones/Index.tsx` | `src/components/licitaciones/` | `licitacion-types.ts`, `licitacion-utils.ts`, `licitacion-storage.ts` |
+
+### Admin modules
+
+| Module | Route | Page | Components | Notes |
+|---|---|---|---|---|
+| Settings | `/settings` | `src/pages/settings/Index.tsx` | `src/components/settings/` | Owner only |
+| Users | `/users` | `src/pages/users/Index.tsx` | `src/components/users/` | Owner only |
+| Holding | `/holding` | `src/pages/holding/Index.tsx` | — | Cross-company view |
+| Viewer Dashboard | `/viewer-dashboard` | `src/pages/viewer-dashboard/Index.tsx` | — | For viewer/auditor roles |
+| Dashboard | `/dashboard` | `src/pages/dashboard/Index.tsx` | — | Main entry for owners |
+
+### Shared infrastructure
+
+| Path | Purpose |
+|---|---|
+| `src/components/layout/` | Sidebar, header, nav items |
+| `src/components/shared/` | `ReadOnlyBanner`, generic dialogs |
+| `src/components/auth/` | Login, `AuthProvider` |
+| `src/components/audit/` | Audit log viewer |
+| `src/components/backup/` | Backup/restore UI |
+| `src/components/ui/` | shadcn/ui component overrides |
+
+### Key hooks
+
+| Hook | File | Purpose |
+|---|---|---|
+| `useJournalForm` | `src/hooks/useJournalForm.ts` | Journal entry form state, line drafts, kardex popup coordination |
+| `useReportSettings` | `src/hooks/useReportSettings.ts` | Persisted report filter state |
+| `usePersistedState` | `src/hooks/usePersistedState.ts` | `localStorage`-backed `useState` |
+| `useAccounting` | `src/accounting/AccountingProvider.tsx` | All accounting data for active company |
+| `useUserAccess` | `src/contexts/UserAccessContext.tsx` | Auth, company, role, permissions |
+| `useActiveCompanyId` | `src/contexts/UserAccessContext.tsx` | Quick accessor for `activeCompanyId` |
 
 ### Services — `src/services/`
 
-- `exportService.ts` — generic CSV export.
-- `pdfService.ts` — jsPDF-based PDF generation.
-- `backupService.ts` — JSON export/import of all data.
-- `auditService.ts` — audit log utilities.
-- `aiService.ts` — AI assistant integration.
+| Service | Purpose |
+|---|---|
+| `backupService.ts` | JSON backup/restore of all company data |
+| `exportService.ts` | Generic CSV export |
+| `pdfService.ts` | jsPDF-based PDF generation |
+| `auditService.ts` | Write audit log entries |
+| `aiService.ts` | AI chat assistant (Groq) |
+| `licitacionAiService.ts` | AI suggestions for licitaciones |
 
-### Supabase integration
+---
 
-Client lives in `src/integrations/supabase/client.ts`. Migrations are in `supabase/migrations/`. The Supabase project URL/key come from `.env` (not committed).
+## RLS Policy Pattern
 
-### Locale & currency
+All production tables use this standard policy (applied in migrations `20260610000001` and `20260610000002`):
 
-All amounts are in Bolivianos (Bs). Number formatting uses `es-BO` locale (dot as thousands separator, comma as decimal). Input parsing in `toDecimal()` handles both `1.234,56` and `1234.56` forms. Use `round2()` for all monetary arithmetic to avoid floating-point drift.
+```sql
+-- For tables WITH company_id:
+CREATE POLICY "company_member_all" ON public.<table>
+  FOR ALL USING (
+    company_id IN (
+      SELECT cm.company_id FROM public.company_members cm
+      WHERE cm.user_id = auth.uid()
+    )
+  ) WITH CHECK ( /* same */ );
+
+-- For child tables WITHOUT company_id (e.g. journal_lines, licitacion_productos):
+CREATE POLICY "company_member_all" ON public.<table>
+  FOR ALL USING (
+    <parent_fk> IN (
+      SELECT p.id FROM public.<parent_table> p
+      WHERE p.company_id IN (
+        SELECT cm.company_id FROM public.company_members cm
+        WHERE cm.user_id = auth.uid()
+      )
+    )
+  ) WITH CHECK ( /* same */ );
+```
+
+**Defense-in-depth rule**: client-side mutations must also include `.eq('company_id', activeCompanyId)` (or validate parent ownership). RLS is not the only guard.
+
+---
+
+## Operational Checklists
+
+### Adding a new Supabase table
+
+- [ ] Add `company_id uuid NOT NULL REFERENCES companies(id)` (or inherit via parent FK).
+- [ ] Enable RLS: `ALTER TABLE public.<table> ENABLE ROW LEVEL SECURITY;`
+- [ ] Create `company_member_all` policy using the standard pattern above.
+- [ ] Add to `backupService.ts`: fetch helper + `BackupData` field + `Promise.all` entry + delete block (FK order) + insert block.
+- [ ] Add to `validateBackupFile()` `optionalArrays` list.
+- [ ] Client mutations: include `.eq('company_id', activeCompanyId)` on every UPDATE/DELETE.
+- [ ] Run `tsc --noEmit` and `npm run lint` — zero errors.
+
+### Adding a new module/page
+
+- [ ] Create `src/pages/<module>/Index.tsx` (thin shell).
+- [ ] Create `src/components/<module>/` for heavy logic.
+- [ ] Add the module to `ErpModule` type in `UserAccessContext.tsx`.
+- [ ] Add `canView('<module>')` route guard in `App.tsx`.
+- [ ] Add to `defaultRoute` cascade in `App.tsx`.
+- [ ] Add `ALL_MODULES` array in `UserAccessContext.tsx` (owner fallback permissions).
+- [ ] Add sidebar nav item in `src/components/layout/`.
+- [ ] Use `can('<module>', action)` for all write-action buttons in the page.
+- [ ] Add a `member_permissions` seed default for new owners if applicable.
+- [ ] Follow backup rule above for any new tables the module introduces.
+
+### Doing an RLS migration (adding a new table or fixing an existing policy)
+
+- [ ] Identify all tables in the feature: direct tables + child tables.
+- [ ] For each table, determine if it has `company_id` directly or inherits via FK.
+- [ ] Write the appropriate policy from the standard pattern.
+- [ ] `DROP POLICY IF EXISTS "<old name>"` before creating the new one.
+- [ ] Test with a non-owner company member account — verify they see the right data.
+- [ ] Check child tables — they are easy to miss (lesson from `licitacion_productos` / `journal_lines`).
+
+### Adding/changing permissions for a module
+
+- [ ] `member_permissions` table stores one row per (member, module).
+- [ ] `get_my_permissions(p_company_id)` RPC returns all permission rows for the calling user.
+- [ ] Owner role bypasses `member_permissions` — full access always.
+- [ ] When creating a new `ErpModule`: add it to the `ALL_MODULES` fallback array so new users get `can_view=true` by default.
+- [ ] The Settings → Members UI writes to `member_permissions` via `src/components/users/` or `src/pages/settings/`.
+
+---
+
+## Locale & Currency
+
+All amounts are in Bolivianos (Bs). Number formatting uses `es-BO` locale:
+- Thousands separator: `.` (dot)
+- Decimal separator: `,` (comma)
+- Example: `Bs 1.234,56`
+
+`toDecimal(s)` in `utils.ts` parses both `1.234,56` (es-BO) and `1234.56` (en-US) forms.
+
+**Always use `round2()` for monetary arithmetic** to avoid floating-point drift.  
+**Always use `round6()` for unit costs** (costo unitario).  
+Never do raw `a + b` on Bs amounts — use `round2(a + b)`.
+
+---
+
+## Supabase Integration
+
+- Client: `src/integrations/supabase/client.ts`
+- Migrations: `supabase/migrations/` — named `YYYYMMDDHHMMSS_description.sql`
+- Auth: email/password via `supabase.auth`
+- Storage bucket: `shipment-docs` — company-scoped paths
+- Environment: `.env` (not committed) — `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`
 
 ---
 
@@ -107,12 +450,12 @@ Run through this list mentally before finishing any change. Flag issues in code 
 
 | # | Check |
 |---|-------|
-| S1 | **IDOR**: every UPDATE/DELETE includes `.eq('user_id', user.id)` (or `.eq('company_id', ...)` for company-scoped tables). Never rely solely on RLS as the only guard — defence in depth. |
-| S2 | **Child table IDOR**: operations on tables without `user_id` (e.g. `journal_lines`, `licitacion_productos`) must validate ownership via the parent row's `user_id` before mutating. |
+| S1 | **IDOR**: every UPDATE/DELETE includes `.eq('company_id', activeCompanyId)` (company-scoped tables). Never rely solely on RLS as the only guard — defence in depth. |
+| S2 | **Child table IDOR**: operations on tables without `company_id` (e.g. `journal_lines`, `licitacion_productos`, `sale_items`) must validate ownership via the parent row's `company_id` before mutating. |
 | S3 | **XSS via URLs**: any field that renders as an `<a href>` must be validated with `/^https?:\/\//i` before rendering. Never render `javascript:` or `data:` URLs. |
 | S4 | **Open redirect**: navigation targets derived from user input or URL params must be validated against an allowlist of internal routes. |
 | S5 | **Injection in AI prompts**: text sent to Groq or any LLM must be sanitized (strip control characters) and length-limited. Never concatenate raw user HTML into prompts. |
-| S6 | **RLS double-check**: any new Supabase table must have RLS enabled and at least one SELECT policy scoped to the authenticated user's company. |
+| S6 | **RLS double-check**: any new Supabase table must have RLS enabled and at least one policy scoped to the authenticated user's company. |
 | S7 | **Secrets**: `.env` values are never hardcoded. Edge function secrets go through Supabase Dashboard → Secrets, never in function source. |
 
 ### 4 · Code quality checklist — verify before every commit

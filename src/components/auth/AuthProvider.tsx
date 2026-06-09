@@ -9,6 +9,8 @@ interface AuthContextType {
   loading: boolean;
   mfaState: MfaState;
   mfaVerified: () => void;
+  isPasswordRecovery: boolean;
+  clearPasswordRecovery: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, invitationCode?: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -39,6 +41,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   // Start as 'checking' so the app never renders routes before MFA is resolved
   const [mfaState, setMfaState] = useState<MfaState>('checking');
+  // True when the user arrives via a password-reset email link.
+  // While true, the app renders the ResetPasswordForm instead of the main ERP.
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); setMfaState('idle'); return; }
@@ -52,6 +57,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (!session?.user) {
           setMfaState('idle');
+          setIsPasswordRecovery(false);
+          return;
+        }
+
+        // PASSWORD_RECOVERY: user clicked the reset-password email link.
+        // Flag the app to show the ResetPasswordForm instead of the main ERP.
+        if (event === 'PASSWORD_RECOVERY') {
+          setIsPasswordRecovery(true);
           return;
         }
 
@@ -118,6 +131,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setMfaState('verified');
   }
 
+  function clearPasswordRecovery() {
+    setIsPasswordRecovery(false);
+  }
+
   const signIn = async (email: string, password: string) => {
     if (!supabase) throw new Error('Supabase no disponible');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -145,7 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, mfaState, mfaVerified, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, loading, mfaState, mfaVerified, isPasswordRecovery, clearPasswordRecovery, signIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   );

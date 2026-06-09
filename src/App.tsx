@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/components/auth/AuthProvider";
 import { UserAccessProvider, useUserAccess } from "@/contexts/UserAccessContext";
 import { AuthForm } from "@/components/auth/AuthForm";
+import { ResetPasswordForm } from "@/components/auth/ResetPasswordForm";
 import { MfaVerifyModal } from "@/components/auth/MfaVerifyModal";
 import { AccountingProvider } from "@/accounting/AccountingProvider";
 import { NavigationHistoryProvider } from "@/contexts/NavigationHistoryContext";
@@ -109,7 +110,7 @@ function AppRoutes() {
 }
 
 function AppContent() {
-  const { user, loading, mfaState, mfaVerified, signOut } = useAuth();
+  const { user, loading, mfaState, mfaVerified, signOut, isPasswordRecovery } = useAuth();
 
   // Wait for auth AND mfa check before rendering anything
   if (loading || mfaState === 'checking') {
@@ -122,6 +123,11 @@ function AppContent() {
 
   if (!user) {
     return <AuthForm />;
+  }
+
+  // User arrived via a password-reset email link — show reset form before the ERP
+  if (isPasswordRecovery) {
+    return <ResetPasswordForm />;
   }
 
   // MFA enrolled but not yet verified this session — block all routes
