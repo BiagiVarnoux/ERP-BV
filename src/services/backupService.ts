@@ -52,19 +52,12 @@ async function verifyPayload(payload: string, signature: string, userId: string)
   }
 }
 
-/** Paginated SELECT * WHERE user_id = ? to bypass PostgREST 1000-row default limit. */
-async function fetchAllUserRows(table: string, userId: string): Promise<any[]> {
-  return await fetchAllPaginated<any>((from, to) =>
-    supabase.from(table as any).select('*').eq('user_id', userId).range(from, to)
-  );
-}
-
-/** Paginated journal_lines via inner join on journal_entries.user_id. */
-async function fetchAllJournalLines(userId: string): Promise<any[]> {
+/** Paginated journal_lines via inner join on journal_entries.company_id. */
+async function fetchAllJournalLines(companyId: string): Promise<any[]> {
   const rows = await fetchAllPaginated<any>((from, to) =>
     supabase.from('journal_lines')
-      .select('*, journal_entries!inner(user_id)')
-      .eq('journal_entries.user_id', userId)
+      .select('*, journal_entries!inner(company_id)')
+      .eq('journal_entries.company_id', companyId)
       .range(from, to)
   );
   return rows.map(({ journal_entries, ...line }: any) => line);
@@ -91,34 +84,34 @@ async function fetchAllCompanyRows(table: string, companyId: string): Promise<an
   );
 }
 
-/** Paginated sale_items via inner join on sales.user_id (no own user_id column). */
-async function fetchAllSaleItems(userId: string): Promise<any[]> {
+/** Paginated sale_items via inner join on sales.company_id. */
+async function fetchAllSaleItems(companyId: string): Promise<any[]> {
   const rows = await fetchAllPaginated<any>((from, to) =>
     supabase.from('sale_items')
-      .select('*, sales!inner(user_id)')
-      .eq('sales.user_id', userId)
+      .select('*, sales!inner(company_id)')
+      .eq('sales.company_id', companyId)
       .range(from, to)
   );
   return rows.map(({ sales, ...item }: any) => item);
 }
 
-/** Paginated licitacion_productos via inner join on licitaciones.user_id. */
-async function fetchAllLicitacionProductos(userId: string): Promise<any[]> {
+/** Paginated licitacion_productos via inner join on licitaciones.company_id. */
+async function fetchAllLicitacionProductos(companyId: string): Promise<any[]> {
   const rows = await fetchAllPaginated<any>((from, to) =>
     supabase.from('licitacion_productos')
-      .select('*, licitaciones!inner(user_id)')
-      .eq('licitaciones.user_id', userId)
+      .select('*, licitaciones!inner(company_id)')
+      .eq('licitaciones.company_id', companyId)
       .range(from, to)
   );
   return rows.map(({ licitaciones, ...row }: any) => row);
 }
 
-/** Paginated licitacion_documentos via inner join on licitaciones.user_id. */
-async function fetchAllLicitacionDocumentos(userId: string): Promise<any[]> {
+/** Paginated licitacion_documentos via inner join on licitaciones.company_id. */
+async function fetchAllLicitacionDocumentos(companyId: string): Promise<any[]> {
   const rows = await fetchAllPaginated<any>((from, to) =>
     supabase.from('licitacion_documentos')
-      .select('*, licitaciones!inner(user_id)')
-      .eq('licitaciones.user_id', userId)
+      .select('*, licitaciones!inner(company_id)')
+      .eq('licitaciones.company_id', companyId)
       .range(from, to)
   );
   return rows.map(({ licitaciones, ...row }: any) => row);
@@ -204,31 +197,31 @@ export async function createFullBackup(): Promise<BackupData> {
     licitacion_productos,
     licitacion_documentos,
   ] = await Promise.all([
-    fetchAllUserRows('accounts', user.id),
-    fetchAllUserRows('journal_entries', user.id),
-    fetchAllJournalLines(user.id),
-    fetchAllUserRows('auxiliary_ledger_definitions', user.id),
-    fetchAllUserRows('auxiliary_ledger', user.id),
-    fetchAllUserRows('auxiliary_movement_details', user.id),
-    fetchAllUserRows('kardex_definitions', user.id),
-    fetchAllUserRows('kardex_entries', user.id),
-    fetchAllUserRows('kardex_movements', user.id),
-    fetchAllUserRows('quarterly_closures', user.id),
-    fetchAllUserRows('products', user.id),
-    fetchAllUserRows('inventory_movements', user.id),
-    fetchAllUserRows('inventory_lots', user.id),
-    fetchAllUserRows('import_lots', user.id),
-    fetchAllUserRows('cost_sheets', user.id),
-    fetchAllUserRows('cost_sheet_cells', user.id),
-    fetchAllUserRows('report_settings', user.id),
-    fetchAllUserRows('shipments', user.id),
-    fetchAllUserRows('sales', user.id),
-    fetchAllSaleItems(user.id),
+    fetchAllCompanyRows('accounts', companyId),
+    fetchAllCompanyRows('journal_entries', companyId),
+    fetchAllJournalLines(companyId),
+    fetchAllCompanyRows('auxiliary_ledger_definitions', companyId),
+    fetchAllCompanyRows('auxiliary_ledger', companyId),
+    fetchAllCompanyRows('auxiliary_movement_details', companyId),
+    fetchAllCompanyRows('kardex_definitions', companyId),
+    fetchAllCompanyRows('kardex_entries', companyId),
+    fetchAllCompanyRows('kardex_movements', companyId),
+    fetchAllCompanyRows('quarterly_closures', companyId),
+    fetchAllCompanyRows('products', companyId),
+    fetchAllCompanyRows('inventory_movements', companyId),
+    fetchAllCompanyRows('inventory_lots', companyId),
+    fetchAllCompanyRows('import_lots', companyId),
+    fetchAllCompanyRows('cost_sheets', companyId),
+    fetchAllCompanyRows('cost_sheet_cells', companyId),
+    fetchAllCompanyRows('report_settings', companyId),
+    fetchAllCompanyRows('shipments', companyId),
+    fetchAllCompanyRows('sales', companyId),
+    fetchAllSaleItems(companyId),
     fetchAllCompanyRows('fiscal_years', companyId),
-    fetchAllUserRows('customers', user.id),
-    fetchAllUserRows('receivables', user.id),
-    fetchAllUserRows('payables', user.id),
-    fetchAllUserRows('debt_payments', user.id),
+    fetchAllCompanyRows('customers', companyId),
+    fetchAllCompanyRows('receivables', companyId),
+    fetchAllCompanyRows('payables', companyId),
+    fetchAllCompanyRows('debt_payments', companyId),
     // member_permissions: join a través de company_members; guarda _member_user_id
     // para poder remapear company_member_id correctamente al restaurar en otra cuenta.
     fetchAllPaginated<any>((from, to) =>
@@ -243,13 +236,13 @@ export async function createFullBackup(): Promise<BackupData> {
     fetchAllCompanyRows('company_module_config', companyId)
       .then(rows => rows.map(({ id: _id, ...r }) => r)),
     // v2.4: licitaciones
-    fetchAllUserRows('licitaciones', user.id),
-    fetchAllLicitacionProductos(user.id),
-    fetchAllLicitacionDocumentos(user.id),
+    fetchAllCompanyRows('licitaciones', companyId),
+    fetchAllLicitacionProductos(companyId),
+    fetchAllLicitacionDocumentos(companyId),
   ]);
 
   return {
-    version: '2.4',
+    version: '3.0',
     created_at: new Date().toISOString(),
     accounts,
     journal_entries,
@@ -311,9 +304,9 @@ export async function downloadBackup(data: BackupData): Promise<void> {
 
 // ─── Restore internals ────────────────────────────────────────────────────────
 
-/** Helper: delete all rows for a user in a table. Throws on DB error. */
-async function safeDelete(table: string, userId: string): Promise<void> {
-  const { error } = await (supabase.from(table as any) as any).delete().eq('user_id', userId);
+/** Helper: delete all rows for a company in a table. Throws on DB error. */
+async function safeDeleteCompany(table: string, companyId: string): Promise<void> {
+  const { error } = await (supabase.from(table as any) as any).delete().eq('company_id', companyId);
   if (error) throw new Error(`Error limpiando ${table}: ${error.message}`);
 }
 
@@ -372,59 +365,59 @@ async function _performRestoreInternal(
   if (fyDelError) throw new Error(`Error limpiando fiscal_years: ${fyDelError.message}`);
 
   // licitaciones → cascades to licitacion_productos + licitacion_documentos
-  await safeDelete('licitaciones', userId);
+  await safeDeleteCompany('licitaciones', companyId);
 
-  await safeDelete('shipments', userId);
-  await safeDelete('debt_payments', userId);
-  await safeDelete('receivables', userId);
-  await safeDelete('payables', userId);
-  await safeDelete('customers', userId);
+  await safeDeleteCompany('shipments', companyId);
+  await safeDeleteCompany('debt_payments', companyId);
+  await safeDeleteCompany('receivables', companyId);
+  await safeDeleteCompany('payables', companyId);
+  await safeDeleteCompany('customers', companyId);
 
-  // sale_items: no user_id — delete by matching sale IDs
-  const { data: userSaleIds } = await supabase
+  // sale_items: RLS via parent sales → delete by matching sale IDs of this company
+  const { data: companySaleIds } = await supabase
     .from('sales')
     .select('id')
-    .eq('user_id', userId);
-  if (userSaleIds && userSaleIds.length > 0) {
-    const saleIds = userSaleIds.map((s: any) => s.id);
+    .eq('company_id', companyId);
+  if (companySaleIds && companySaleIds.length > 0) {
+    const saleIds = companySaleIds.map((s: any) => s.id);
     const { error: saleItemsDelError } = await supabase
       .from('sale_items')
       .delete()
       .in('sale_id', saleIds);
     if (saleItemsDelError) throw new Error(`Error limpiando sale_items: ${saleItemsDelError.message}`);
   }
-  await safeDelete('sales', userId);
+  await safeDeleteCompany('sales', companyId);
 
-  await safeDelete('auxiliary_movement_details', userId);
-  await safeDelete('auxiliary_ledger', userId);
-  await safeDelete('auxiliary_ledger_definitions', userId);
-  await safeDelete('kardex_movements', userId);
-  await safeDelete('kardex_entries', userId);
-  await safeDelete('kardex_definitions', userId);
-  await safeDelete('quarterly_closures', userId);
-  await safeDelete('inventory_movements', userId);
-  await safeDelete('inventory_lots', userId);
-  await safeDelete('import_lots', userId);
-  await safeDelete('cost_sheet_cells', userId);
-  await safeDelete('cost_sheets', userId);
-  await safeDelete('products', userId);
-  await safeDelete('report_settings', userId);
+  await safeDeleteCompany('auxiliary_movement_details', companyId);
+  await safeDeleteCompany('auxiliary_ledger', companyId);
+  await safeDeleteCompany('auxiliary_ledger_definitions', companyId);
+  await safeDeleteCompany('kardex_movements', companyId);
+  await safeDeleteCompany('kardex_entries', companyId);
+  await safeDeleteCompany('kardex_definitions', companyId);
+  await safeDeleteCompany('quarterly_closures', companyId);
+  await safeDeleteCompany('inventory_movements', companyId);
+  await safeDeleteCompany('inventory_lots', companyId);
+  await safeDeleteCompany('import_lots', companyId);
+  await safeDeleteCompany('cost_sheet_cells', companyId);
+  await safeDeleteCompany('cost_sheets', companyId);
+  await safeDeleteCompany('products', companyId);
+  await safeDeleteCompany('report_settings', companyId);
 
-  // journal_lines: delete via entry_id IN (user's entries)
-  const { data: userEntryIds } = await supabase
+  // journal_lines: RLS via parent journal_entries → delete by matching entry IDs of this company
+  const { data: companyEntryIds } = await supabase
     .from('journal_entries')
     .select('id')
-    .eq('user_id', userId);
-  if (userEntryIds && userEntryIds.length > 0) {
-    const entryIds = userEntryIds.map((e: any) => e.id);
+    .eq('company_id', companyId);
+  if (companyEntryIds && companyEntryIds.length > 0) {
+    const entryIds = companyEntryIds.map((e: any) => e.id);
     const { error: linesDelError } = await supabase
       .from('journal_lines')
       .delete()
       .in('entry_id', entryIds);
     if (linesDelError) throw new Error(`Error limpiando journal_lines: ${linesDelError.message}`);
   }
-  await safeDelete('journal_entries', userId);
-  await safeDelete('accounts', userId);
+  await safeDeleteCompany('journal_entries', companyId);
+  await safeDeleteCompany('accounts', companyId);
 
   // ── 2. INSERT phase (forward dependency order) ────────────────────────────
 
