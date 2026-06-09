@@ -196,10 +196,14 @@ export default function UsersPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className="text-sm">
-                        {member.modules_with_view}
-                        <span className="text-muted-foreground"> / {member.modules_total}</span>
-                      </span>
+                      {member.role === 'owner' ? (
+                        <span className="text-sm text-muted-foreground italic">Acceso completo</span>
+                      ) : (
+                        <span className="text-sm">
+                          {member.modules_with_view}
+                          <span className="text-muted-foreground"> / {member.modules_total}</span>
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {new Date(member.joined_at).toLocaleDateString('es-BO')}
