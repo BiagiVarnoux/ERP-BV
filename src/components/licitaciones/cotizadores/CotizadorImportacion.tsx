@@ -15,7 +15,7 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { Plus, Trash2, ChevronDown, ChevronRight, ExternalLink, AlertTriangle, TrendingUp, TrendingDown, Download } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight, ExternalLink, AlertTriangle, TrendingUp, TrendingDown, Download, Weight, Box } from 'lucide-react';
 import { toast } from 'sonner';
 import { Licitacion, LicitacionProducto } from '@/accounting/licitacion-types';
 import { calcProducto, calcResumen, emptyProducto } from '@/accounting/licitacion-utils';
@@ -273,7 +273,7 @@ function ProductoRow({ producto: p, calc, expanded, onToggle, onChange, onRemove
               )}
             </div>
             <div className="text-xs text-muted-foreground">
-              Q: {p.cantidad} · USD {fmt(p.precio_usd)} · T/C {p.tc}
+              Q: {p.cantidad} · USD {fmt(p.precio_usd ?? 0)} · T/C {p.tc}
             </div>
           </div>
 
@@ -384,7 +384,7 @@ function ProductoForm({ producto: p, calc, onChange }: {
           </Field>
         </div>
 
-        {/* Dimensiones */}
+        {/* Dimensiones + Peso */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-3 mt-3">
           <Field label="M1 (cm)">
             <NumInput value={p.m1} onChange={n('m1')} min="0" step="0.1" />
@@ -395,15 +395,104 @@ function ProductoForm({ producto: p, calc, onChange }: {
           <Field label="M3 (cm)">
             <NumInput value={p.m3} onChange={n('m3')} min="0" step="0.1" />
           </Field>
+          <Field label="Peso bruto (kg)" hint="alternativo al volumétrico">
+            <NumInput value={p.peso_bruto} onChange={n('peso_bruto')} min="0" step="0.001" />
+          </Field>
           <Field label="Tarifa envío (USD/kg)">
             <NumInput value={p.tarifa_envio} onChange={n('tarifa_envio')} min="0" step="0.5" />
           </Field>
           <Field label="Tarifa manipuleo (Bs/kg)">
             <NumInput value={p.tarifa_manipuleo} onChange={n('tarifa_manipuleo')} min="0" step="0.5" />
           </Field>
-          <Field label="HS Code">
+        </div>
+
+        {/* Toggle peso para flete + HS Code + overrides GA/IVA */}
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-3 mt-3">
+
+          {/* Toggle peso volumétrico / bruto */}
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Peso para flete</label>
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant={!p.usa_peso_bruto ? 'default' : 'outline'}
+                className="h-7 text-xs px-2 gap-1"
+                onClick={() => onChange({ usa_peso_bruto: false })}
+              >
+                <Box className="h-3 w-3" />
+                Vol.{calc.peso_vol > 0 ? ` (${calc.peso_vol} kg)` : ''}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={p.usa_peso_bruto ? 'default' : 'outline'}
+                className="h-7 text-xs px-2 gap-1"
+                onClick={() => onChange({ usa_peso_bruto: true })}
+              >
+                <Weight className="h-3 w-3" />
+                Bruto{p.peso_bruto ? ` (${p.peso_bruto} kg)` : ''}
+              </Button>
+            </div>
+          </div>
+
+          {/* HS Code */}
+          <div className="space-y-1 w-28">
+            <label className="text-xs text-muted-foreground">HS Code</label>
             <Input className="h-7 text-xs" value={p.hs_code || ''} onChange={s('hs_code')} placeholder="0000.00" />
-          </Field>
+          </div>
+
+          {/* GA manual override */}
+          <div className="space-y-1">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={p.usa_ga_manual}
+                onChange={e => onChange({ usa_ga_manual: e.target.checked })}
+                className="rounded"
+              />
+              GA manual (Bs/unidad)
+            </label>
+            {p.usa_ga_manual && (
+              <NumInput
+                value={p.ga_manual}
+                onChange={n('ga_manual')}
+                min="0"
+                step="0.01"
+                placeholder={`auto: ${fmt(calc.ga_calculado)}`}
+                className="w-28"
+              />
+            )}
+            {!p.usa_ga_manual && (
+              <p className="text-[10px] text-muted-foreground">Auto: Bs {fmt(calc.ga_calculado)}</p>
+            )}
+          </div>
+
+          {/* IVA aduana manual override */}
+          <div className="space-y-1">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={p.usa_iva_manual}
+                onChange={e => onChange({ usa_iva_manual: e.target.checked })}
+                className="rounded"
+              />
+              IVA aduana manual (Bs/unidad)
+            </label>
+            {p.usa_iva_manual && (
+              <NumInput
+                value={p.iva_aduana_manual}
+                onChange={n('iva_aduana_manual')}
+                min="0"
+                step="0.01"
+                placeholder={`auto: ${fmt(calc.iva_aduana_calculado)}`}
+                className="w-28"
+              />
+            )}
+            {!p.usa_iva_manual && (
+              <p className="text-[10px] text-muted-foreground">Auto: Bs {fmt(calc.iva_aduana_calculado)}</p>
+            )}
+          </div>
         </div>
 
         {/* Batería */}
@@ -430,10 +519,28 @@ function ProductoForm({ producto: p, calc, onChange }: {
         {[
           { label: 'Precio Bs',   value: calc.precio_bs,       hint: '(USD + tax) × T/C' },
           { label: 'Precio BOB',  value: calc.precio_bob,      hint: 'USD × 6.97 (oficial)' },
-          { label: 'Peso vol.',   value: calc.peso,            hint: 'kg' },
+          {
+            label: p.usa_peso_bruto ? 'Peso bruto' : 'Peso vol.',
+            value: calc.peso,
+            hint: p.usa_peso_bruto
+              ? `kg bruto (vol. = ${calc.peso_vol} kg)`
+              : 'kg volumétrico — (M1×M2×M3)/5000',
+          },
           { label: 'Envío',       value: calc.envio,           hint: 'Bs/unidad' },
-          { label: 'GA',          value: calc.ga,              hint: 'Bs/unidad' },
-          { label: 'IVA aduana',  value: calc.iva_aduana,      hint: 'Bs/unidad' },
+          {
+            label: p.usa_ga_manual ? 'GA (manual)' : 'GA',
+            value: calc.ga,
+            hint: p.usa_ga_manual
+              ? `Bs/unidad manual (auto = ${fmt(calc.ga_calculado)})`
+              : 'Bs/unidad — calculado',
+          },
+          {
+            label: p.usa_iva_manual ? 'IVA aduana (manual)' : 'IVA aduana',
+            value: calc.iva_aduana,
+            hint: p.usa_iva_manual
+              ? `Bs/unidad manual (auto = ${fmt(calc.iva_aduana_calculado)})`
+              : 'Bs/unidad — calculado',
+          },
           { label: 'Manipuleo',   value: calc.manipuleo,       hint: 'Bs/unidad' },
           { label: 'Costo unit.', value: calc.total_individual, hint: 'Bs — total importación/unidad', bold: true },
         ].map(({ label, value, hint, bold }) => (

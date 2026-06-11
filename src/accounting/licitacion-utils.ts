@@ -23,26 +23,39 @@ export function calcProducto(p: LicitacionProducto): ProductoCalc {
   const tcEnvio  = p.tc_envio ?? tc;
   const cantidad = p.cantidad || 1;
 
+  const precioUsd = p.precio_usd ?? 0;
+
   // — Costo de compra en Bs (con tax del proveedor) —
-  const precio_bs  = round2((p.precio_usd * (1 + p.tax_pct / 100)) * tc);
+  const precio_bs  = round2((precioUsd * (1 + p.tax_pct / 100)) * tc);
 
   // — Precio BOB a tipo de cambio oficial (base para tributos aduaneros) —
-  const precio_bob = round2(p.precio_usd * TC_OFICIAL);
+  const precio_bob = round2(precioUsd * TC_OFICIAL);
 
-  // — Peso volumétrico (kg) —
-  const peso = p.m1 && p.m2 && p.m3
+  // — Peso volumétrico (kg) — siempre calculado para referencia —
+  const peso_vol = p.m1 && p.m2 && p.m3
     ? round6((p.m1 * p.m2 * p.m3) / 5000)
     : 0;
+
+  // — Peso efectivo: bruto (manual) o volumétrico según toggle —
+  const peso = (p.usa_peso_bruto && p.peso_bruto)
+    ? round6(p.peso_bruto)
+    : peso_vol;
 
   // — Envío por unidad: peso × tarifa_envio_USD × tc_envio —
   const envio = round2(peso * (p.tarifa_envio || 0) * tcEnvio);
 
   // — GA (Gravamen Arancelario): (PRECIO_BOB + ENVÍO + PRECIO_BOB×2%) × ga% —
-  const ga_base = precio_bob + envio + precio_bob * GA_CIF_EXTRA;
-  const ga      = round2(ga_base * (p.ga_pct / 100));
+  const ga_base      = precio_bob + envio + precio_bob * GA_CIF_EXTRA;
+  const ga_calculado = round2(ga_base * (p.ga_pct / 100));
+  const ga           = (p.usa_ga_manual && p.ga_manual != null)
+    ? round2(p.ga_manual)
+    : ga_calculado;
 
   // — IVA aduanero: (PRECIO_BOB + GA) × 14.94% —
-  const iva_aduana = round2((precio_bob + ga) * IVA_ADUANA_RATE);
+  const iva_aduana_calculado = round2((precio_bob + ga) * IVA_ADUANA_RATE);
+  const iva_aduana           = (p.usa_iva_manual && p.iva_aduana_manual != null)
+    ? round2(p.iva_aduana_manual)
+    : iva_aduana_calculado;
 
   const impuestos = round2(ga + iva_aduana);
 
@@ -89,9 +102,12 @@ export function calcProducto(p: LicitacionProducto): ProductoCalc {
   return {
     precio_bs,
     precio_bob,
+    peso_vol,
     peso,
     envio,
+    ga_calculado,
     ga,
+    iva_aduana_calculado,
     iva_aduana,
     impuestos,
     manipuleo,
@@ -164,9 +180,15 @@ export function emptyProducto(licitacion_id: string, orden: number): LicitacionP
     m1:              undefined,
     m2:              undefined,
     m3:              undefined,
+    peso_bruto:      undefined,
+    usa_peso_bruto:  false,
     tarifa_envio:    12,
     tarifa_manipuleo: 25,
     ga_pct:          5,
+    ga_manual:       undefined,
+    usa_ga_manual:   false,
+    iva_aduana_manual: undefined,
+    usa_iva_manual:  false,
     tiene_bateria:   false,
     costo_bateria:   0,
     precio_ofertado: 0,

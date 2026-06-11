@@ -124,12 +124,22 @@ export interface LicitacionProducto {
   m2?: number;
   m3?: number;
 
+  // Peso bruto (alternativa al volumétrico para el cálculo de flete)
+  peso_bruto?: number;      // kg — ingresado manualmente
+  usa_peso_bruto: boolean;  // true = usar peso_bruto; false = usar peso volumétrico
+
   // Tarifas (varían por importación)
   tarifa_envio: number;    // USD/kg tarifa aérea
   tarifa_manipuleo: number; // Bs/kg manipuleo
 
   // Tributos aduaneros
-  ga_pct: number;          // % gravamen arancelario (ej: 5)
+  ga_pct: number;           // % gravamen arancelario (ej: 5)
+  ga_manual?: number;       // GA en Bs/unidad (override manual del calculado)
+  usa_ga_manual: boolean;   // true = usar ga_manual
+
+  // Override de IVA aduana
+  iva_aduana_manual?: number;  // IVA aduana en Bs/unidad (override manual)
+  usa_iva_manual: boolean;     // true = usar iva_aduana_manual
 
   // Batería
   tiene_bateria: boolean;
@@ -200,10 +210,13 @@ export interface ProductoCalc {
   // Costos unitarios de importación
   precio_bs: number;           // (precio_usd + tax) × tc
   precio_bob: number;          // precio_usd × 6.97 (para tributos aduaneros)
-  peso: number;                // (m1×m2×m3) / 5000
+  peso_vol: number;            // (m1×m2×m3) / 5000 — siempre calculado para referencia
+  peso: number;                // peso efectivo usado (volumétrico o bruto)
   envio: number;               // peso × tarifa_envio × tc_envio
-  ga: number;                  // (precio_bob + envio + precio_bob×2%) × ga_pct%
-  iva_aduana: number;          // (precio_bob + ga) × 14.94%
+  ga_calculado: number;        // GA auto-calculado (para mostrar como referencia al usar override)
+  ga: number;                  // GA efectivo (calculado o manual)
+  iva_aduana_calculado: number; // IVA aduana auto-calculado (para referencia)
+  iva_aduana: number;          // IVA aduana efectivo (calculado o manual)
   impuestos: number;           // ga + iva_aduana
   manipuleo: number;           // peso × tarifa_manipuleo
   bateria: number;             // costo_bateria si tiene_bateria, si no 0
