@@ -3,11 +3,12 @@
 
 import React, { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Paperclip, Upload, Trash2, FileText, Image, Download, Loader2 } from 'lucide-react';
+import { Paperclip, Trash2, FileText, Image, Download, Loader2, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { ShipmentFile } from '@/accounting/shipment-types';
 import { todayISO } from '@/accounting/utils';
+import { FilePreviewModal, isPreviewable } from '@/components/shared/FilePreviewModal';
 
 const BUCKET = 'shipment-docs';
 
@@ -40,6 +41,8 @@ export function FileAttachments({ storagePath, files, onChange, disabled, label 
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ url: string; name: string } | null>(null);
+  const [previewing, setPreviewing] = useState<string | null>(null); // file id loading preview
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -68,6 +71,19 @@ export function FileAttachments({ storagePath, files, onChange, disabled, label 
       toast.error(`Error al subir archivo: ${err.message}`);
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handlePreview(f: ShipmentFile) {
+    setPreviewing(f.id);
+    try {
+      const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(f.path, 3600);
+      if (error) throw error;
+      setPreview({ url: data.signedUrl, name: f.name });
+    } catch (err: any) {
+      toast.error(`Error al obtener vista previa: ${err.message}`);
+    } finally {
+      setPreviewing(null);
     }
   }
 
@@ -116,6 +132,20 @@ export function FileAttachments({ storagePath, files, onChange, disabled, label 
           <span className="truncate flex-1" title={f.name}>{f.name}</span>
           {!compact && f.size && (
             <span className="text-muted-foreground shrink-0">{formatSize(f.size)}</span>
+          )}
+          {isPreviewable(f.name) && (
+            <button
+              type="button"
+              onClick={() => handlePreview(f)}
+              disabled={previewing === f.id}
+              className="text-muted-foreground hover:text-foreground shrink-0"
+              title="Ver"
+            >
+              {previewing === f.id
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <Eye className="w-3 h-3" />
+              }
+            </button>
           )}
           <button
             type="button"
@@ -167,6 +197,20 @@ export function FileAttachments({ storagePath, files, onChange, disabled, label 
             {uploading ? 'Subiendo…' : label}
           </Button>
         </>
+      )}
+
+      {/* Visor de archivos */}
+      {preview && (
+        <FilePreviewModal
+          open={!!preview}
+          onClose={() => setPreview(null)}
+          fileName={preview.name}
+          url={preview.url}
+          onDownload={() => {
+            const f = files.find(x => x.name === preview.name);
+            if (f) handleDownload(f);
+          }}
+        />
       )}
     </div>
   );

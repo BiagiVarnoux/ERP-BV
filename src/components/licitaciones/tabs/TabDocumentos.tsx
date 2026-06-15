@@ -8,7 +8,7 @@ import {
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Upload, Trash2, Download, FileText, FolderOpen, Sparkles } from 'lucide-react';
+import { Upload, Trash2, Download, FileText, FolderOpen, Sparkles, Eye, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Licitacion, LicitacionDoc, DocCategoria,
@@ -16,6 +16,7 @@ import {
 } from '@/accounting/licitacion-types';
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
 import { DbcAnalyzerDialog } from '../DbcAnalyzerDialog';
+import { FilePreviewModal, isPreviewable } from '@/components/shared/FilePreviewModal';
 
 interface Props {
   licitacion: Licitacion;
@@ -29,6 +30,8 @@ export function TabDocumentos({ licitacion, onReload, onUpdated }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<LicitacionDoc | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dbcDialogOpen, setDbcDialogOpen] = useState(false);
+  const [preview, setPreview] = useState<{ url: string; doc: LicitacionDoc } | null>(null);
+  const [previewing, setPreviewing] = useState<string | null>(null); // doc id loading preview
   const fileRef = useRef<HTMLInputElement>(null);
   const dragCounter = useRef(0); // cuenta entradas/salidas de drag para evitar flicker
 
@@ -105,6 +108,18 @@ export function TabDocumentos({ licitacion, onReload, onUpdated }: Props) {
       toast.error('Error al eliminar');
     } finally {
       setDeleteTarget(null);
+    }
+  };
+
+  const handlePreview = async (doc: LicitacionDoc) => {
+    setPreviewing(doc.id);
+    try {
+      const url = await LicitacionStorage.getDocUrl(doc.path);
+      setPreview({ url, doc });
+    } catch {
+      toast.error('Error al obtener vista previa');
+    } finally {
+      setPreviewing(null);
     }
   };
 
@@ -203,6 +218,8 @@ export function TabDocumentos({ licitacion, onReload, onUpdated }: Props) {
                 key={cat}
                 categoria={cat}
                 docs={docs}
+                onPreview={handlePreview}
+                previewing={previewing}
                 onDownload={handleDownload}
                 onDelete={setDeleteTarget}
               />
@@ -239,6 +256,17 @@ export function TabDocumentos({ licitacion, onReload, onUpdated }: Props) {
         licitacion={licitacion}
         onUpdated={onUpdated}
       />
+
+      {/* Visor de archivos */}
+      {preview && (
+        <FilePreviewModal
+          open={!!preview}
+          onClose={() => setPreview(null)}
+          fileName={preview.doc.nombre}
+          url={preview.url}
+          onDownload={() => handleDownload(preview.doc)}
+        />
+      )}
     </div>
   );
 }
@@ -269,9 +297,11 @@ function DropZoneVacia({ categoria, onClickUpload, uploading }: {
 
 // ─── Carpeta por categoría ─────────────────────────────────────────────────────
 
-function CarpetaCategoria({ categoria, docs, onDownload, onDelete }: {
+function CarpetaCategoria({ categoria, docs, onPreview, previewing, onDownload, onDelete }: {
   categoria: DocCategoria;
   docs: LicitacionDoc[];
+  onPreview: (d: LicitacionDoc) => void;
+  previewing: string | null;
   onDownload: (d: LicitacionDoc) => void;
   onDelete: (d: LicitacionDoc) => void;
 }) {
@@ -302,7 +332,22 @@ function CarpetaCategoria({ categoria, docs, onDownload, onDelete }: {
                 {new Date(doc.uploaded_at).toLocaleDateString('es-BO', { timeZone: 'America/La_Paz' })}
               </p>
             </div>
-            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => onDownload(doc)}>
+            {isPreviewable(doc.nombre) && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={() => onPreview(doc)}
+                title="Ver archivo"
+                disabled={previewing === doc.id}
+              >
+                {previewing === doc.id
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Eye className="h-3.5 w-3.5" />
+                }
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => onDownload(doc)} title="Descargar">
               <Download className="h-3.5 w-3.5" />
             </Button>
             <Button
