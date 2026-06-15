@@ -38,8 +38,10 @@ export function FilePreviewModal({ open, onClose, fileName, url, onDownload, loa
     setFetchingBlob(true);
     setBlobUrl(null);
     fetch(url)
-      .then(r => r.blob())
-      .then(blob => {
+      .then(r => r.arrayBuffer())
+      .then(buf => {
+        // Forzar el MIME type correcto — sin esto el navegador no reconoce el blob como PDF
+        const blob = new Blob([buf], { type: 'application/pdf' });
         if (!revoked) setBlobUrl(URL.createObjectURL(blob));
       })
       .catch(() => {
@@ -99,11 +101,21 @@ export function FilePreviewModal({ open, onClose, fileName, url, onDownload, loa
           )}
 
           {!isLoading && type === 'pdf' && blobUrl && (
-            <iframe
-              src={blobUrl}
-              className="w-full h-full border-0"
-              title={fileName}
-            />
+            <object
+              data={blobUrl}
+              type="application/pdf"
+              className="w-full h-full"
+            >
+              {/* Fallback si el navegador no soporta object+PDF */}
+              <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground px-8 text-center">
+                <FileText className="h-16 w-16 opacity-15" />
+                <p className="font-medium">Tu navegador no puede mostrar el PDF aquí</p>
+                <Button onClick={onDownload} className="gap-2 mt-2">
+                  <Download className="h-4 w-4" />
+                  Descargar archivo
+                </Button>
+              </div>
+            </object>
           )}
 
           {!isLoading && type === 'pdf' && !blobUrl && (
