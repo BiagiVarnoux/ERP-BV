@@ -1182,6 +1182,7 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
   const allCategories = getAllCategories();
   const activeCompanyId = useActiveCompanyId();
   const [editingProduct, setEditingProduct] = useState<ShipmentProduct | null>(null);
+  const [viewFilesProduct, setViewFilesProduct] = useState<ShipmentProduct | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
 
@@ -1277,9 +1278,15 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
                     <Badge variant="outline" className="ml-1 text-[10px]">🔋 bat.</Badge>
                   )}
                   {(p.archivos?.length ?? 0) > 0 && (
-                    <Badge variant="secondary" className="ml-1 text-[10px]">
-                      📎 {p.archivos!.length}
-                    </Badge>
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); setViewFilesProduct(p); }}
+                      title="Ver archivos adjuntos"
+                    >
+                      <Badge variant="secondary" className="ml-1 text-[10px] cursor-pointer hover:bg-secondary/80">
+                        📎 {p.archivos!.length}
+                      </Badge>
+                    </button>
                   )}
                   {p.especificacion && (
                     <div className="text-xs text-muted-foreground mt-0.5">{p.especificacion}</div>
@@ -1327,6 +1334,26 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
           onSave={saveProduct}
           onCancel={() => setEditingProduct(null)}
         />
+      )}
+
+      {viewFilesProduct && (
+        <Dialog open onOpenChange={open => { if (!open) setViewFilesProduct(null); }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="text-base">
+                Archivos adjuntos — {viewFilesProduct.nombre}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="pt-1">
+              <FileAttachments
+                storagePath={`${activeCompanyId}/${s.id}/productos/${viewFilesProduct.id}`}
+                files={viewFilesProduct.archivos ?? []}
+                onChange={() => {}}
+                disabled
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </>
   );
