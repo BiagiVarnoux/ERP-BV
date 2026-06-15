@@ -476,7 +476,17 @@ async function _performRestoreInternal(
     await chunkedInsert('cost_sheet_cells', backup.cost_sheet_cells.map(c => ({ ...c, user_id: userId })));
   }
   if (backup.report_settings?.length) {
-    await chunkedInsert('report_settings', backup.report_settings.map(s => ({ ...s, user_id: userId })));
+    // report_settings: una fila por empresa (UNIQUE company_id).
+    // Si el backup tiene varias filas (de diferentes usuarios del mismo equipo),
+    // nos quedamos con la más recientemente actualizada.
+    const sorted = [...backup.report_settings].sort(
+      (a, b) => new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime()
+    );
+    const row = { ...sorted[0], user_id: userId };
+    const { error: rsErr } = await supabase
+      .from('report_settings')
+      .upsert([row], { onConflict: 'company_id' });
+    if (rsErr) throw new Error(`Error insertando en report_settings: ${rsErr.message}`);
   }
 
   if (backup.shipments?.length) {

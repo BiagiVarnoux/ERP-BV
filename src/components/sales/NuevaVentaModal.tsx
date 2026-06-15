@@ -113,7 +113,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
 
       const ids = prods.map(p => p.id);
       const [sm, sp] = await Promise.all([
-        fetchProductsStockBatch(ids),
+        fetchProductsStockBatch(ids, activeCompanyId),
         fetchLastPricesByCanal(ids, canal),
       ]);
       setStockMap(sm);

@@ -7,16 +7,14 @@ import type { Canal, ProductStockInfo } from './types';
  * Retorna un mapa product_id → ProductStockInfo para acceso O(1).
  */
 export async function fetchProductsStockBatch(
-  productIds: string[]
+  productIds: string[],
+  companyId: string
 ): Promise<Record<string, ProductStockInfo>> {
   if (productIds.length === 0) return {};
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('No autenticado');
-
   const { data, error } = await supabase.rpc('get_products_stock_batch', {
     p_product_ids: productIds,
-    p_user_id: user.id,
+    p_company_id: companyId,
   });
 
   if (error) throw new Error(error.message);
