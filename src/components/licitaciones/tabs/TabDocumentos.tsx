@@ -112,10 +112,17 @@ export function TabDocumentos({ licitacion, onReload, onUpdated }: Props) {
   };
 
   const handlePreview = async (doc: LicitacionDoc) => {
+    const ext = doc.nombre.split('.').pop()?.toLowerCase();
     setPreviewing(doc.id);
     try {
       const url = await LicitacionStorage.getDocUrl(doc.path);
-      setPreview({ url, doc });
+      if (ext === 'pdf') {
+        // Los navegadores modernos no permiten embeber PDFs de origen externo.
+        // La URL firmada de Supabase abre el PDF en el visor nativo del navegador.
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } else {
+        setPreview({ url, doc });
+      }
     } catch {
       toast.error('Error al obtener vista previa');
     } finally {

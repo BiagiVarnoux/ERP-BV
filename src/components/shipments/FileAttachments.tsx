@@ -75,13 +75,20 @@ export function FileAttachments({ storagePath, files, onChange, disabled, label 
   }
 
   async function handlePreview(f: ShipmentFile) {
+    const ext = f.name.split('.').pop()?.toLowerCase();
     setPreviewing(f.id);
     try {
       const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(f.path, 3600);
       if (error) throw error;
-      setPreview({ url: data.signedUrl, name: f.name });
+      if (ext === 'pdf') {
+        // Los navegadores modernos no permiten embeber PDFs de origen externo.
+        // La URL firmada de Supabase abre el PDF directamente en el visor nativo del navegador.
+        window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        setPreview({ url: data.signedUrl, name: f.name });
+      }
     } catch (err: any) {
-      toast.error(`Error al obtener vista previa: ${err.message}`);
+      toast.error(`Error al abrir el archivo: ${err.message}`);
     } finally {
       setPreviewing(null);
     }
