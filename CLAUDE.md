@@ -357,10 +357,21 @@ CREATE POLICY "company_member_all" ON public.<table>
 - [ ] Add `company_id uuid NOT NULL REFERENCES companies(id)` (or inherit via parent FK).
 - [ ] Enable RLS: `ALTER TABLE public.<table> ENABLE ROW LEVEL SECURITY;`
 - [ ] Create `company_member_all` policy using the standard pattern above.
+- [ ] If the table has a UNIQUE constraint, it must be on `company_id` or compound with it — never on `user_id` alone.
 - [ ] Add to `backupService.ts`: fetch helper + `BackupData` field + `Promise.all` entry + delete block (FK order) + insert block.
+  - If the table has a UNIQUE constraint: use `upsert` with `onConflict` in the restore block, not `chunkedInsert`.
 - [ ] Add to `validateBackupFile()` `optionalArrays` list.
 - [ ] Client mutations: include `.eq('company_id', activeCompanyId)` on every UPDATE/DELETE.
 - [ ] Run `tsc --noEmit` and `npm run lint` — zero errors.
+
+### Adding or modifying a Supabase RPC
+
+- [ ] Data scope parameter must be `p_company_id uuid` — never `p_user_id uuid`.
+- [ ] The SQL body must include `WHERE company_id = p_company_id` (or join via a parent table that has `company_id`).
+- [ ] Use `SECURITY DEFINER SET search_path = 'public'`. Because SECURITY DEFINER bypasses RLS, the WHERE clause is the only access guard — it must be explicit.
+- [ ] To rename a parameter (e.g. from `p_user_id` to `p_company_id`), you must `DROP FUNCTION` first — PostgreSQL does not allow renaming params via `CREATE OR REPLACE`.
+- [ ] The TypeScript caller must pass `p_company_id: activeCompanyId` (from `useActiveCompanyId()`), not `p_user_id: user.id`.
+- [ ] Run `tsc --noEmit` — zero errors required.
 
 ### Adding a new module/page
 
@@ -432,6 +443,7 @@ The system is structured as a **Holding with multiple companies underneath**.
 - RLS policies must filter by `company_id` (or by `user_id` via a join to a table that has `company_id`). A policy that only filters by `user_id` without respecting company scope is a bug.
 - When a user switches companies (`switchCompany`), all module data must reload for the new company. Do not cache cross-company data.
 - Config tables (e.g. `company_module_config`) are always keyed by `company_id`, never globally.
+- **`user_id` is authentication context only.** In this multi-company app, `user_id` identifies who is logged in — it does NOT identify who owns the data. Data belongs to companies, not users. Never use `user_id` as a filter column in queries, RPCs, or UNIQUE constraints on business data tables (`sales`, `products`, `inventory_movements`, `report_settings`, etc.). The correct scope filter is always `company_id`. This bug is silent: it works perfectly for the owner (who created all the data), and silently breaks for every other member of the company.
 
 ### 2 · Backup coverage
 
@@ -443,6 +455,8 @@ The system is structured as a **Holding with multiple companies underneath**.
 - Tables that are scoped by `company_id` instead of `user_id` use `fetchAllCompanyRows()`.
 - After adding backup support, update `validateBackupFile()` to list the new field in `optionalArrays`.
 - Storage bucket files (binaries) are not included in the JSON backup — document this as a known limitation in a comment.
+- **UNIQUE constraints and restore**: if a table has a UNIQUE constraint, the restore block must use `upsert` with `onConflict: '<column>'` instead of `chunkedInsert`. Plain insert fails when re-restoring or when a backup contains multiple rows. The constraint itself must be on `company_id` (or compound with it) — a UNIQUE on `user_id` alone is always wrong in a multi-user company (two members restoring would collide), and must be corrected before writing the restore block.
+- **FK ordering in restore**: always delete child tables before parent tables in the delete block, and insert parent tables before child tables in the insert block. Getting this wrong causes FK constraint errors during restore.
 
 ### 3 · Security checklist — verify before every commit
 
@@ -457,6 +471,7 @@ Run through this list mentally before finishing any change. Flag issues in code 
 | S5 | **Injection in AI prompts**: text sent to Groq or any LLM must be sanitized (strip control characters) and length-limited. Never concatenate raw user HTML into prompts. |
 | S6 | **RLS double-check**: any new Supabase table must have RLS enabled and at least one policy scoped to the authenticated user's company. |
 | S7 | **Secrets**: `.env` values are never hardcoded. Edge function secrets go through Supabase Dashboard → Secrets, never in function source. |
+| S8 | **RPC scope**: every Supabase RPC that reads or aggregates business data must accept `p_company_id uuid` and filter with `WHERE company_id = p_company_id`. Never accept `p_user_id` for data filtering. `SECURITY DEFINER` functions bypass RLS entirely — the WHERE clause in the SQL body is the only guard, so it must be explicit and correct. |
 
 ### 4 · Code quality checklist — verify before every commit
 
@@ -468,6 +483,7 @@ Run through this list mentally before finishing any change. Flag issues in code 
 | Q4 | New paginated queries use `fetchAllPaginated()` — never assume PostgREST returns all rows without pagination. |
 | Q5 | React components that accept URLs from user data validate the URL before rendering links (see S3). |
 | Q6 | No dead imports or unused variables (ESLint will catch most of these; run `npm run lint` if in doubt). |
+| Q7 | **Non-owner user test**: any feature that touches data queries, RPCs, or permissions must be manually verified with a non-owner company member account — not just the owner. The most common silent failure is filtering by `user_id` instead of `company_id`: everything works for the owner, nothing works for everyone else. |
 
 ### 5 · When to skip these rules
 
