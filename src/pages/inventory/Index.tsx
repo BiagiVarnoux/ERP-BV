@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Package, Eye, Plus, Pencil, Layers, Archive, PackageX, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react';
+import { condicionLabel } from '@/accounting/product-condicion';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAccounting } from '@/accounting/AccountingProvider';
@@ -263,6 +264,7 @@ export default function InventoryPage() {
                     <TableRow>
                       <TableHead>Código</TableHead>
                       <TableHead>Nombre</TableHead>
+                      <TableHead>Condición</TableHead>
                       <TableHead className="text-right">Saldo</TableHead>
                       <TableHead className="text-right">C.U. CPP</TableHead>
                       <TableHead className="text-right">Valor Total</TableHead>
@@ -275,12 +277,19 @@ export default function InventoryPage() {
                       const s = getProductState(p.id);
                       return (
                         <TableRow key={p.id}>
-                          <TableCell><Badge variant="outline">{p.codigo}</Badge></TableCell>
+                          <TableCell><Badge variant="outline" className="font-mono text-xs">{p.codigo}</Badge></TableCell>
                           <TableCell>
                             <span>{p.nombre}</span>
                             {p.especificacion && (
                               <div className="text-xs text-muted-foreground mt-0.5">{p.especificacion}</div>
                             )}
+                          </TableCell>
+                          <TableCell>
+                            {p.condicion ? (
+                              <Badge variant="secondary" className="text-xs whitespace-nowrap">
+                                {condicionLabel(p.condicion)}
+                              </Badge>
+                            ) : <span className="text-xs text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell className="text-right">{s.saldo} {p.unidad_medida}</TableCell>
                           <TableCell className="text-right">Bs {fmt(s.costoUnitario)}</TableCell>

@@ -17,12 +17,26 @@ import { fmt, round2 } from '@/accounting/utils';
 import type { Shipment, ShipmentProduct } from '@/accounting/shipment-types';
 import type { CostoDetalle } from '@/accounting/shipment-utils';
 import { getAllCategories } from '@/accounting/shipment-utils';
+import { RefreshCw } from 'lucide-react';
+import {
+  CONDICION_OPTIONS,
+  TIPO_INVENTARIO_OPTIONS,
+} from '@/accounting/product-condicion';
+import { type ProductCategory, fetchNextSkuSequence, buildSku } from '@/components/inventory/NewProductModal';
 
 export interface ProductLink {
   shipmentProductId: string;
   productId: string;        // existing product UUID or '' for new
   isNew: boolean;
-  newProductData?: { nombre: string; codigo: string; cuenta_inventario_id: string; especificacion?: string };
+  newProductData?: {
+    nombre: string;
+    codigo: string;
+    cuenta_inventario_id: string;
+    especificacion?: string;
+    condicion?: string;
+    category_id?: string;
+    tipo_inventario?: string;
+  };
 }
 
 export interface JournalPreview {
@@ -51,6 +65,8 @@ export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCanc
   const [tab, setTab] = useState<'link' | 'preview'>('link');
   const [links, setLinks] = useState<ProductLink[]>([]);
   const [supaProducts, setSupaProducts] = useState<SupaProduct[]>([]);
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [generatingSku, setGeneratingSku] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [memos, setMemos] = useState<string[]>([]);
 
@@ -67,14 +83,22 @@ export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCanc
   }, [isOpen]);
 
   async function loadProducts() {
-    const { data } = await supabase
-      .from('products')
-      .select('id, nombre, codigo, cuenta_inventario_id')
-      .eq('company_id', activeCompanyId)
-      .eq('status', 'activo');
+    const [prodsRes, catsRes] = await Promise.all([
+      supabase
+        .from('products')
+        .select('id, nombre, codigo, cuenta_inventario_id')
+        .eq('company_id', activeCompanyId)
+        .eq('status', 'activo'),
+      supabase
+        .from('product_categories')
+        .select('id, company_id, nombre, codigo')
+        .eq('company_id', activeCompanyId)
+        .order('nombre'),
+    ]);
 
-    const prods = (data ?? []) as SupaProduct[];
+    const prods = (prodsRes.data ?? []) as SupaProduct[];
     setSupaProducts(prods);
+    setCategories((catsRes.data ?? []) as ProductCategory[]);
 
     // Auto-match by name
     const autoLinks: ProductLink[] = shipment.products.map(sp => {
@@ -91,6 +115,9 @@ export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCanc
           codigo: '',
           cuenta_inventario_id: '',
           especificacion: sp.especificacion ?? '',
+          condicion: sp.condicion ?? 'nuevo',
+          category_id: '',
+          tipo_inventario: 'electronica',
         } : undefined,
       };
     });
@@ -120,6 +147,24 @@ export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCanc
       });
     } else {
       updateLink(spId, { productId: value, isNew: false, newProductData: undefined });
+    }
+  }
+
+  async function handleGenerateSku(spId: string) {
+    const link = links.find(l => l.shipmentProductId === spId);
+    if (!link?.newProductData) return;
+    const { tipo_inventario, category_id, condicion } = link.newProductData;
+    if (!category_id) { toast.error('Selecciona una categoría primero'); return; }
+    const cat = categories.find(c => c.id === category_id);
+    if (!cat) return;
+    setGeneratingSku(spId);
+    try {
+      const seq = await fetchNextSkuSequence(activeCompanyId);
+      updateLink(spId, {
+        newProductData: { ...link.newProductData, codigo: buildSku(tipo_inventario ?? 'electronica', cat.codigo, condicion ?? 'nuevo', seq) },
+      });
+    } finally {
+      setGeneratingSku(null);
     }
   }
 
@@ -299,37 +344,89 @@ export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCanc
                       {link?.isNew && (
                         <TableRow className="bg-muted/30">
                           <TableCell colSpan={4}>
-                            <div className="grid grid-cols-4 gap-3 py-1">
+                            <div className="grid grid-cols-3 gap-3 py-1">
+                              {/* Nombre */}
                               <div>
                                 <Label className="text-xs">Nombre</Label>
                                 <Input className="h-8" value={link.newProductData?.nombre ?? ''}
-                                  onChange={e => updateLink(sp.id, {
-                                    newProductData: { ...link.newProductData!, nombre: e.target.value }
-                                  })} />
+                                  onChange={e => updateLink(sp.id, { newProductData: { ...link.newProductData!, nombre: e.target.value } })} />
                               </div>
+                              {/* Especificación */}
                               <div>
                                 <Label className="text-xs">Especificación</Label>
-                                <Input className="h-8" placeholder="256GB / WiFi + Chip"
+                                <Input className="h-8" placeholder="256GB / Rojo / Bat 87%"
                                   value={link.newProductData?.especificacion ?? ''}
-                                  onChange={e => updateLink(sp.id, {
-                                    newProductData: { ...link.newProductData!, especificacion: e.target.value }
-                                  })} />
+                                  onChange={e => updateLink(sp.id, { newProductData: { ...link.newProductData!, especificacion: e.target.value } })} />
                               </div>
+                              {/* Condición */}
                               <div>
-                                <Label className="text-xs">Código SKU</Label>
-                                <Input className="h-8" placeholder="Ej: ELEC-001"
-                                  value={link.newProductData?.codigo ?? ''}
-                                  onChange={e => updateLink(sp.id, {
-                                    newProductData: { ...link.newProductData!, codigo: e.target.value }
-                                  })} />
+                                <Label className="text-xs">Condición</Label>
+                                <Select
+                                  value={link.newProductData?.condicion ?? 'nuevo'}
+                                  onValueChange={v => updateLink(sp.id, { newProductData: { ...link.newProductData!, condicion: v } })}
+                                >
+                                  <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {CONDICION_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
                               </div>
+                              {/* Tipo de inventario */}
                               <div>
-                                <Label className="text-xs">Cuenta Inventario (ACTIVO)</Label>
+                                <Label className="text-xs">Tipo inventario</Label>
+                                <Select
+                                  value={link.newProductData?.tipo_inventario ?? 'electronica'}
+                                  onValueChange={v => updateLink(sp.id, { newProductData: { ...link.newProductData!, tipo_inventario: v } })}
+                                >
+                                  <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {TIPO_INVENTARIO_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {/* Categoría */}
+                              <div>
+                                <Label className="text-xs">Categoría</Label>
+                                <Select
+                                  value={link.newProductData?.category_id ?? ''}
+                                  onValueChange={v => updateLink(sp.id, { newProductData: { ...link.newProductData!, category_id: v } })}
+                                >
+                                  <SelectTrigger className="h-8"><SelectValue placeholder={categories.length ? 'Categoría...' : 'Sin categorías'} /></SelectTrigger>
+                                  <SelectContent>
+                                    {categories.map(c => (
+                                      <SelectItem key={c.id} value={c.id}>
+                                        <span className="font-mono text-xs text-muted-foreground mr-1">{c.codigo}</span>{c.nombre}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {/* SKU con generador */}
+                              <div>
+                                <Label className="text-xs">Código SKU *</Label>
+                                <div className="flex gap-1">
+                                  <Input className="h-8 font-mono" placeholder="ELE-CEL-NVO-0001"
+                                    value={link.newProductData?.codigo ?? ''}
+                                    onChange={e => updateLink(sp.id, { newProductData: { ...link.newProductData!, codigo: e.target.value } })} />
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    disabled={generatingSku === sp.id}
+                                    onClick={() => handleGenerateSku(sp.id)}
+                                    title="Generar SKU"
+                                  >
+                                    <RefreshCw className={`h-3 w-3 ${generatingSku === sp.id ? 'animate-spin' : ''}`} />
+                                  </Button>
+                                </div>
+                              </div>
+                              {/* Cuenta contable */}
+                              <div className="col-span-3">
+                                <Label className="text-xs">Cuenta Inventario (ACTIVO) *</Label>
                                 <Select
                                   value={link.newProductData?.cuenta_inventario_id ?? ''}
-                                  onValueChange={v => updateLink(sp.id, {
-                                    newProductData: { ...link.newProductData!, cuenta_inventario_id: v }
-                                  })}
+                                  onValueChange={v => updateLink(sp.id, { newProductData: { ...link.newProductData!, cuenta_inventario_id: v } })}
                                 >
                                   <SelectTrigger className="h-8"><SelectValue placeholder="Cuenta..." /></SelectTrigger>
                                   <SelectContent>

@@ -157,6 +157,8 @@ export interface BackupData {
   licitaciones?: any[];
   licitacion_productos?: any[];
   licitacion_documentos?: any[];
+  // v3.1 fields
+  product_categories?: any[];
 }
 
 export async function createFullBackup(): Promise<BackupData> {
@@ -196,6 +198,7 @@ export async function createFullBackup(): Promise<BackupData> {
     licitaciones,
     licitacion_productos,
     licitacion_documentos,
+    product_categories,
   ] = await Promise.all([
     fetchAllCompanyRows('accounts', companyId),
     fetchAllCompanyRows('journal_entries', companyId),
@@ -239,6 +242,7 @@ export async function createFullBackup(): Promise<BackupData> {
     fetchAllCompanyRows('licitaciones', companyId),
     fetchAllLicitacionProductos(companyId),
     fetchAllLicitacionDocumentos(companyId),
+    fetchAllCompanyRows('product_categories', companyId),
   ]);
 
   return {
@@ -274,6 +278,7 @@ export async function createFullBackup(): Promise<BackupData> {
     licitaciones,
     licitacion_productos,
     licitacion_documentos,
+    product_categories,
   };
 }
 
@@ -401,6 +406,7 @@ async function _performRestoreInternal(
   await safeDeleteCompany('cost_sheet_cells', companyId);
   await safeDeleteCompany('cost_sheets', companyId);
   await safeDeleteCompany('products', companyId);
+  await safeDeleteCompany('product_categories', companyId);
   await safeDeleteCompany('report_settings', companyId);
 
   // journal_lines: RLS via parent journal_entries → delete by matching entry IDs of this company
@@ -454,6 +460,11 @@ async function _performRestoreInternal(
   }
   if (backup.quarterly_closures?.length) {
     await chunkedInsert('quarterly_closures', backup.quarterly_closures.map(c => ({ ...c, user_id: userId })));
+  }
+
+  // v3.1: product_categories (parent of products.category_id — insert before products)
+  if (backup.product_categories?.length) {
+    await chunkedInsert('product_categories', backup.product_categories);
   }
 
   // v2.0 tables
@@ -713,6 +724,7 @@ export function validateBackupFile(data: any): { valid: boolean; error?: string 
     'sales', 'sale_items', 'fiscal_years', 'customers', 'receivables',
     'payables', 'debt_payments', 'member_permissions', 'company_module_config',
     'licitaciones', 'licitacion_productos', 'licitacion_documentos',
+    'product_categories',
   ];
 
   for (const key of optionalArrays) {

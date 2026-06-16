@@ -47,6 +47,7 @@ export const DEFAULT_CATEGORY_LABELS: Record<string, string> = {
 export interface ShipmentProduct {
   archivos?: ShipmentFile[];      // Facturas u otros documentos del producto
   especificacion?: string;        // Variante corta (ej: "256GB / WiFi + Chip")
+  condicion?: string;             // Estado del producto: nuevo, reacondicionado_*, usado
   id: string;
   shipment_id: string;
 

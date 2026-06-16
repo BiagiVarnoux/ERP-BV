@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { fmt, todayISO, round2 } from '@/accounting/utils';
 import { generateEntryId } from '@/accounting/utils';
+import { CONDICION_OPTIONS } from '@/accounting/product-condicion';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
 
@@ -313,6 +314,9 @@ export default function ShipmentsPage() {
               especificacion: link.newProductData.especificacion || null,
               categoria: 'importado',
               unidad_medida: 'unidad',
+              condicion: link.newProductData.condicion || null,
+              category_id: link.newProductData.category_id || null,
+              tipo_inventario: link.newProductData.tipo_inventario || null,
               user_id: user.user.id,
               company_id: activeCompanyId,
             }).select('id').single();
@@ -1440,10 +1444,18 @@ function ProductEditDialog({ product, tcParalelo, shipmentId, companyId, onSave,
               </div>
               <div className="col-span-4">
                 <Label className="text-xs">Especificación / Variante <span className="text-muted-foreground">(opcional)</span></Label>
-                <Input value={p.especificacion ?? ''} onChange={e => update({ especificacion: e.target.value || undefined })} placeholder="256GB / WiFi + Chip" />
+                <Input value={p.especificacion ?? ''} onChange={e => update({ especificacion: e.target.value || undefined })} placeholder="256GB / Rojo / Bat 87%" />
               </div>
-              <div className="col-span-3 text-xs text-muted-foreground pb-2">
-                Diferencia variantes del mismo modelo
+              <div className="col-span-3">
+                <Label className="text-xs">Condición</Label>
+                <Select value={p.condicion ?? 'nuevo'} onValueChange={v => update({ condicion: v })}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CONDICION_OPTIONS.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

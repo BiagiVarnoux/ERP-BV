@@ -26,6 +26,7 @@ import {
   type SaleItemEnriched,
 } from '@/domain/sales';
 import { fetchProductsStockBatch, fetchLastPricesByCanal } from '@/domain/sales/stockService';
+import { condicionLabel } from '@/accounting/product-condicion';
 import { CustomerSearchCombobox } from '@/components/customers/CustomerSearchCombobox';
 
 interface ProductOption {
@@ -34,10 +35,12 @@ interface ProductOption {
   nombre: string;
   descripcion: string | null;
   categoria: string | null;
+  especificacion: string | null;
   unidad_medida: string;
   cuenta_inventario_id: string | null;
   metodo_valuacion: MetodoValuacion;
   precio_minimo: number | null;
+  condicion: string | null;
 }
 
 interface Props {
@@ -104,7 +107,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     try {
       const { data } = await supabase
         .from('products')
-        .select('id, codigo, nombre, descripcion, categoria, unidad_medida, cuenta_inventario_id, metodo_valuacion, precio_minimo')
+        .select('id, codigo, nombre, descripcion, categoria, especificacion, unidad_medida, cuenta_inventario_id, metodo_valuacion, precio_minimo, condicion')
         .eq('company_id', activeCompanyId)
         .eq('status', 'activo')
         .order('nombre');
@@ -333,10 +336,13 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
                                 <span className="font-medium truncate">{p.nombre}</span>
                               </div>
                               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                {p.categoria && (
-                                  <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                    {p.categoria}
+                                {p.condicion && (
+                                  <span className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded font-medium">
+                                    {condicionLabel(p.condicion)}
                                   </span>
+                                )}
+                                {p.especificacion && (
+                                  <span className="text-xs text-muted-foreground">{p.especificacion}</span>
                                 )}
                                 <span className="text-xs text-muted-foreground">{p.unidad_medida}</span>
                                 {p.descripcion && (
