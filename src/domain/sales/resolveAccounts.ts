@@ -10,6 +10,8 @@ const PAYMENT_ACCOUNTS: Record<TipoPago, string> = {
   usdt: 'A.7',
   usdt2: 'A.7.1',
   cxc: 'A.5',
+  cxc_electronica: 'A.5.2',
+  cxc_pedido: 'A.5.3',
   cxc_licitaciones: 'A.5.1',
 };
 
@@ -36,7 +38,9 @@ export const TIPO_PAGO_LABELS: Record<TipoPago, string> = {
   facebank3: 'Facebank 3',
   usdt: 'USDT',
   usdt2: 'USDT 2',
-  cxc: 'CxC Cliente',
+  cxc: 'CxC General',
+  cxc_electronica: 'CxC Electrónica',
+  cxc_pedido: 'CxC Pedido',
   cxc_licitaciones: 'CxC Licitaciones',
 };
 

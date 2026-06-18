@@ -88,6 +88,28 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     fetchLastPricesByCanal(products.map(p => p.id), canal).then(setSuggestedPrices);
   }, [canal, products]);
 
+  // CxC disponibles por canal
+  const CXC_BY_CANAL: Record<Canal, TipoPago> = {
+    electronica: 'cxc_electronica',
+    pedido: 'cxc_pedido',
+    licitacion: 'cxc_licitaciones',
+    general: 'cxc',
+  };
+  const CXC_ALL: TipoPago[] = ['cxc', 'cxc_electronica', 'cxc_pedido', 'cxc_licitaciones'];
+  const tipoPagoOptions = useMemo<TipoPago[]>(() => {
+    const cxcForCanal = CXC_BY_CANAL[canal];
+    return (Object.keys(TIPO_PAGO_LABELS) as TipoPago[]).filter(
+      t => !CXC_ALL.includes(t) || t === cxcForCanal
+    );
+  }, [canal]);
+
+  // Resetear tipo_pago si ya no es válido para el nuevo canal
+  useEffect(() => {
+    if (CXC_ALL.includes(tipoPago) && tipoPago !== CXC_BY_CANAL[canal]) {
+      setTipoPago('caja_mn');
+    }
+  }, [canal]);
+
   function resetForm() {
     setFecha(todayISO());
     setCanal('electronica');
@@ -604,7 +626,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
                   <Select value={tipoPago} onValueChange={(v: TipoPago) => setTipoPago(v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {(Object.keys(TIPO_PAGO_LABELS) as TipoPago[]).map(t => (
+                      {tipoPagoOptions.map(t => (
                         <SelectItem key={t} value={t}>{TIPO_PAGO_LABELS[t]}</SelectItem>
                       ))}
                     </SelectContent>

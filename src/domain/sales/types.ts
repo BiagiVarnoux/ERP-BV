@@ -12,6 +12,8 @@ export type TipoPago =
   | 'usdt'
   | 'usdt2'
   | 'cxc'
+  | 'cxc_electronica'
+  | 'cxc_pedido'
   | 'cxc_licitaciones';
 
 export type MetodoValuacion = 'CPP' | 'FIFO';
