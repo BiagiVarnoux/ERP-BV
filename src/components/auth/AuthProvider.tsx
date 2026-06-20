@@ -97,7 +97,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } else {
             setTimeout(async () => {
               try {
-                await supabase.rpc('assign_default_owner_role', { _user_id: session.user.id });
+                const { data } = await supabase.rpc('assign_default_owner_role', { _user_id: session.user.id });
+                // Recargar solo si se creó una membresía nueva (usuario recién registrado).
+                // Sin recarga, loadAccess() corre antes de que el INSERT termine y el
+                // usuario ve la app sin empresa ni permisos.
+                const result = data as Record<string, unknown> | null;
+                if (result?.created) window.location.reload();
               } catch (error) {
                 console.error('Error assigning owner role:', error);
               }
