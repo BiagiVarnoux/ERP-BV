@@ -8,6 +8,7 @@ import { UserAccessProvider, useUserAccess } from "@/contexts/UserAccessContext"
 import { AuthForm } from "@/components/auth/AuthForm";
 import { ResetPasswordForm } from "@/components/auth/ResetPasswordForm";
 import { MfaVerifyModal } from "@/components/auth/MfaVerifyModal";
+import { CreateCompanyForm } from "@/components/auth/CreateCompanyForm";
 import { AccountingProvider } from "@/accounting/AccountingProvider";
 import { NavigationHistoryProvider } from "@/contexts/NavigationHistoryContext";
 import { AppShell } from "./components/layout/AppShell";
@@ -40,7 +41,7 @@ const queryClient = new QueryClient({
 });
 
 function AppRoutes() {
-  const { isViewer, isOwner, canView, loading } = useUserAccess();
+  const { isViewer, isOwner, canView, loading, needsOnboarding } = useUserAccess();
 
   if (loading) {
     return (
@@ -48,6 +49,11 @@ function AppRoutes() {
         <div className="text-lg">Cargando permisos...</div>
       </div>
     );
+  }
+
+  // Usuario autenticado pero sin empresa — mostrar onboarding
+  if (needsOnboarding) {
+    return <CreateCompanyForm />;
   }
 
   // Elige la primera ruta que el usuario realmente puede ver.

@@ -76,6 +76,10 @@ interface UserAccessContextType {
   isReadOnly: boolean;
   loading: boolean;
 
+  // Onboarding: true cuando el usuario autenticado no tiene ninguna empresa todavía
+  needsOnboarding: boolean;
+  refreshAccess: () => void;
+
   // Permisos granulares
   permissionsMap: PermissionsMap;
   can: (module: ErpModule, action: ModuleAction) => boolean;
@@ -137,6 +141,7 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
   // Multi-empresa
   const [companies, setCompanies] = useState<CompanyInfo[]>([]);
   const [activeCompany, setActiveCompany] = useState<CompanyInfo | null>(null);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   // Config de módulos por empresa
   const [moduleConfig, setModuleConfig]       = useState<Record<string, boolean>>({});
@@ -183,10 +188,13 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
       if (memberError) throw memberError;
 
       if (!memberData) {
-        // Usuario sin membresía activa — estado sin empresa
+        // Usuario autenticado pero sin empresa → mostrar onboarding
+        setNeedsOnboarding(true);
         setLoading(false);
         return;
       }
+
+      setNeedsOnboarding(false);
 
       const userRole = (memberData.role_typed || memberData.role) as CompanyRole;
       setRole(userRole);
@@ -275,6 +283,11 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
     loadAccess(newCompanyId);
   }, [user]);
 
+  const refreshAccess = useCallback(() => {
+    setLoading(true);
+    loadAccess();
+  }, [user]);
+
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
   const can = useCallback((module: ErpModule, action: ModuleAction): boolean => {
@@ -342,6 +355,8 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
       isViewer,
       isReadOnly,
       loading,
+      needsOnboarding,
+      refreshAccess,
       permissionsMap,
       can,
       canView,
