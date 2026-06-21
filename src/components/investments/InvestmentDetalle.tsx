@@ -103,7 +103,6 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
           inversion:            calcs[i].costeo.inversion,
           precio_con_factura:   it.precio_venta,
           precio_sin_factura:   it.precio_venta_sin_factura,
-          cantidad_sin_factura: it.cantidad_sin_factura,
           ingreso_total:        calcs[i].costeo.ingreso_total,
           ganancia:             calcs[i].costeo.ganancia,
           roi:                  calcs[i].costeo.roi,

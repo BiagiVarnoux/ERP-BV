@@ -65,8 +65,12 @@ export function calcCosteo(it: InvestmentItem): ItemCosteo {
   const c = calcProducto(toLicitacionProducto(it));
 
   const cantidad = Math.max(0, it.cantidad || 0);
-  const qSin = Math.min(Math.max(0, it.cantidad_sin_factura || 0), cantidad);
-  const qCon = round2(cantidad - qSin);
+  // El split de unidades con/sin factura NO cambia la ganancia total cuando se
+  // usa el precio con factura sugerido (iguala la ganancia por unidad). Por eso
+  // se modela todo como venta CON factura (caso conservador en impuestos) y el
+  // precio sin factura queda solo como ancla del precio sugerido.
+  const qSin = 0;
+  const qCon = cantidad;
 
   const extras = round2((it.garantia || 0) + (it.pasaje || 0) + (it.envio_local || 0) + (it.otros_costos || 0));
   const costoUnit = c.total_individual;         // costo importación por unidad

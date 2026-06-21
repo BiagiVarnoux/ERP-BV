@@ -11,7 +11,7 @@ import {
   TrendingUp, TrendingDown, Box, Weight,
 } from 'lucide-react';
 import { InvestmentItem, ItemCalc, InvestmentResumen } from '@/accounting/investment-types';
-import { fmt, toDecimal } from '@/accounting/utils';
+import { fmt, toDecimal, round2 } from '@/accounting/utils';
 import { NumInput, Pct, Field, StatCard } from './ui-helpers';
 
 interface Props {
@@ -269,7 +269,7 @@ function ItemForm({ item: p, calc, onChange }: {
             )}
           </div>
           <div className="space-y-1 w-40">
-            <label className="text-xs font-semibold">Precio SIN factura</label>
+            <label className="text-xs font-semibold">Precio SIN factura <span className="font-normal text-muted-foreground">(ancla)</span></label>
             <Input
               type="number" min="0" step="0.01"
               className="h-9 font-mono font-semibold text-base"
@@ -277,10 +277,8 @@ function ItemForm({ item: p, calc, onChange }: {
               placeholder="0.00"
               onChange={e => onChange({ precio_venta_sin_factura: toDecimal(e.target.value) || 0 })}
             />
+            <p className="text-[11px] text-muted-foreground">Solo para calcular el precio c/factura sugerido.</p>
           </div>
-          <Field label="Uds sin factura" hint={`de ${p.cantidad}`} className="w-28">
-            <NumInput value={p.cantidad_sin_factura || undefined} onChange={n('cantidad_sin_factura')} min="0" step="1" placeholder="0" />
-          </Field>
           <Field label="Velocidad de venta" hint="uds/mes" className="w-28">
             <NumInput value={p.velocidad_venta || undefined} onChange={n('velocidad_venta')} min="0" step="1" placeholder="uds/mes" />
           </Field>
@@ -289,11 +287,19 @@ function ItemForm({ item: p, calc, onChange }: {
           </Field>
         </div>
 
-        {/* Desglose con/sin factura */}
+        {/* Comparación de ganancia por unidad: con vs sin factura */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-          <StatCard label={`Con factura (${fmt(costeo.cantidad_con_factura)} uds)`} value={costeo.ingreso_con_factura} hint="Ingreso de unidades con factura (paga IVA + IT)" />
-          <StatCard label={`Sin factura (${fmt(costeo.cantidad_sin_factura)} uds)`} value={costeo.ingreso_sin_factura} hint="Ingreso de unidades sin factura (sin IVA ni IT)" />
-          <StatCard label="Total venta" value={costeo.ingreso_total} bold />
+          <StatCard
+            label="Ganancia/u con factura"
+            value={p.cantidad > 0 ? round2(costeo.ganancia / p.cantidad) : 0}
+            hint="Ganancia por unidad vendida con factura (paga IVA + IT)"
+          />
+          <StatCard
+            label="Ganancia/u sin factura"
+            value={round2(p.precio_venta_sin_factura - costeo.costo_unitario)}
+            hint="Precio sin factura − costo unitario (sin impuestos de venta)"
+          />
+          <StatCard label="Total venta" value={costeo.ingreso_total} bold hint="Asume venta con factura de todo el lote" />
           <StatCard label="Piso s/factura" value={costeo.precio_piso_sf} hint="Venta mínima sin factura = costo unitario" />
         </div>
 

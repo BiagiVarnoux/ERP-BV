@@ -1463,7 +1463,6 @@ export interface InvestmentPDFItem {
   inversion: number;
   precio_con_factura: number;
   precio_sin_factura: number;
-  cantidad_sin_factura: number;
   ingreso_total: number;
   ganancia: number;
   roi: number;
@@ -1556,7 +1555,6 @@ export function exportInvestmentAnalysisToPDF(data: InvestmentPDFData): void {
       { content: `Bs ${fmtN(p.inversion)}`, styles: { halign: 'right' as const } },
       { content: `Bs ${fmtN(p.precio_con_factura)}`, styles: { halign: 'right' as const } },
       { content: `Bs ${fmtN(p.precio_sin_factura)}`, styles: { halign: 'right' as const } },
-      { content: String(p.cantidad_sin_factura), styles: { halign: 'center' as const } },
       { content: `Bs ${fmtN(p.ingreso_total)}`, styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
       { content: `Bs ${fmtN(p.ganancia)}`, styles: { halign: 'right' as const, textColor: color, fontStyle: 'bold' as const } },
       { content: fmtPct(p.roi), styles: { halign: 'center' as const, textColor: color, fontStyle: 'bold' as const } },
@@ -1565,7 +1563,7 @@ export function exportInvestmentAnalysisToPDF(data: InvestmentPDFData): void {
 
   autoTable(doc, {
     startY: currentY,
-    head: [['#', 'Producto', 'Q', 'Costo Unit.', 'Inversión', 'P. c/Factura', 'P. s/Factura', 'Uds s/F', 'Ingreso', 'Ganancia', 'ROI']],
+    head: [['#', 'Producto', 'Q', 'Costo Unit.', 'Inversión', 'P. c/Factura', 'P. s/Factura', 'Ingreso', 'Ganancia', 'ROI']],
     body: prodBody,
     headStyles: { fillColor: LIC_CLR.teal, fontSize: 8, textColor: [255, 255, 255] },
     styles: { fontSize: 8.5, cellPadding: 2.5 },
