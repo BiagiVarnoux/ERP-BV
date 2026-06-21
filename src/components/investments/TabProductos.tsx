@@ -257,6 +257,16 @@ function ItemForm({ item: p, calc, onChange }: {
               placeholder="0.00"
               onChange={e => onChange({ precio_venta: toDecimal(e.target.value) || 0 })}
             />
+            {costeo.precio_con_factura_sugerido > 0 && (
+              <button
+                type="button"
+                className="text-[11px] text-primary hover:underline text-left w-full"
+                onClick={() => onChange({ precio_venta: costeo.precio_con_factura_sugerido })}
+                title="Igualar la ganancia por unidad a la venta sin factura"
+              >
+                Sugerido: Bs {fmt(costeo.precio_con_factura_sugerido)} (usar)
+              </button>
+            )}
           </div>
           <div className="space-y-1 w-40">
             <label className="text-xs font-semibold">Precio SIN factura</label>

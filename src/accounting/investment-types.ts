@@ -138,6 +138,10 @@ export interface ItemCosteo {
   precio_piso: number;         // unidad CON factura
   precio_piso_sf: number;      // unidad SIN factura (= costo unitario, sin impuestos)
 
+  // Precio CON factura que iguala la ganancia/unidad a la venta SIN factura
+  // = (precio_sin_factura − iva_aduana) / (1 − IVA − IT). 0 si no hay precio s/f.
+  precio_con_factura_sugerido: number;
+
   extras: number;              // garantia + pasaje + envio_local + otros_costos
 }
 

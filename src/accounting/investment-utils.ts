@@ -88,6 +88,13 @@ export function calcCosteo(it: InvestmentItem): ItemCosteo {
   const ganancia = round2(ingresoTotal - costos);
   const roi = inversion > 0 ? round2(ganancia / inversion) : 0;
 
+  // Precio CON factura que iguala la ganancia/unidad a la venta SIN factura.
+  // Despeje: 0.84·Pc + iva_aduana = Ps  →  Pc = (Ps − iva_aduana) / 0.84
+  const denomVenta = 1 - IVA_VENTA_RATE - IT_RATE; // 0.84
+  const precioConFacturaSugerido = Ps > 0
+    ? round2((Ps - c.iva_aduana) / denomVenta)
+    : 0;
+
   return {
     precio_bs:            c.precio_bs,
     precio_bob:           c.precio_bob,
@@ -117,6 +124,7 @@ export function calcCosteo(it: InvestmentItem): ItemCosteo {
     // unitario puesto en almacén (sin impuestos de venta que recuperar).
     precio_piso:          c.precio_piso,
     precio_piso_sf:       costoUnit,
+    precio_con_factura_sugerido: precioConFacturaSugerido,
     extras,
   };
 }
