@@ -139,6 +139,17 @@ async function fetchAllLicitacionDocumentos(companyId: string): Promise<any[]> {
   return rows.map(({ licitaciones, ...row }: any) => row);
 }
 
+/** Paginated investment_analysis_items via inner join on investment_analyses.company_id. */
+async function fetchAllInvestmentItems(companyId: string): Promise<any[]> {
+  const rows = await fetchAllPaginated<any>((from, to) =>
+    supabase.from('investment_analysis_items')
+      .select('*, investment_analyses!inner(company_id)')
+      .eq('investment_analyses.company_id', companyId)
+      .range(from, to)
+  );
+  return rows.map(({ investment_analyses, ...row }: any) => row);
+}
+
 export interface BackupData {
   version: string;
   created_at: string;
@@ -181,6 +192,9 @@ export interface BackupData {
   licitacion_documentos?: any[];
   // v3.1 fields
   product_categories?: any[];
+  // v3.2 fields — análisis de inversión
+  investment_analyses?: any[];
+  investment_analysis_items?: any[];
 }
 
 export async function createFullBackup(activeCompanyId?: string): Promise<BackupData> {
@@ -221,6 +235,8 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     licitacion_productos,
     licitacion_documentos,
     product_categories,
+    investment_analyses,
+    investment_analysis_items,
   ] = await Promise.all([
     fetchAllCompanyRows('accounts', companyId),
     fetchAllCompanyRows('journal_entries', companyId),
@@ -265,6 +281,9 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     fetchAllLicitacionProductos(companyId),
     fetchAllLicitacionDocumentos(companyId),
     fetchAllCompanyRows('product_categories', companyId),
+    // v3.2: análisis de inversión
+    fetchAllCompanyRows('investment_analyses', companyId),
+    fetchAllInvestmentItems(companyId),
   ]);
 
   return {
@@ -301,6 +320,8 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     licitacion_productos,
     licitacion_documentos,
     product_categories,
+    investment_analyses,
+    investment_analysis_items,
   };
 }
 
@@ -393,6 +414,9 @@ async function _performRestoreInternal(
 
   // licitaciones → cascades to licitacion_productos + licitacion_documentos
   await safeDeleteCompany('licitaciones', companyId);
+
+  // investment_analyses → cascades to investment_analysis_items
+  await safeDeleteCompany('investment_analyses', companyId);
 
   await safeDeleteCompany('shipments', companyId);
   await safeDeleteCompany('debt_payments', companyId);
@@ -626,6 +650,21 @@ async function _performRestoreInternal(
     const safe = backup.licitacion_documentos.filter((r: any) => validIds.has(r.licitacion_id));
     if (safe.length > 0) await chunkedInsert('licitacion_documentos', safe);
   }
+
+  // v3.2: análisis de inversión (parent antes que items)
+  if (backup.investment_analyses?.length) {
+    await chunkedInsert('investment_analyses', backup.investment_analyses.map((a: any) => ({
+      ...a,
+      user_id: userId,
+      company_id: companyId,
+    })));
+  }
+
+  if (backup.investment_analysis_items?.length) {
+    const validIds = new Set((backup.investment_analyses ?? []).map((a: any) => a.id));
+    const safe = backup.investment_analysis_items.filter((r: any) => validIds.has(r.analysis_id));
+    if (safe.length > 0) await chunkedInsert('investment_analysis_items', safe);
+  }
 }
 
 // ─── Public API ────────────────────────────────────────────────────────────────
@@ -747,6 +786,7 @@ export function validateBackupFile(data: any): { valid: boolean; error?: string 
     'payables', 'debt_payments', 'member_permissions', 'company_module_config',
     'licitaciones', 'licitacion_productos', 'licitacion_documentos',
     'product_categories',
+    'investment_analyses', 'investment_analysis_items',
   ];
 
   for (const key of optionalArrays) {

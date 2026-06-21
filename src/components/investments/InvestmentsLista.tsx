@@ -1,0 +1,123 @@
+// src/components/investments/InvestmentsLista.tsx
+import React, { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Plus, TrendingUp, Trash2, Calculator } from 'lucide-react';
+import {
+  InvestmentAnalysis, INVESTMENT_ESTADO_LABELS, INVESTMENT_ESTADO_COLORS,
+} from '@/accounting/investment-types';
+import { NuevoAnalisisModal } from './NuevoAnalisisModal';
+
+interface Props {
+  analyses: InvestmentAnalysis[];
+  loading: boolean;
+  companyId: string | undefined;
+  onCreated: (a: InvestmentAnalysis) => void;
+  onDelete: (id: string) => void;
+  onOpen: (id: string) => void;
+}
+
+export function InvestmentsLista({ analyses, loading, companyId, onCreated, onDelete, onOpen }: Props) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [toDelete, setToDelete] = useState<InvestmentAnalysis | null>(null);
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Análisis de Inversión
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Evaluación de importaciones: rentabilidad, ciclo de caja, VAN y TIR.
+          </p>
+        </div>
+        <Button onClick={() => setModalOpen(true)} className="gap-2">
+          <Plus className="h-4 w-4" /> Nuevo análisis
+        </Button>
+      </div>
+
+      {/* Lista */}
+      {loading ? (
+        <div className="py-20 text-center text-muted-foreground">Cargando...</div>
+      ) : analyses.length === 0 ? (
+        <Card>
+          <CardContent className="py-16 text-center">
+            <Calculator className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+            <p className="text-muted-foreground mb-4">Aún no tienes análisis de inversión.</p>
+            <Button onClick={() => setModalOpen(true)} variant="outline" className="gap-2">
+              <Plus className="h-4 w-4" /> Crear el primero
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {analyses.map(a => (
+            <Card
+              key={a.id}
+              className="cursor-pointer hover:border-primary/50 transition-colors group"
+              onClick={() => onOpen(a.id)}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">{a.nombre || 'Sin nombre'}</p>
+                    {a.notas && <p className="text-xs text-muted-foreground truncate mt-0.5">{a.notas}</p>}
+                  </div>
+                  <Badge className={`shrink-0 text-xs ${INVESTMENT_ESTADO_COLORS[a.estado]}`}>
+                    {INVESTMENT_ESTADO_LABELS[a.estado]}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
+                  <span>Costo capital: {a.costo_capital_anual}% · Imp.: {a.plazo_importacion_meses}m</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                    onClick={e => { e.stopPropagation(); setToDelete(a); }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <NuevoAnalisisModal
+        open={modalOpen}
+        companyId={companyId}
+        onClose={() => setModalOpen(false)}
+        onCreated={a => { setModalOpen(false); onCreated(a); }}
+      />
+
+      <AlertDialog open={!!toDelete} onOpenChange={o => { if (!o) setToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar análisis?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminará "{toDelete?.nombre}" y todos sus productos. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (toDelete) onDelete(toDelete.id); setToDelete(null); }}
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

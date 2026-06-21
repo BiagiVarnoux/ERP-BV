@@ -30,6 +30,7 @@ import PayablesPage from "./pages/payables/Index";
 import UsersPage from "./pages/users/Index";
 import HoldingPage from "./pages/holding/Index";
 import LicitacionesPage from "./pages/licitaciones/Index";
+import InvestmentsPage from "./pages/investments/Index";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -70,6 +71,7 @@ function AppRoutes() {
     if (canView('payables'))         return "/payables";
     if (canView('reports'))          return "/reports";
     if (canView('licitaciones'))     return "/licitaciones";
+    if (canView('investments'))      return "/investments";
     if (canView('holding'))          return "/holding";
     return "/viewer-dashboard";      // fallback: sin permisos → pantalla de código
   })();
@@ -105,6 +107,9 @@ function AppRoutes() {
 
         {/* Licitaciones */}
         {canView('licitaciones') && <Route path="licitaciones/*" element={<LicitacionesPage />} />}
+
+        {/* Análisis de Inversión */}
+        {canView('investments') && <Route path="investments/*" element={<InvestmentsPage />} />}
 
         {/* Holding */}
         {canView('holding')    && <Route path="holding"    element={<HoldingPage />} />}

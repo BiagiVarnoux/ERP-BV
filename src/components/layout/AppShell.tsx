@@ -7,7 +7,7 @@ import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { CompanySwitcher } from '@/components/layout/CompanySwitcher';
 import {
   BarChart3, Package, ShoppingCart, Settings,
-  Eye, ChevronDown, ChevronRight, Menu, LogOut, Users, Building2, FileText,
+  Eye, ChevronDown, ChevronRight, Menu, LogOut, Users, Building2, FileText, TrendingUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -16,6 +16,7 @@ const MODULE_PATHS: Record<string, string[]> = {
   MM:           ['/inventory', '/shipments'],
   SD:           ['/dashboard', '/sales', '/customers'],
   LICITACIONES: ['/licitaciones'],
+  INVESTMENTS:  ['/investments'],
   SETTINGS:     ['/settings', '/fiscal-years'],
   HOLDING:      ['/holding'],
 };
@@ -204,6 +205,15 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
             isExpanded={expanded.has('LICITACIONES')} onToggle={() => toggle('LICITACIONES')}
           >
             <NavItem path="/licitaciones" label="Licitaciones" currentPath={location.pathname} onClick={close} />
+          </ModuleSection>
+        )}
+
+        {!loading && canView('investments') && (
+          <ModuleSection
+            label="Inversión" badge="" icon={TrendingUp}
+            isExpanded={expanded.has('INVESTMENTS')} onToggle={() => toggle('INVESTMENTS')}
+          >
+            <NavItem path="/investments" label="Análisis de Inversión" currentPath={location.pathname} onClick={close} />
           </ModuleSection>
         )}
 

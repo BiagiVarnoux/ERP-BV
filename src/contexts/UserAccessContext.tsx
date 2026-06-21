@@ -33,7 +33,8 @@ export type ErpModule =
   | 'shipments'
   | 'settings'
   | 'holding'
-  | 'licitaciones';
+  | 'licitaciones'
+  | 'investments';
 
 export type ModuleAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export';
 
@@ -235,6 +236,7 @@ export function UserAccessProvider({ children }: { children: React.ReactNode }) 
           'accounts', 'journal', 'ledger', 'auxiliary_ledgers', 'reports',
           'fiscal_years', 'inventory', 'sales', 'customers', 'receivables',
           'payables', 'shipments', 'settings', 'holding', 'licitaciones',
+          'investments',
         ];
         const fullPerm = (module: ErpModule): ModulePermission => ({
           module, can_view: true, can_create: true, can_edit: true,
