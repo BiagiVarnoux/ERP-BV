@@ -65,12 +65,7 @@ export function calcCosteo(it: InvestmentItem): ItemCosteo {
   const c = calcProducto(toLicitacionProducto(it));
 
   const cantidad = Math.max(0, it.cantidad || 0);
-  // El split de unidades con/sin factura NO cambia la ganancia total cuando se
-  // usa el precio con factura sugerido (iguala la ganancia por unidad). Por eso
-  // se modela todo como venta CON factura (caso conservador en impuestos) y el
-  // precio sin factura queda solo como ancla del precio sugerido.
-  const qSin = 0;
-  const qCon = cantidad;
+  const sinFactura = it.modalidad_venta === 'sin_factura';
 
   const extras = round2((it.garantia || 0) + (it.pasaje || 0) + (it.envio_local || 0) + (it.otros_costos || 0));
   const costoUnit = c.total_individual;         // costo importación por unidad
@@ -80,11 +75,17 @@ export function calcCosteo(it: InvestmentItem): ItemCosteo {
   const Pc = it.precio_venta || 0;              // con factura
   const Ps = it.precio_venta_sin_factura || 0;  // sin factura
 
+  // La modalidad decide qué precio maneja el análisis:
+  //  · con_factura → ingreso = Pc × cantidad, paga IVA (13% − crédito aduana) + IT (3%).
+  //  · sin_factura → ingreso = Ps × cantidad, sin IVA ni IT.
+  const qCon = sinFactura ? 0 : cantidad;
+  const qSin = sinFactura ? cantidad : 0;
+
   const ingresoCon = round2(Pc * qCon);
   const ingresoSin = round2(Ps * qSin);
   const ingresoTotal = round2(ingresoCon + ingresoSin);
 
-  // Impuestos SOLO sobre ventas con factura (crédito IVA aduana solo aplica a esas unidades).
+  // Impuestos solo cuando se vende con factura.
   const ivaPagar = round2(ingresoCon * IVA_VENTA_RATE - c.iva_aduana * qCon);
   const itPagar  = round2(ingresoCon * IT_RATE);
 
@@ -367,6 +368,7 @@ export function emptyItem(analysis_id: string, orden: number): InvestmentItem {
     usa_iva_manual:   false,
     tiene_bateria:    false,
     costo_bateria:    0,
+    modalidad_venta:  'con_factura',
     precio_venta:     0,
     precio_venta_sin_factura: 0,
     cantidad_sin_factura:     0,

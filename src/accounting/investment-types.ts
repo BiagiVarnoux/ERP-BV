@@ -62,9 +62,10 @@ export interface InvestmentItem {
   costo_bateria: number;
 
   // Venta esperada — driver de la rentabilidad
+  modalidad_venta: 'con_factura' | 'sin_factura'; // qué precio maneja el análisis
   precio_venta: number;             // Bs/unidad CON factura
   precio_venta_sin_factura: number; // Bs/unidad SIN factura (normalmente menor)
-  cantidad_sin_factura: number;     // unidades vendidas sin factura (el resto, con factura)
+  cantidad_sin_factura: number;     // (obsoleto, sin uso) — se mantiene por compatibilidad de BD
 
   // Costos adicionales
   garantia: number;

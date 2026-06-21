@@ -80,8 +80,11 @@ function ItemRow({ item: p, calc, expanded, onToggle, onChange, onRemove }: {
   onRemove: () => void;
 }) {
   const { costeo } = calc;
+  const sinFactura = p.modalidad_venta === 'sin_factura';
+  const precioActivo = sinFactura ? p.precio_venta_sin_factura : p.precio_venta;
+  const pisoActivo = sinFactura ? costeo.precio_piso_sf : costeo.precio_piso;
   const isUnprofitable = costeo.ganancia < 0;
-  const isBelowFloor = p.precio_venta > 0 && p.precio_venta < costeo.precio_piso;
+  const isBelowFloor = precioActivo > 0 && precioActivo < pisoActivo;
 
   return (
     <Collapsible open={expanded} onOpenChange={onToggle}>
@@ -118,8 +121,8 @@ function ItemRow({ item: p, calc, expanded, onToggle, onChange, onRemove }: {
             <span className="text-sm font-mono text-muted-foreground">Bs {fmt(costeo.costo_unitario)}</span>
           </div>
           <div className="flex flex-col items-end shrink-0">
-            <span className="text-[10px] text-muted-foreground">Venta</span>
-            <span className="text-sm font-mono font-medium">Bs {fmt(p.precio_venta)}</span>
+            <span className="text-[10px] text-muted-foreground">Venta {sinFactura ? 's/f' : 'c/f'}</span>
+            <span className="text-sm font-mono font-medium">Bs {fmt(precioActivo)}</span>
           </div>
           <div className="hidden sm:flex flex-col items-end shrink-0">
             <span className="text-[10px] text-muted-foreground">Ganancia</span>
@@ -247,12 +250,36 @@ function ItemForm({ item: p, calc, onChange }: {
       {/* Venta esperada */}
       <div>
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Venta esperada</p>
+
+        {/* Modalidad de venta — decide qué precio maneja el análisis */}
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xs text-muted-foreground">Vender:</span>
+          <Button
+            type="button" size="sm"
+            variant={p.modalidad_venta === 'con_factura' ? 'default' : 'outline'}
+            className="h-7 text-xs px-3"
+            onClick={() => onChange({ modalidad_venta: 'con_factura' })}
+          >
+            Con factura
+          </Button>
+          <Button
+            type="button" size="sm"
+            variant={p.modalidad_venta === 'sin_factura' ? 'default' : 'outline'}
+            className="h-7 text-xs px-3"
+            onClick={() => onChange({ modalidad_venta: 'sin_factura' })}
+          >
+            Sin factura
+          </Button>
+        </div>
+
         <div className="flex flex-wrap items-end gap-4 mb-3">
           <div className="space-y-1 w-40">
-            <label className="text-xs font-semibold">Precio CON factura</label>
+            <label className="text-xs font-semibold">
+              Precio CON factura {p.modalidad_venta === 'con_factura' && <span className="text-primary">●</span>}
+            </label>
             <Input
               type="number" min="0" step="0.01"
-              className="h-9 font-mono font-semibold text-base"
+              className={`h-9 font-mono font-semibold text-base ${p.modalidad_venta === 'con_factura' ? 'ring-2 ring-primary/40' : 'opacity-70'}`}
               value={p.precio_venta || ''}
               placeholder="0.00"
               onChange={e => onChange({ precio_venta: toDecimal(e.target.value) || 0 })}
@@ -269,15 +296,16 @@ function ItemForm({ item: p, calc, onChange }: {
             )}
           </div>
           <div className="space-y-1 w-40">
-            <label className="text-xs font-semibold">Precio SIN factura <span className="font-normal text-muted-foreground">(ancla)</span></label>
+            <label className="text-xs font-semibold">
+              Precio SIN factura {p.modalidad_venta === 'sin_factura' && <span className="text-primary">●</span>}
+            </label>
             <Input
               type="number" min="0" step="0.01"
-              className="h-9 font-mono font-semibold text-base"
+              className={`h-9 font-mono font-semibold text-base ${p.modalidad_venta === 'sin_factura' ? 'ring-2 ring-primary/40' : 'opacity-70'}`}
               value={p.precio_venta_sin_factura || ''}
               placeholder="0.00"
               onChange={e => onChange({ precio_venta_sin_factura: toDecimal(e.target.value) || 0 })}
             />
-            <p className="text-[11px] text-muted-foreground">Solo para calcular el precio c/factura sugerido.</p>
           </div>
           <Field label="Velocidad de venta" hint="uds/mes" className="w-28">
             <NumInput value={p.velocidad_venta || undefined} onChange={n('velocidad_venta')} min="0" step="1" placeholder="uds/mes" />
@@ -287,20 +315,29 @@ function ItemForm({ item: p, calc, onChange }: {
           </Field>
         </div>
 
-        {/* Comparación de ganancia por unidad: con vs sin factura */}
+        {/* Comparación de ganancia por unidad: con vs sin factura (siempre ambas) */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
           <StatCard
             label="Ganancia/u con factura"
-            value={p.cantidad > 0 ? round2(costeo.ganancia / p.cantidad) : 0}
-            hint="Ganancia por unidad vendida con factura (paga IVA + IT)"
+            value={round2(0.84 * p.precio_venta - costeo.costo_unitario + costeo.iva_aduana)}
+            hint="0,84 × precio c/f − costo unitario + crédito IVA aduana"
           />
           <StatCard
             label="Ganancia/u sin factura"
             value={round2(p.precio_venta_sin_factura - costeo.costo_unitario)}
             hint="Precio sin factura − costo unitario (sin impuestos de venta)"
           />
-          <StatCard label="Total venta" value={costeo.ingreso_total} bold hint="Asume venta con factura de todo el lote" />
-          <StatCard label="Piso s/factura" value={costeo.precio_piso_sf} hint="Venta mínima sin factura = costo unitario" />
+          <StatCard
+            label="Total venta"
+            value={costeo.ingreso_total}
+            bold
+            hint={p.modalidad_venta === 'sin_factura' ? 'Venta sin factura de todo el lote' : 'Venta con factura de todo el lote'}
+          />
+          <StatCard
+            label={p.modalidad_venta === 'sin_factura' ? 'Piso s/factura' : 'Piso c/factura'}
+            value={p.modalidad_venta === 'sin_factura' ? costeo.precio_piso_sf : costeo.precio_piso}
+            hint="Venta mínima por unidad para no perder"
+          />
         </div>
 
         {/* Costos adicionales */}

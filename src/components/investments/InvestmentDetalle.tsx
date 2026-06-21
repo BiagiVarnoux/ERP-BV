@@ -98,6 +98,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
         },
         items: items.map((it, i) => ({
           nombre:               it.nombre,
+          modalidad:            it.modalidad_venta,
           cantidad:             it.cantidad,
           costo_unitario:       calcs[i].costeo.costo_unitario,
           inversion:            calcs[i].costeo.inversion,

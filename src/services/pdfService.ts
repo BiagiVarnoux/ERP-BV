@@ -1458,6 +1458,7 @@ export function exportCotizacionToPDF(data: CotizacionPDFData): void {
 
 export interface InvestmentPDFItem {
   nombre: string;
+  modalidad: 'con_factura' | 'sin_factura';
   cantidad: number;
   costo_unitario: number;
   inversion: number;
@@ -1549,7 +1550,7 @@ export function exportInvestmentAnalysisToPDF(data: InvestmentPDFData): void {
     const color = p.ganancia < 0 ? LIC_CLR.red : LIC_CLR.green;
     return [
       { content: String(i + 1), styles: { halign: 'center' as const } },
-      p.nombre || '—',
+      `${p.nombre || '—'}  (${p.modalidad === 'sin_factura' ? 's/factura' : 'c/factura'})`,
       { content: String(p.cantidad), styles: { halign: 'center' as const } },
       { content: `Bs ${fmtN(p.costo_unitario)}`, styles: { halign: 'right' as const } },
       { content: `Bs ${fmtN(p.inversion)}`, styles: { halign: 'right' as const } },
