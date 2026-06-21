@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Ship, Save } from 'lucide-react';
+import { ArrowLeft, Ship, Save, FileDown } from 'lucide-react';
 import { toast } from 'sonner';
+import { exportInvestmentAnalysisToPDF } from '@/services/pdfService';
 import {
   InvestmentAnalysis, InvestmentItem, InvestmentEstado,
   INVESTMENT_ESTADO_LABELS, INVESTMENT_ESTADO_COLORS,
@@ -84,6 +85,43 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
     }
   };
 
+  const handleExportPDF = () => {
+    if (items.length === 0) { toast.error('No hay productos para exportar'); return; }
+    try {
+      exportInvestmentAnalysisToPDF({
+        analysis: {
+          nombre:                  analysis.nombre,
+          notas:                   analysis.notas,
+          estado:                  INVESTMENT_ESTADO_LABELS[analysis.estado],
+          costo_capital_anual:     costoCapital,
+          plazo_importacion_meses: plazoImport,
+        },
+        items: items.map((it, i) => ({
+          nombre:               it.nombre,
+          cantidad:             it.cantidad,
+          costo_unitario:       calcs[i].costeo.costo_unitario,
+          inversion:            calcs[i].costeo.inversion,
+          precio_con_factura:   it.precio_venta,
+          precio_sin_factura:   it.precio_venta_sin_factura,
+          cantidad_sin_factura: it.cantidad_sin_factura,
+          ingreso_total:        calcs[i].costeo.ingreso_total,
+          ganancia:             calcs[i].costeo.ganancia,
+          roi:                  calcs[i].costeo.roi,
+          ciclo_meses:          calcs[i].tiempo.ciclo_meses,
+          roi_anualizado:       calcs[i].tiempo.roi_anualizado,
+          meses_recuperacion:   calcs[i].tiempo.meses_recuperacion,
+          van:                  calcs[i].tiempo.van,
+          tir_anual:            calcs[i].tiempo.tir_anual,
+        })),
+        resumen,
+      });
+      toast.success('PDF generado');
+    } catch (e) {
+      toast.error('Error al generar el PDF');
+      console.error(e);
+    }
+  };
+
   const handleEstadoChange = async (estado: InvestmentEstado) => {
     if (!companyId) return;
     try {
@@ -118,6 +156,15 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={handleExportPDF}
+            disabled={items.length === 0}
+          >
+            <FileDown className="h-3.5 w-3.5" /> PDF
+          </Button>
           <Button
             variant="outline"
             size="sm"

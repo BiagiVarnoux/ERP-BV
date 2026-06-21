@@ -1,6 +1,6 @@
 // src/services/pdfService.ts
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import autoTable, { RowInput } from 'jspdf-autotable';
 import { fmt } from '@/accounting/utils';
 
 interface ReportHeader {
@@ -1452,4 +1452,222 @@ export function exportCotizacionToPDF(data: CotizacionPDFData): void {
     ? data.licitacion.numero_sicoes.toLowerCase().replace(/\s+/g, '-')
     : 'cotizacion';
   doc.save(`cotizacion-${slug}-${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+// ─── Análisis de Inversión ──────────────────────────────────────────────────────
+
+export interface InvestmentPDFItem {
+  nombre: string;
+  cantidad: number;
+  costo_unitario: number;
+  inversion: number;
+  precio_con_factura: number;
+  precio_sin_factura: number;
+  cantidad_sin_factura: number;
+  ingreso_total: number;
+  ganancia: number;
+  roi: number;
+  // temporal
+  ciclo_meses: number;
+  roi_anualizado: number;
+  meses_recuperacion: number;
+  van: number;
+  tir_anual: number;
+}
+
+export interface InvestmentPDFData {
+  analysis: {
+    nombre: string;
+    notas?: string;
+    estado: string;
+    costo_capital_anual: number;
+    plazo_importacion_meses: number;
+  };
+  items: InvestmentPDFItem[];
+  resumen: {
+    inversion: number;
+    ingreso_total: number;
+    costos: number;
+    ganancia: number;
+    roi: number;
+    ciclo_meses: number;
+    roi_anualizado: number;
+    van: number;
+    tir_anual: number;
+  };
+}
+
+export function exportInvestmentAnalysisToPDF(data: InvestmentPDFData): void {
+  const doc = new jsPDF('landscape', 'mm', 'letter');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const ML = 12;
+  const MR = 12;
+
+  const fmtN = (n: number) =>
+    isFinite(n) ? n.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+  const fmtPct = (n: number) => (isFinite(n) ? `${(n * 100).toFixed(1)}%` : '—');
+  const fmtMes = (n: number) => (isFinite(n) ? `${fmtN(n)} m` : '—');
+
+  // ── ENCABEZADO ───────────────────────────────────────────────────────────────
+  doc.setFillColor(...LIC_CLR.navy);
+  doc.rect(0, 0, pageWidth, 22, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(17);
+  doc.setTextColor(255, 255, 255);
+  doc.text('Análisis de Inversión', ML, 10);
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(180, 210, 235);
+  const meta = [
+    `Estado: ${data.analysis.estado}`,
+    `Costo de capital: ${data.analysis.costo_capital_anual}% anual`,
+    `Plazo importación: ${data.analysis.plazo_importacion_meses} m`,
+  ].join('   ·   ');
+  doc.text(meta, ML, 17);
+  doc.setTextColor(0, 0, 0);
+
+  let currentY = 27;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(30, 30, 30);
+  doc.text(data.analysis.nombre || 'Análisis', ML, currentY);
+  currentY += 6;
+  if (data.analysis.notas) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(90, 90, 90);
+    doc.text(data.analysis.notas, ML, currentY);
+    currentY += 5;
+  }
+  doc.setLineWidth(0.4);
+  doc.setDrawColor(...LIC_CLR.navy);
+  doc.line(ML, currentY, pageWidth - MR, currentY);
+  currentY += 5;
+
+  // ── TABLA 1: PRODUCTOS Y RENTABILIDAD ────────────────────────────────────────
+  const prodBody: RowInput[] = data.items.map((p, i) => {
+    const color = p.ganancia < 0 ? LIC_CLR.red : LIC_CLR.green;
+    return [
+      { content: String(i + 1), styles: { halign: 'center' as const } },
+      p.nombre || '—',
+      { content: String(p.cantidad), styles: { halign: 'center' as const } },
+      { content: `Bs ${fmtN(p.costo_unitario)}`, styles: { halign: 'right' as const } },
+      { content: `Bs ${fmtN(p.inversion)}`, styles: { halign: 'right' as const } },
+      { content: `Bs ${fmtN(p.precio_con_factura)}`, styles: { halign: 'right' as const } },
+      { content: `Bs ${fmtN(p.precio_sin_factura)}`, styles: { halign: 'right' as const } },
+      { content: String(p.cantidad_sin_factura), styles: { halign: 'center' as const } },
+      { content: `Bs ${fmtN(p.ingreso_total)}`, styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
+      { content: `Bs ${fmtN(p.ganancia)}`, styles: { halign: 'right' as const, textColor: color, fontStyle: 'bold' as const } },
+      { content: fmtPct(p.roi), styles: { halign: 'center' as const, textColor: color, fontStyle: 'bold' as const } },
+    ];
+  });
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [['#', 'Producto', 'Q', 'Costo Unit.', 'Inversión', 'P. c/Factura', 'P. s/Factura', 'Uds s/F', 'Ingreso', 'Ganancia', 'ROI']],
+    body: prodBody,
+    headStyles: { fillColor: LIC_CLR.teal, fontSize: 8, textColor: [255, 255, 255] },
+    styles: { fontSize: 8.5, cellPadding: 2.5 },
+    margin: { left: ML, right: MR },
+  });
+  // @ts-expect-error lastAutoTable lo agrega el plugin jspdf-autotable en runtime
+  currentY = doc.lastAutoTable.finalY + 7;
+
+  // ── TABLA 2: ANÁLISIS TEMPORAL ───────────────────────────────────────────────
+  doc.setFillColor(...LIC_CLR.navy);
+  doc.rect(ML, currentY - 3, pageWidth - ML - MR, 6, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(255, 255, 255);
+  doc.text('RENTABILIDAD AJUSTADA POR TIEMPO', ML + 2, currentY + 0.5);
+  doc.setTextColor(0, 0, 0);
+  currentY += 7;
+
+  const tiempoBody: RowInput[] = data.items.map((p, i) => {
+    const vanColor = p.van < 0 ? LIC_CLR.red : LIC_CLR.green;
+    return [
+      { content: String(i + 1), styles: { halign: 'center' as const } },
+      p.nombre || '—',
+      { content: fmtMes(p.ciclo_meses), styles: { halign: 'center' as const } },
+      { content: fmtPct(p.roi_anualizado), styles: { halign: 'center' as const, fontStyle: 'bold' as const } },
+      { content: fmtMes(p.meses_recuperacion), styles: { halign: 'center' as const } },
+      { content: `Bs ${fmtN(p.van)}`, styles: { halign: 'right' as const, textColor: vanColor, fontStyle: 'bold' as const } },
+      { content: fmtPct(p.tir_anual), styles: { halign: 'center' as const, fontStyle: 'bold' as const } },
+    ];
+  });
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [['#', 'Producto', 'Ciclo de caja', 'ROI anualizado', 'Recuperación', 'VAN', 'TIR anual']],
+    body: tiempoBody,
+    headStyles: { fillColor: LIC_CLR.teal, fontSize: 8, textColor: [255, 255, 255] },
+    styles: { fontSize: 8.5, cellPadding: 2.5 },
+    margin: { left: ML, right: MR },
+  });
+  // @ts-expect-error lastAutoTable lo agrega el plugin jspdf-autotable en runtime
+  currentY = doc.lastAutoTable.finalY + 7;
+
+  // ── RESUMEN FINANCIERO ───────────────────────────────────────────────────────
+  doc.setFillColor(...LIC_CLR.navy);
+  doc.rect(ML, currentY - 3, pageWidth - ML - MR, 6, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(255, 255, 255);
+  doc.text('RESUMEN GLOBAL', ML + 2, currentY + 0.5);
+  doc.setTextColor(0, 0, 0);
+  currentY += 7;
+
+  const r = data.resumen;
+  const bad = r.ganancia < 0;
+  const summaryData: [string, string, boolean?][] = [
+    ['Inversión total', `Bs ${fmtN(r.inversion)}`],
+    ['Ingreso total esperado', `Bs ${fmtN(r.ingreso_total)}`],
+    ['Costos totales', `Bs ${fmtN(r.costos)}`],
+    ['Ganancia neta', `Bs ${fmtN(r.ganancia)}`, true],
+    ['ROI simple', fmtPct(r.roi), true],
+    ['Ciclo de caja (ponderado)', fmtMes(r.ciclo_meses)],
+    ['ROI anualizado', fmtPct(r.roi_anualizado), true],
+    [`VAN (a ${data.analysis.costo_capital_anual}% anual)`, `Bs ${fmtN(r.van)}`, true],
+    ['TIR anual', fmtPct(r.tir_anual), true],
+  ];
+
+  autoTable(doc, {
+    startY: currentY,
+    body: summaryData.map(([k, v, highlight], idx): RowInput => [
+      { content: k, styles: { fontStyle: highlight ? 'bold' : 'normal', fillColor: idx % 2 === 0 ? LIC_CLR.lightgray : undefined } },
+      { content: v, styles: {
+          halign: 'right' as const,
+          fontStyle: highlight ? 'bold' : 'normal',
+          fillColor: idx % 2 === 0 ? LIC_CLR.lightgray : undefined,
+          textColor: highlight ? (bad ? LIC_CLR.red : LIC_CLR.green) : undefined,
+        } },
+    ]),
+    styles: { fontSize: 9, cellPadding: 3 },
+    columnStyles: { 0: { cellWidth: 75 }, 1: { cellWidth: 45 } },
+    margin: { left: ML, right: MR },
+    tableWidth: 120,
+  });
+
+  // ── PIE DE PÁGINA ────────────────────────────────────────────────────────────
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    const ph = doc.internal.pageSize.getHeight();
+    doc.setFillColor(...LIC_CLR.navy);
+    doc.rect(0, ph - 9, pageWidth, 9, 'F');
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(180, 210, 235);
+    doc.text(
+      `${data.analysis.nombre}  ·  Análisis de Inversión  ·  Página ${i} de ${pageCount}  ·  ERP BV  ·  ${new Date().toLocaleString('es-BO')}`,
+      pageWidth / 2,
+      ph - 3,
+      { align: 'center' },
+    );
+    doc.setTextColor(0, 0, 0);
+  }
+
+  const slug = (data.analysis.nombre || 'analisis').toLowerCase().replace(/\s+/g, '-').slice(0, 40);
+  doc.save(`analisis-inversion-${slug}-${new Date().toISOString().split('T')[0]}.pdf`);
 }
