@@ -62,7 +62,9 @@ export interface InvestmentItem {
   costo_bateria: number;
 
   // Venta esperada — driver de la rentabilidad
-  precio_venta: number;       // Bs/unidad esperado de venta
+  precio_venta: number;             // Bs/unidad CON factura
+  precio_venta_sin_factura: number; // Bs/unidad SIN factura (normalmente menor)
+  cantidad_sin_factura: number;     // unidades vendidas sin factura (el resto, con factura)
 
   // Costos adicionales
   garantia: number;
@@ -121,15 +123,20 @@ export interface ItemCosteo {
 
   // Totales por cantidad
   inversion: number;           // costo_unitario × cantidad + extras (capital comprometido)
-  ingreso_total: number;       // precio_venta × cantidad
-  iva_pagar: number;
-  it_pagar: number;
+  ingreso_total: number;       // ingreso con factura + sin factura
+  ingreso_con_factura: number; // precio_venta × unidades con factura
+  ingreso_sin_factura: number; // precio_venta_sin_factura × unidades sin factura
+  cantidad_con_factura: number;
+  cantidad_sin_factura: number;
+  iva_pagar: number;           // solo sobre ventas con factura (13% − crédito IVA aduana)
+  it_pagar: number;            // solo sobre ventas con factura (3%)
   costos: number;              // costo total con impuestos de venta + extras
   ganancia: number;            // ingreso_total − costos
   roi: number;                 // ganancia / inversión
 
-  // Precio mínimo para no perder
-  precio_piso: number;
+  // Precios mínimos para no perder
+  precio_piso: number;         // unidad CON factura
+  precio_piso_sf: number;      // unidad SIN factura (= costo unitario, sin impuestos)
 
   extras: number;              // garantia + pasaje + envio_local + otros_costos
 }

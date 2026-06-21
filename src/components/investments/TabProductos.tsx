@@ -247,9 +247,9 @@ function ItemForm({ item: p, calc, onChange }: {
       {/* Venta esperada */}
       <div>
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Venta esperada</p>
-        <div className="flex flex-wrap items-end gap-4 mb-4">
-          <div className="space-y-1 w-44">
-            <label className="text-xs font-semibold">Precio de venta (Bs/unidad)</label>
+        <div className="flex flex-wrap items-end gap-4 mb-3">
+          <div className="space-y-1 w-40">
+            <label className="text-xs font-semibold">Precio CON factura</label>
             <Input
               type="number" min="0" step="0.01"
               className="h-9 font-mono font-semibold text-base"
@@ -258,16 +258,33 @@ function ItemForm({ item: p, calc, onChange }: {
               onChange={e => onChange({ precio_venta: toDecimal(e.target.value) || 0 })}
             />
           </div>
-          <Field label="Velocidad de venta" hint="uds/mes" className="w-32">
+          <div className="space-y-1 w-40">
+            <label className="text-xs font-semibold">Precio SIN factura</label>
+            <Input
+              type="number" min="0" step="0.01"
+              className="h-9 font-mono font-semibold text-base"
+              value={p.precio_venta_sin_factura || ''}
+              placeholder="0.00"
+              onChange={e => onChange({ precio_venta_sin_factura: toDecimal(e.target.value) || 0 })}
+            />
+          </div>
+          <Field label="Uds sin factura" hint={`de ${p.cantidad}`} className="w-28">
+            <NumInput value={p.cantidad_sin_factura || undefined} onChange={n('cantidad_sin_factura')} min="0" step="1" placeholder="0" />
+          </Field>
+          <Field label="Velocidad de venta" hint="uds/mes" className="w-28">
             <NumInput value={p.velocidad_venta || undefined} onChange={n('velocidad_venta')} min="0" step="1" placeholder="uds/mes" />
           </Field>
-          <Field label="Plazo venta override" hint="meses" className="w-32">
+          <Field label="Plazo venta override" hint="meses" className="w-28">
             <NumInput value={p.meses_venta_override} onChange={n('meses_venta_override')} min="0" step="0.5" placeholder="auto" />
           </Field>
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Total venta</p>
-            <p className="text-sm font-mono">Bs {fmt(costeo.ingreso_total)}</p>
-          </div>
+        </div>
+
+        {/* Desglose con/sin factura */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+          <StatCard label={`Con factura (${fmt(costeo.cantidad_con_factura)} uds)`} value={costeo.ingreso_con_factura} hint="Ingreso de unidades con factura (paga IVA + IT)" />
+          <StatCard label={`Sin factura (${fmt(costeo.cantidad_sin_factura)} uds)`} value={costeo.ingreso_sin_factura} hint="Ingreso de unidades sin factura (sin IVA ni IT)" />
+          <StatCard label="Total venta" value={costeo.ingreso_total} bold />
+          <StatCard label="Piso s/factura" value={costeo.precio_piso_sf} hint="Venta mínima sin factura = costo unitario" />
         </div>
 
         {/* Costos adicionales */}

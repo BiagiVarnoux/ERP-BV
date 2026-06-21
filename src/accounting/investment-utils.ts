@@ -54,11 +54,40 @@ function toLicitacionProducto(it: InvestmentItem): LicitacionProducto {
   };
 }
 
+// Tasas de venta (Bolivia)
+const IVA_VENTA_RATE = 0.13;
+const IT_RATE        = 0.03;
+
 export function calcCosteo(it: InvestmentItem): ItemCosteo {
+  // Lado de costos de importación: reutiliza el motor de licitaciones (no depende
+  // del precio de venta). Las salidas de venta (iva_pagar, ganancia, etc.) las
+  // recalculamos aquí porque manejamos venta mixta con/sin factura.
   const c = calcProducto(toLicitacionProducto(it));
+
+  const cantidad = Math.max(0, it.cantidad || 0);
+  const qSin = Math.min(Math.max(0, it.cantidad_sin_factura || 0), cantidad);
+  const qCon = round2(cantidad - qSin);
+
   const extras = round2((it.garantia || 0) + (it.pasaje || 0) + (it.envio_local || 0) + (it.otros_costos || 0));
-  // Capital realmente comprometido al inicio = costo de importación del lote + extras.
-  const inversion = round2(c.total_import + extras);
+  const costoUnit = c.total_individual;         // costo importación por unidad
+  const totalImport = c.total_import;           // costoUnit × cantidad
+  const inversion = round2(totalImport + extras);
+
+  const Pc = it.precio_venta || 0;              // con factura
+  const Ps = it.precio_venta_sin_factura || 0;  // sin factura
+
+  const ingresoCon = round2(Pc * qCon);
+  const ingresoSin = round2(Ps * qSin);
+  const ingresoTotal = round2(ingresoCon + ingresoSin);
+
+  // Impuestos SOLO sobre ventas con factura (crédito IVA aduana solo aplica a esas unidades).
+  const ivaPagar = round2(ingresoCon * IVA_VENTA_RATE - c.iva_aduana * qCon);
+  const itPagar  = round2(ingresoCon * IT_RATE);
+
+  const costos = round2(totalImport + ivaPagar + itPagar + extras);
+  const ganancia = round2(ingresoTotal - costos);
+  const roi = inversion > 0 ? round2(ganancia / inversion) : 0;
+
   return {
     precio_bs:            c.precio_bs,
     precio_bob:           c.precio_bob,
@@ -72,15 +101,22 @@ export function calcCosteo(it: InvestmentItem): ItemCosteo {
     impuestos:            c.impuestos,
     manipuleo:            c.manipuleo,
     bateria:              c.bateria,
-    costo_unitario:       c.total_individual,
+    costo_unitario:       costoUnit,
     inversion,
-    ingreso_total:        c.total_ofertado,
-    iva_pagar:            c.iva_pagar,
-    it_pagar:             c.it_pagar,
-    costos:               c.costos,
-    ganancia:             c.ganancia,
-    roi:                  c.roi,
+    ingreso_total:        ingresoTotal,
+    ingreso_con_factura:  ingresoCon,
+    ingreso_sin_factura:  ingresoSin,
+    cantidad_con_factura: qCon,
+    cantidad_sin_factura: qSin,
+    iva_pagar:            ivaPagar,
+    it_pagar:             itPagar,
+    costos,
+    ganancia,
+    roi,
+    // Piso con factura: el algebraico de calcProducto. Piso sin factura: el costo
+    // unitario puesto en almacén (sin impuestos de venta que recuperar).
     precio_piso:          c.precio_piso,
+    precio_piso_sf:       costoUnit,
     extras,
   };
 }
@@ -320,6 +356,8 @@ export function emptyItem(analysis_id: string, orden: number): InvestmentItem {
     tiene_bateria:    false,
     costo_bateria:    0,
     precio_venta:     0,
+    precio_venta_sin_factura: 0,
+    cantidad_sin_factura:     0,
     garantia:         0,
     pasaje:           0,
     envio_local:      0,
