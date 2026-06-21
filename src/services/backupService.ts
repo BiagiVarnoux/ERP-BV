@@ -63,12 +63,34 @@ async function fetchAllJournalLines(companyId: string): Promise<any[]> {
   return rows.map(({ journal_entries, ...line }: any) => line);
 }
 
-/** Returns the first company_id that the user belongs to. */
-async function getUserCompanyId(userId: string): Promise<string> {
+/**
+ * Resuelve la empresa objetivo del backup/restore.
+ *
+ * SIEMPRE debe pasarse la empresa ACTIVA desde la UI (useActiveCompanyId).
+ * Sin ese parámetro el backup operaría sobre una empresa arbitraria — para un
+ * usuario con varias empresas (holding) eso significa exportar/sobrescribir la
+ * empresa equivocada (riesgo de pérdida de datos). Por eso validamos membresía.
+ */
+async function resolveCompanyId(userId: string, companyId?: string): Promise<string> {
+  if (companyId) {
+    // Verificar que el usuario realmente pertenece a esa empresa (defensa en profundidad)
+    const { data, error } = await supabase
+      .from('company_members')
+      .select('company_id')
+      .eq('user_id', userId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (error || !data) {
+      throw new Error('No perteneces a la empresa indicada para el backup');
+    }
+    return companyId;
+  }
+  // Fallback legado: primera membresía. Solo se usa si la UI no pasó la empresa.
   const { data, error } = await supabase
     .from('company_members')
     .select('company_id')
     .eq('user_id', userId)
+    .order('created_at', { ascending: true })
     .limit(1)
     .single();
   if (error || !data) {
@@ -161,11 +183,11 @@ export interface BackupData {
   product_categories?: any[];
 }
 
-export async function createFullBackup(): Promise<BackupData> {
+export async function createFullBackup(activeCompanyId?: string): Promise<BackupData> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Usuario no autenticado');
 
-  const companyId = await getUserCompanyId(user.id);
+  const companyId = await resolveCompanyId(user.id, activeCompanyId);
 
   const [
     accounts,
@@ -608,11 +630,11 @@ async function _performRestoreInternal(
 
 // ─── Public API ────────────────────────────────────────────────────────────────
 
-export async function restoreFromBackup(backup: BackupData): Promise<{ success: boolean; message: string }> {
+export async function restoreFromBackup(backup: BackupData, activeCompanyId?: string): Promise<{ success: boolean; message: string }> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Usuario no autenticado');
 
-  const companyId = await getUserCompanyId(user.id);
+  const companyId = await resolveCompanyId(user.id, activeCompanyId);
 
   // ── Pre-restore snapshot ────────────────────────────────────────────────────
   // Because PostgREST does not expose multi-statement transactions, we mitigate
@@ -621,7 +643,7 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
   // from the snapshot, effectively rolling back to the pre-restore state.
   let preRestoreSnapshot: BackupData | null = null;
   try {
-    preRestoreSnapshot = await createFullBackup();
+    preRestoreSnapshot = await createFullBackup(companyId);
   } catch (snapshotErr) {
     // Non-fatal: proceed without rollback capability. The user should be warned.
     console.warn('[backup] Could not create pre-restore snapshot — rollback disabled:', snapshotErr);

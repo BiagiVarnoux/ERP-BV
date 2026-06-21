@@ -141,8 +141,24 @@ type ModuleAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export'
 
 1. On mount / company switch, `UserAccessContext` queries `company_members` to get `role` and `company_id`.
 2. Calls `get_my_permissions(p_company_id)` RPC → returns rows from `member_permissions` table.
-3. Builds `permissionsMap`. For **owners**, all modules get full permissions (no `member_permissions` rows needed).
-4. For custom roles: permissions come entirely from `member_permissions` rows. If no rows exist yet, the RPC returns empty → fallback grants all modules at `can_view=true` only (read-only until configured).
+3. Builds `permissionsMap`. For **owners**, all modules get full permissions in the frontend fallback (no `member_permissions` rows needed).
+4. For **non-owner** roles (manager/accountant/auditor/viewer/custom): permissions come **entirely** from `member_permissions` rows. There is **no** frontend fallback for non-owners — if the RPC returns empty, `permissionsMap` is empty and the user sees **zero modules**. Therefore every non-owner member MUST have `member_permissions` rows seeded at creation time (see Onboarding below).
+
+### Onboarding & member provisioning (read before touching auth/registration)
+
+There are exactly two ways a user gets into a company, both already wired:
+
+| Scenario | Path | RPC | Result |
+|---|---|---|---|
+| New user, **no** invitation code | Client detects `needsOnboarding` → `CreateCompanyForm` | `create_my_company(name, slug, …)` | Owner of a brand-new company (`role_typed='owner'`) |
+| User joins an **existing** company / holding | Owner generates a code → user redeems it | `redeem_invitation_code(code, user_id)` | Member with the invited `role_typed` **+ seeded `member_permissions`** |
+
+Hard rules learned from real bugs — do not regress these:
+
+- **`role_typed` is the source of truth, not `role`.** `loadAccess()` reads `role_typed` with priority. The column **defaults to `'viewer'`**, so every `INSERT INTO company_members` MUST set `role_typed` explicitly. Setting only `role='owner'` silently produces a viewer with no modules.
+- **Seed permissions for every non-owner.** Any RPC that adds a non-owner member must call `assign_default_permissions(member_id, role_typed)`. `redeem_invitation_code` does this. Owners are exempt (frontend fallback covers them).
+- **Never auto-assign new users to a hardcoded company.** The legacy `assign_default_owner_role` (which dumped users into `00000000-…-001` / Biagi & Varnoux) is **neutralized to a no-op**. Onboarding is client-driven via `create_my_company` / `redeem_invitation_code`. Do not reintroduce a default-company assignment.
+- After creating a membership for a **new** user, the client must reload (`refreshAccess()` / `window.location.reload()`) — `loadAccess()` can run before the membership INSERT commits otherwise (race → "no permissions" screen).
 
 ### `isReadOnly` vs `can(module, action)`
 
@@ -238,10 +254,12 @@ Storage bucket: `shipment-docs` — paths use `{company_id}/{shipment_id}/filena
 | Table | Ownership | RLS policy type | In backup | Notes |
 |---|---|---|---|---|
 | `companies` | `user_id` (owner) | owner only | ✅ (company row) | Company registry |
-| `company_members` | FK → companies | via companies | ✅ | Membership + roles |
+| `company_members` | FK → companies | via companies | ✅ | Membership + roles. **`role_typed` (enum) is the source of truth, not `role` (text)** — see Onboarding below |
 | `member_permissions` | FK → company_members | via company_members | ✅ | Granular module permissions |
 | `company_module_config` | `company_id` | company_member | ✅ | Feature flags per company |
-| `company_invitations` | FK → companies | owner only | — | Short-lived; not backed up |
+| `invitation_codes` | FK → companies | owner only | — | Invitation codes (the real table; `company_invitations` does not exist). Short-lived; not backed up |
+| `backup_schedules` | `company_id` (PK) | owner manage / member read | — | Per-company auto-backup config (frequency, retention, enabled). Not itself backed up |
+| `company_backups` | `company_id` | owner delete / member read | — | Stored JSONB snapshots produced by the auto-backup system. Not itself backed up; survives a restore |
 | `audit_log` | `company_id` | company_member | — | Append-only; not restored |
 
 ---
@@ -428,6 +446,19 @@ Never do raw `a + b` on Bs amounts — use `round2(a + b)`.
 - Storage bucket: `shipment-docs` — company-scoped paths
 - Environment: `.env` (not committed) — `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`
 
+### Automatic backups (server-side, per company)
+
+A `pg_cron` job (`auto-company-backups`, hourly) drives the per-company backup system:
+
+- `run_scheduled_backups()` — cron entry point (no auth ctx). Auto-seeds a `backup_schedules` row for every non-holding company, then backs up those whose `interval_hours` has elapsed, and prunes to `retention_count`.
+- `build_company_backup(company_id) → jsonb` — serializes one company to the **exact `BackupData` shape** used by the client (`backupService.ts`). **This is the THIRD place to update when adding a table** (see Rule 2).
+- `create_company_backup(company_id, kind)` — builds + inserts a `company_backups` row + prunes. Manual calls (auth ctx present) require `role_typed='owner'`; cron calls (no auth) are allowed.
+- Snapshots are stored as JSONB rows in `company_backups`, not Storage. They are RLS-scoped (members read, owners delete) and are **excluded** from `build_company_backup` and from restore's delete phase, so they survive a restore.
+- UI: `src/components/backup/AutoBackupsPanel.tsx` (inside `BackupRestoreModal`) — owner configures frequency/retention, creates on demand, and downloads/restores any snapshot.
+- Disaster-recovery layer for the whole DB is Supabase's native PITR — independent of this per-company system.
+
+To change the cron cadence, edit the `cron.schedule(...)` call; per-company frequency is data in `backup_schedules.interval_hours` (personalizable in the UI), not code.
+
 ---
 
 ## Standing rules — apply automatically on every change
@@ -450,7 +481,13 @@ The system is structured as a **Holding with multiple companies underneath**.
 `src/services/backupService.ts` is the single source of truth for data portability.
 
 - **Every new Supabase table must be added to the backup** in the same PR/commit that introduces it — no exceptions unless explicitly told otherwise.
+- **THREE places must stay in sync** (the server-side backup added a third):
+  1. **Client backup** — `backupService.ts`: add a `fetch*` helper, include it in `Promise.all` inside `createFullBackup()`, add the field to `BackupData`, add the delete block in `_performRestoreInternal()` (FK order), add the insert block, and list the field in `validateBackupFile()` `optionalArrays`.
+  2. **Server backup** — the `build_company_backup(company_id)` SQL function (migration): add the table to the `jsonb_build_object`, using a parent-join subquery for child tables without `company_id` (mirror `journal_lines` / `sale_items`).
+  3. Keep field names **identical** across both so a server-made snapshot restores through the same client path.
 - Follow the existing pattern: add a `fetch*` helper, include it in `Promise.all` inside `createFullBackup()`, add the field to `BackupData`, add the delete block in `_performRestoreInternal()` (respecting FK order), and add the insert block in `_performRestoreInternal()`.
+- **Backups are scoped to the ACTIVE company, never the first membership.** `createFullBackup(activeCompanyId)` / `restoreFromBackup(backup, activeCompanyId)` take the active company from the UI (`useActiveCompanyId()`) and validate membership. A backup that resolves the company via "first row in `company_members`" is a multi-company data-loss bug (exports/overwrites the wrong company).
+- `company_backups` and `backup_schedules` are infrastructure for the backup system itself — **do NOT add them to backup coverage**, and the restore delete-phase must never touch them (snapshots must survive a restore).
 - If a table has no `user_id` (owned via FK to a parent table), use an inner-join query like `fetchAllJournalLines()` or `fetchAllLicitacionProductos()` and strip the join column before storing.
 - Tables that are scoped by `company_id` instead of `user_id` use `fetchAllCompanyRows()`.
 - After adding backup support, update `validateBackupFile()` to list the new field in `optionalArrays`.

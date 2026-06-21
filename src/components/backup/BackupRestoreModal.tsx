@@ -20,6 +20,8 @@ import {
   verifyBackupIntegrity,
   BackupData
 } from '@/services/backupService';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
+import { AutoBackupsPanel } from './AutoBackupsPanel';
 
 interface BackupRestoreModalProps {
   isOpen: boolean;
@@ -32,11 +34,12 @@ export function BackupRestoreModal({ isOpen, onClose, onRestoreComplete }: Backu
   const [restoreData, setRestoreData] = useState<BackupData | null>(null);
   const [restoreStep, setRestoreStep] = useState<'select' | 'confirm' | 'restoring'>('select');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const activeCompanyId = useActiveCompanyId();
 
   async function handleBackup() {
     setLoading(true);
     try {
-      const data = await createFullBackup();
+      const data = await createFullBackup(activeCompanyId);
       await downloadBackup(data);
       toast.success('Backup descargado y firmado correctamente');
     } catch (error: any) {
@@ -89,7 +92,7 @@ export function BackupRestoreModal({ isOpen, onClose, onRestoreComplete }: Backu
     setLoading(true);
 
     try {
-      const result = await restoreFromBackup(restoreData);
+      const result = await restoreFromBackup(restoreData, activeCompanyId);
       
       if (result.success) {
         toast.success(result.message);
@@ -140,7 +143,7 @@ export function BackupRestoreModal({ isOpen, onClose, onRestoreComplete }: Backu
 
   return (
     <Dialog open={isOpen} onOpenChange={open => !open && handleClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Backup y Restauración</DialogTitle>
           <DialogDescription>
@@ -149,6 +152,11 @@ export function BackupRestoreModal({ isOpen, onClose, onRestoreComplete }: Backu
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {/* Backups automáticos (servidor) */}
+          <div className="p-4 border rounded-lg space-y-3">
+            <AutoBackupsPanel onRestoreComplete={() => { onRestoreComplete(); handleClose(); }} />
+          </div>
+
           {/* Backup section */}
           <div className="p-4 border rounded-lg space-y-3">
             <h3 className="font-medium flex items-center gap-2">
