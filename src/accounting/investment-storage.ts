@@ -74,6 +74,8 @@ function rowToItem(row: Record<string, unknown>): InvestmentItem {
     otros_costos:      Number(row.otros_costos) || 0,
     velocidad_venta:   Number(row.velocidad_venta) || 0,
     meses_venta_override: row.meses_venta_override != null ? Number(row.meses_venta_override) : undefined,
+    mapped_shipment_product_ids: Array.isArray(row.mapped_shipment_product_ids)
+      ? (row.mapped_shipment_product_ids as string[]) : [],
     created_at:        row.created_at as string,
     updated_at:        row.updated_at as string,
   };
@@ -117,6 +119,7 @@ function itemToRow(it: InvestmentItem) {
     otros_costos:      it.otros_costos,
     velocidad_venta:   it.velocidad_venta,
     meses_venta_override: it.meses_venta_override ?? null,
+    mapped_shipment_product_ids: it.mapped_shipment_product_ids ?? [],
   };
 }
 
@@ -172,7 +175,8 @@ export const InvestmentStorage = {
   async update(
     id: string,
     companyId: string,
-    changes: Partial<Omit<InvestmentAnalysis, 'id' | 'company_id' | 'user_id' | 'items' | 'created_at' | 'updated_at'>>,
+    changes: Partial<Omit<InvestmentAnalysis, 'id' | 'company_id' | 'user_id' | 'items' | 'created_at' | 'updated_at'>>
+      & { embarque_id?: string | null },
   ): Promise<void> {
     const { error } = await supabase
       .from('investment_analyses')

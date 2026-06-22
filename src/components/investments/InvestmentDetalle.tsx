@@ -17,7 +17,7 @@ import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { TabProductos } from './TabProductos';
 import { TabTiempo } from './TabTiempo';
 import { TabComparador } from './TabComparador';
-import { EnviarEmbarqueDialog } from './EnviarEmbarqueDialog';
+import { TabEmbarque } from './TabEmbarque';
 
 interface Props {
   analysis: InvestmentAnalysis;
@@ -28,14 +28,14 @@ interface Props {
 
 const ESTADOS_ORDEN: InvestmentEstado[] = ['BORRADOR', 'APROBADO', 'DESCARTADO', 'EJECUTADO'];
 
-export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Props) {
+export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
   const companyId = useActiveCompanyId();
   const [items, setItems] = useState<InvestmentItem[]>(analysis.items);
   const [costoCapital, setCostoCapital] = useState(analysis.costo_capital_anual);
   const [plazoImport, setPlazoImport] = useState(analysis.plazo_importacion_meses);
   const [fuc, setFuc] = useState(analysis.fuc_pct);
+  const [embarqueId, setEmbarqueId] = useState(analysis.embarque_id);
   const [saving, setSaving] = useState(false);
-  const [embarqueOpen, setEmbarqueOpen] = useState(false);
 
   const calcs = useMemo(
     () => items.map(it => calcItem(it, plazoImport, costoCapital, fuc)),
@@ -50,7 +50,8 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
     JSON.stringify(items) !== JSON.stringify(analysis.items) ||
     costoCapital !== analysis.costo_capital_anual ||
     plazoImport !== analysis.plazo_importacion_meses ||
-    fuc !== analysis.fuc_pct;
+    fuc !== analysis.fuc_pct ||
+    (embarqueId ?? null) !== (analysis.embarque_id ?? null);
 
   // ── Edición de items ──────────────────────────────────────────────────────
   const updateItem = useCallback((id: string, changes: Partial<InvestmentItem>) => {
@@ -72,13 +73,14 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
         costo_capital_anual:     costoCapital,
         plazo_importacion_meses: plazoImport,
         fuc_pct:                 fuc,
+        embarque_id:             embarqueId ?? null,
       });
       await InvestmentStorage.upsertItems(companyId, items);
       const idsActuales = new Set(items.map(i => i.id));
       for (const old of analysis.items) {
         if (!idsActuales.has(old.id)) await InvestmentStorage.deleteItem(old.id, old.analysis_id);
       }
-      onUpdated({ ...analysis, items, costo_capital_anual: costoCapital, plazo_importacion_meses: plazoImport, fuc_pct: fuc });
+      onUpdated({ ...analysis, items, costo_capital_anual: costoCapital, plazo_importacion_meses: plazoImport, fuc_pct: fuc, embarque_id: embarqueId });
       toast.success('Análisis guardado');
     } catch (e) {
       toast.error('Error al guardar');
@@ -150,9 +152,9 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
             <Badge className={`shrink-0 text-xs ${INVESTMENT_ESTADO_COLORS[analysis.estado]}`}>
               {INVESTMENT_ESTADO_LABELS[analysis.estado]}
             </Badge>
-            {analysis.embarque_id && (
+            {embarqueId && (
               <Badge variant="outline" className="shrink-0 text-xs gap-1">
-                <Ship className="h-3 w-3" /> Enviado a embarque
+                <Ship className="h-3 w-3" /> Embarque vinculado
               </Badge>
             )}
           </div>
@@ -168,15 +170,6 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
             disabled={items.length === 0}
           >
             <FileDown className="h-3.5 w-3.5" /> PDF
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={() => setEmbarqueOpen(true)}
-            disabled={items.length === 0}
-          >
-            <Ship className="h-3.5 w-3.5" /> Enviar a embarque
           </Button>
           <Select value={analysis.estado} onValueChange={v => handleEstadoChange(v as InvestmentEstado)}>
             <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
@@ -195,6 +188,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
           <TabsTrigger value="productos">Productos &amp; Costeo</TabsTrigger>
           <TabsTrigger value="tiempo">Rentabilidad temporal</TabsTrigger>
           <TabsTrigger value="comparador">Comparador</TabsTrigger>
+          <TabsTrigger value="embarque">Embarque</TabsTrigger>
         </TabsList>
 
         <TabsContent value="productos" className="mt-4">
@@ -226,6 +220,16 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
         <TabsContent value="comparador" className="mt-4">
           <TabComparador items={items} calcs={calcs} />
         </TabsContent>
+
+        <TabsContent value="embarque" className="mt-4">
+          <TabEmbarque
+            items={items}
+            calcs={calcs}
+            embarqueId={embarqueId}
+            onEmbarqueId={setEmbarqueId}
+            onUpdateItem={updateItem}
+          />
+        </TabsContent>
       </Tabs>
 
       {/* Barra de guardado flotante */}
@@ -239,6 +243,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
                 setCostoCapital(analysis.costo_capital_anual);
                 setPlazoImport(analysis.plazo_importacion_meses);
                 setFuc(analysis.fuc_pct);
+                setEmbarqueId(analysis.embarque_id);
               }}
             >
               Descartar cambios
@@ -251,20 +256,6 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
         </div>
       )}
 
-      <EnviarEmbarqueDialog
-        open={embarqueOpen}
-        onClose={() => setEmbarqueOpen(false)}
-        analysis={{ ...analysis, items }}
-        calcs={calcs}
-        onSent={async (embarqueId) => {
-          if (companyId) {
-            await InvestmentStorage.update(analysis.id, companyId, { embarque_id: embarqueId, estado: 'EJECUTADO' });
-            onUpdated({ ...analysis, items, embarque_id: embarqueId, estado: 'EJECUTADO' });
-          }
-          setEmbarqueOpen(false);
-          await onReload();
-        }}
-      />
     </div>
   );
 }

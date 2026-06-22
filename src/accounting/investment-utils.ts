@@ -387,5 +387,6 @@ export function emptyItem(analysis_id: string, orden: number): InvestmentItem {
     otros_costos:     0,
     velocidad_venta:  0,
     meses_venta_override: undefined,
+    mapped_shipment_product_ids: [],
   };
 }

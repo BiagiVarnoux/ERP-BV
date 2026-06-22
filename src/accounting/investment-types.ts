@@ -77,6 +77,10 @@ export interface InvestmentItem {
   velocidad_venta: number;        // unidades/mes estimadas
   meses_venta_override?: number;  // si se fija el plazo de venta manualmente (meses)
 
+  // Conciliación con embarque: IDs de las filas del embarque vinculado que
+  // corresponden a este producto del análisis (uno-a-varios).
+  mapped_shipment_product_ids: string[];
+
   created_at?: string;
   updated_at?: string;
 }
