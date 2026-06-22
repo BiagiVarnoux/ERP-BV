@@ -208,7 +208,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
           </ModuleSection>
         )}
 
-        {!loading && canView('investments') && (
+        {!loading && v('investments', 'investments') && (
           <ModuleSection
             label="Inversión" badge="" icon={TrendingUp}
             isExpanded={expanded.has('INVESTMENTS')} onToggle={() => toggle('INVESTMENTS')}

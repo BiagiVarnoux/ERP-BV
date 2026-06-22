@@ -48,6 +48,8 @@ const MODULE_LABELS: Record<string, string> = {
   receivables:       'Cuentas x Cobrar',
   payables:          'Cuentas x Pagar',
   shipments:         'Embarques / Importación',
+  licitaciones:      'Licitaciones',
+  investments:       'Análisis de Inversión',
   settings:          'Configuración',
   holding:           'Holding (Consolidado)',
 };

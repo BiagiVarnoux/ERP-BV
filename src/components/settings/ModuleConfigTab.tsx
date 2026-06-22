@@ -48,6 +48,12 @@ const MODULE_TREE: ModuleDef[] = [
       { key: 'customers',  label: 'Clientes',   description: 'Gestión de clientes' },
     ],
   },
+  {
+    label: 'Inversión', badge: 'INV',
+    submodules: [
+      { key: 'investments', label: 'Análisis de Inversión', description: 'Evaluación de importaciones: rentabilidad, VAN/TIR y conciliación con embarques' },
+    ],
+  },
 ];
 
 // ─── Componente ───────────────────────────────────────────────────────────────
