@@ -11,13 +11,50 @@ import { Ship, Link2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { InvestmentItem, ItemCalc } from '@/accounting/investment-types';
 import { ShipmentStorage } from '@/accounting/shipment-storage';
+import { InvestmentStorage, RealizedData, RealizedProduct } from '@/accounting/investment-storage';
 import { Shipment, ShipmentProduct, SHIPMENT_STATUS_LABELS } from '@/accounting/shipment-types';
 import { fmt } from '@/accounting/utils';
-import { StatCard } from './ui-helpers';
+import { StatCard, Pct } from './ui-helpers';
+
+// Normaliza para emparejar nombres (trim, minúsculas, espacios colapsados).
+function norm(s?: string | null): string {
+  return (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// Empareja una fila del embarque a un producto del catálogo por nombre, afinando
+// con especificación y condición cuando hay varios candidatos.
+function matchProduct(sp: ShipmentProduct, products: RealizedProduct[]): RealizedProduct | null {
+  const n = norm(sp.nombre);
+  let cands = products.filter(p => norm(p.nombre) === n);
+  if (cands.length === 0) {
+    cands = products.filter(p => {
+      const pn = norm(p.nombre);
+      return pn.length > 2 && (pn.includes(n) || n.includes(pn));
+    });
+  }
+  if (cands.length > 1 && sp.especificacion) {
+    const e = norm(sp.especificacion);
+    const nar = cands.filter(p => norm(p.especificacion) === e);
+    if (nar.length) cands = nar;
+  }
+  if (cands.length > 1 && sp.condicion) {
+    const c = norm(sp.condicion);
+    const nar = cands.filter(p => norm(p.condicion) === c);
+    if (nar.length) cands = nar;
+  }
+  return cands[0] ?? null;
+}
+
+function daysBetween(a: string, b: string): number | null {
+  const da = Date.parse(a), db = Date.parse(b);
+  if (isNaN(da) || isNaN(db)) return null;
+  return Math.max(0, Math.round((db - da) / 86400000));
+}
 
 interface Props {
   items: InvestmentItem[];
   calcs: ItemCalc[];
+  companyId?: string;
   embarqueId?: string;
   onEmbarqueId: (id: string | undefined) => void;
   onUpdateItem: (id: string, changes: Partial<InvestmentItem>) => void;
@@ -28,9 +65,10 @@ function prodLabel(p: ShipmentProduct): string {
   return `${p.nombre.trim()}${extra ? ` — ${extra}` : ''}`;
 }
 
-export function TabEmbarque({ items, calcs, embarqueId, onEmbarqueId, onUpdateItem }: Props) {
+export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId, onUpdateItem }: Props) {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [realized, setRealized] = useState<RealizedData | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -39,6 +77,13 @@ export function TabEmbarque({ items, calcs, embarqueId, onEmbarqueId, onUpdateIt
       .catch(e => { toast.error('Error cargando embarques'); console.error(e); })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!companyId) return;
+    InvestmentStorage.fetchRealizedData(companyId)
+      .then(setRealized)
+      .catch(e => { console.error('Error cargando ventas reales', e); });
+  }, [companyId]);
 
   const shipment = useMemo(
     () => shipments.find(s => s.id === embarqueId),
@@ -60,6 +105,56 @@ export function TabEmbarque({ items, calcs, embarqueId, onEmbarqueId, onUpdateIt
       : [...cur, productId];
     onUpdateItem(item.id, { mapped_shipment_product_ids: next });
   }, [onUpdateItem]);
+
+  // ── Resultado real por producto del análisis (Fase 2) ─────────────────────
+  // Resuelve productos del catálogo (por nombre+espec+condición) desde las filas
+  // del embarque mapeadas, y agrega las ventas confirmadas.
+  const realizedByItem = useMemo(() => {
+    const out: Record<string, {
+      unidades: number; precioReal: number; margen: number; roiReal: number;
+      conF: number; sinF: number; ultima: string; diasVenta: number | null;
+      matched: string[];
+    }> = {};
+    if (!shipment || !realized) return out;
+
+    for (const it of items) {
+      const mappedProds = (it.mapped_shipment_product_ids ?? [])
+        .map(id => prodById.get(id))
+        .filter((p): p is ShipmentProduct => !!p);
+
+      const pids = new Set<string>();
+      const matched: string[] = [];
+      for (const sp of mappedProds) {
+        const m = matchProduct(sp, realized.products);
+        if (m && !pids.has(m.id)) { pids.add(m.id); matched.push(m.nombre.trim()); }
+      }
+
+      let unidades = 0, ingreso = 0, costo = 0, margen = 0, conF = 0, sinF = 0;
+      let ultima = '', ingresoDate = '';
+      for (const pid of pids) {
+        const a = realized.byProduct[pid];
+        if (a) {
+          unidades += a.unidades; ingreso += a.ingreso_neto; costo += a.costo; margen += a.margen;
+          conF += a.con_factura; sinF += a.sin_factura;
+          if (a.ultima_venta && (!ultima || a.ultima_venta > ultima)) ultima = a.ultima_venta;
+        }
+        const ing = realized.ingresoByProduct[pid];
+        if (ing && (!ingresoDate || ing < ingresoDate)) ingresoDate = ing;
+      }
+      out[it.id] = {
+        unidades,
+        precioReal: unidades > 0 ? ingreso / unidades : 0,
+        margen,
+        roiReal: costo > 0 ? margen / costo : 0,
+        conF, sinF, ultima,
+        diasVenta: ingresoDate && ultima ? daysBetween(ingresoDate, ultima) : null,
+        matched,
+      };
+    }
+    return out;
+  }, [items, shipment, realized, prodById]);
+
+  const hayVentas = Object.values(realizedByItem).some(r => r.unidades > 0);
 
   return (
     <TooltipProvider>
@@ -234,6 +329,79 @@ export function TabEmbarque({ items, calcs, embarqueId, onEmbarqueId, onUpdateIt
                     hint="Productos del análisis con al menos una fila del embarque mapeada"
                   />
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Resultado real (ventas) — Fase 2 */}
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                  Resultado real — ventas (planeado vs realizado)
+                </p>
+                {!realized ? (
+                  <p className="text-sm text-muted-foreground">Cargando ventas...</p>
+                ) : !hayVentas ? (
+                  <p className="text-sm text-muted-foreground">
+                    Aún no hay ventas registradas para los productos mapeados. Aparecerán aquí a medida que vendas.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="text-sm w-full">
+                      <thead>
+                        <tr className="text-muted-foreground border-b text-xs">
+                          <th className="text-left py-2 pr-3 font-medium">Producto</th>
+                          <th className="text-right px-2 font-medium">Precio venta plan</th>
+                          <th className="text-right px-2 font-medium">Precio venta real</th>
+                          <th className="text-right px-2 font-medium">Vendidas</th>
+                          <th className="text-right px-2 font-medium">ROI plan</th>
+                          <th className="text-right px-2 font-medium">ROI real</th>
+                          <th className="text-right px-2 font-medium">Días en vender</th>
+                          <th className="text-center px-2 font-medium">c/f · s/f</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((it, i) => {
+                          const r = realizedByItem[it.id];
+                          const planPrecio = it.modalidad_venta === 'sin_factura'
+                            ? it.precio_venta_sin_factura : it.precio_venta;
+                          const planRoi = calcs[i].costeo.roi;
+                          const sold = r && r.unidades > 0;
+                          const precioColor = sold && r.precioReal >= planPrecio
+                            ? 'text-green-600 dark:text-green-400' : sold ? 'text-amber-600 dark:text-amber-400' : '';
+                          const roiColor = sold && r.roiReal >= planRoi
+                            ? 'text-green-600 dark:text-green-400' : sold ? 'text-red-500' : '';
+                          return (
+                            <tr key={it.id} className="border-b last:border-0">
+                              <td className="py-2 pr-3">
+                                {it.nombre || `Producto ${i + 1}`}
+                                {r && r.matched.length > 0 && (
+                                  <span className="block text-[10px] text-muted-foreground">↳ {r.matched.join(', ')}</span>
+                                )}
+                              </td>
+                              <td className="text-right px-2 font-mono">Bs {fmt(planPrecio)}</td>
+                              <td className={`text-right px-2 font-mono ${precioColor}`}>
+                                {sold ? `Bs ${fmt(r.precioReal)}` : <span className="text-muted-foreground">—</span>}
+                              </td>
+                              <td className="text-right px-2 font-mono">{sold ? `${fmt(r.unidades)} / ${it.cantidad}` : '—'}</td>
+                              <td className="text-right px-2 font-mono"><Pct v={planRoi} /></td>
+                              <td className={`text-right px-2 font-mono font-semibold ${roiColor}`}>
+                                {sold ? <Pct v={r.roiReal} /> : '—'}
+                              </td>
+                              <td className="text-right px-2 font-mono">{r?.diasVenta != null ? `${r.diasVenta} d` : '—'}</td>
+                              <td className="text-center px-2 font-mono text-xs">
+                                {sold ? `${fmt(r.conF)} · ${fmt(r.sinF)}` : '—'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <p className="text-[11px] text-muted-foreground mt-3">
+                      Productos emparejados por nombre + especificación + condición (se muestran bajo cada ítem).
+                      "Días en vender" = desde el ingreso a inventario hasta la última venta.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </>

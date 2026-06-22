@@ -225,6 +225,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
           <TabEmbarque
             items={items}
             calcs={calcs}
+            companyId={companyId}
             embarqueId={embarqueId}
             onEmbarqueId={setEmbarqueId}
             onUpdateItem={updateItem}

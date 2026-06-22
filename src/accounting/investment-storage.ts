@@ -5,9 +5,36 @@
 // membresía" — correcto para el modelo multi-empresa (Holding).
 
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllPaginated } from './data-adapter';
 import {
   InvestmentAnalysis, InvestmentItem, InvestmentEstado,
 } from './investment-types';
+
+// ─── Datos para conciliación de ventas reales (Fase 2) ──────────────────────
+
+export interface RealizedProduct {
+  id: string;
+  nombre: string;
+  especificacion: string | null;
+  condicion: string | null;
+}
+
+export interface RealizedSalesAgg {
+  unidades: number;        // unidades vendidas
+  ingreso_neto: number;    // Σ subtotal_neto
+  costo: number;           // Σ costo_total
+  margen: number;          // Σ margen_bruto
+  primera_venta: string;   // fecha mínima
+  ultima_venta: string;    // fecha máxima
+  con_factura: number;     // unidades vendidas con factura
+  sin_factura: number;     // unidades vendidas sin factura
+}
+
+export interface RealizedData {
+  products: RealizedProduct[];
+  byProduct: Record<string, RealizedSalesAgg>;
+  ingresoByProduct: Record<string, string>; // product_id → fecha de ingreso a inventario (mínima)
+}
 
 async function getUser() {
   const { data: { user } } = await supabase.auth.getUser();
@@ -223,5 +250,77 @@ export const InvestmentStorage = {
       .eq('id', id)
       .eq('analysis_id', analysisId);
     if (error) throw error;
+  },
+
+  // ─── Fase 2: ventas reales para conciliación ──────────────────────────────
+  // Trae catálogo de productos (para emparejar por nombre+espec+condición),
+  // ventas confirmadas agregadas por producto, y la fecha de ingreso a
+  // inventario por producto (para el tiempo de venta).
+  async fetchRealizedData(companyId: string): Promise<RealizedData> {
+    type ProductRow = { id: string; nombre: string; especificacion: string | null; condicion: string | null };
+    type SaleItemRow = {
+      product_id: string | null; cantidad: number | string;
+      subtotal_neto: number | string; costo_total: number | string; margen_bruto: number | string;
+      sales: { fecha: string; con_factura: boolean } | null;
+    };
+    type LotRow = { product_id: string | null; fecha_ingreso: string | null };
+
+    const [products, saleRows, lotRows] = await Promise.all([
+      fetchAllPaginated<ProductRow>((from, to) =>
+        supabase.from('products')
+          .select('id, nombre, especificacion, condicion')
+          .eq('company_id', companyId)
+          .range(from, to)),
+      fetchAllPaginated<SaleItemRow>((from, to) =>
+        supabase.from('sale_items')
+          .select('product_id, cantidad, subtotal_neto, costo_total, margen_bruto, sales!inner(company_id, fecha, con_factura, estado)')
+          .eq('sales.company_id', companyId)
+          .eq('sales.estado', 'confirmed')
+          .range(from, to)),
+      fetchAllPaginated<LotRow>((from, to) =>
+        supabase.from('inventory_lots')
+          .select('product_id, fecha_ingreso')
+          .eq('company_id', companyId)
+          .range(from, to)),
+    ]);
+
+    const byProduct: Record<string, RealizedSalesAgg> = {};
+    for (const r of saleRows) {
+      const pid = r.product_id;
+      if (!pid) continue;
+      const cant = Number(r.cantidad) || 0;
+      const fecha = r.sales?.fecha || '';
+      const conFactura = Boolean(r.sales?.con_factura);
+      const agg = byProduct[pid] ?? {
+        unidades: 0, ingreso_neto: 0, costo: 0, margen: 0,
+        primera_venta: fecha, ultima_venta: fecha, con_factura: 0, sin_factura: 0,
+      };
+      agg.unidades     += cant;
+      agg.ingreso_neto += Number(r.subtotal_neto) || 0;
+      agg.costo        += Number(r.costo_total) || 0;
+      agg.margen       += Number(r.margen_bruto) || 0;
+      if (fecha) {
+        if (!agg.primera_venta || fecha < agg.primera_venta) agg.primera_venta = fecha;
+        if (!agg.ultima_venta  || fecha > agg.ultima_venta)  agg.ultima_venta  = fecha;
+      }
+      if (conFactura) agg.con_factura += cant; else agg.sin_factura += cant;
+      byProduct[pid] = agg;
+    }
+
+    const ingresoByProduct: Record<string, string> = {};
+    for (const l of lotRows) {
+      const pid = l.product_id;
+      const f = l.fecha_ingreso;
+      if (!pid || !f) continue;
+      if (!ingresoByProduct[pid] || f < ingresoByProduct[pid]) ingresoByProduct[pid] = f;
+    }
+
+    return {
+      products: (products || []).map(p => ({
+        id: p.id, nombre: p.nombre, especificacion: p.especificacion ?? null, condicion: p.condicion ?? null,
+      })),
+      byProduct,
+      ingresoByProduct,
+    };
   },
 };
