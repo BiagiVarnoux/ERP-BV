@@ -15,13 +15,15 @@ interface Props {
   resumen: InvestmentResumen;
   costoCapital: number;
   plazoImport: number;
+  fuc: number;
   onCostoCapital: (v: number) => void;
   onPlazoImport: (v: number) => void;
+  onFuc: (v: number) => void;
   onUpdateItem: (id: string, changes: Partial<InvestmentItem>) => void;
 }
 
 export function TabTiempo({
-  items, calcs, resumen, costoCapital, plazoImport, onCostoCapital, onPlazoImport, onUpdateItem,
+  items, calcs, resumen, costoCapital, plazoImport, fuc, onCostoCapital, onPlazoImport, onFuc, onUpdateItem,
 }: Props) {
   // Flujo agregado para la tabla mes a mes.
   const flujoAgregado = useMemo(() => {
@@ -45,7 +47,7 @@ export function TabTiempo({
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
               Parámetros financieros
             </p>
-            <div className="grid grid-cols-2 gap-4 max-w-md">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-w-2xl">
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Costo de capital (% anual)</label>
                 <Input
@@ -66,6 +68,16 @@ export function TabTiempo({
                 />
                 <p className="text-[11px] text-muted-foreground">Desde el pago hasta tenerlo en almacén.</p>
               </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Factor de Utilización de Capital (%)</label>
+                <Input
+                  type="number" step="5" min="1" max="100"
+                  className="h-8"
+                  value={fuc}
+                  onChange={e => onFuc(toDecimal(e.target.value) || 0)}
+                />
+                <p className="text-[11px] text-muted-foreground">Tiempo activo / total. 100% = sin tiempo muerto.</p>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -81,7 +93,10 @@ export function TabTiempo({
               <StatCard label="Ganancia" value={resumen.ganancia} bold color={resumen.ganancia < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
               <StatCard label="ROI simple" value={resumen.roi} isPct hint="Ganancia / Inversión (sin tiempo)" />
               <StatCard label="Ciclo de caja" value={resumen.ciclo_meses} suffix=" m" hint="Plazo importación + plazo de venta (ponderado)" />
-              <StatCard label="ROI anualizado" value={resumen.roi_anualizado} isPct bold hint="ROI llevado a base anual — comparable entre proyectos" color={resumen.roi_anualizado < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
+              <StatCard label="ROI anual. realista" value={resumen.roi_anualizado_realista} isPct bold hint={`Con FUC ${fuc}%: descuenta el tiempo muerto entre ciclos. El número en el que confiar.`} color={resumen.roi_anualizado_realista < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
+              <StatCard label="ROI anual. teórico" value={resumen.roi_anualizado} isPct hint="Reinversión continua sin fricción (techo ideal, casi nunca alcanzable)" />
+            </div>
+            <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
               <StatCard label="TIR anual" value={resumen.tir_anual} isPct bold hint="Tasa interna de retorno del flujo de caja" color={resumen.tir_anual < (costoCapital / 100) ? 'text-amber-500' : 'text-green-600 dark:text-green-400'} />
             </div>
             <div className="mt-3 flex items-center gap-2 pt-3 border-t flex-wrap">
@@ -117,7 +132,7 @@ export function TabTiempo({
                             <Clock className="h-3 w-3" /> ciclo {fmt(t.ciclo_meses)} m
                           </span>
                           <span className="flex items-center gap-1">
-                            <Percent className="h-3 w-3" /> anualiz. <span className={t.roi_anualizado < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'}><Pct v={t.roi_anualizado} /></span>
+                            <Percent className="h-3 w-3" /> anualiz. realista <span className={t.roi_anualizado_realista < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'}><Pct v={t.roi_anualizado_realista} /></span>
                           </span>
                           <span className="flex items-center gap-1">
                             <Wallet className="h-3 w-3" /> VAN <span className={t.van < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'}>Bs {fmt(t.van)}</span>
@@ -126,8 +141,8 @@ export function TabTiempo({
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                         <StatCard label="Plazo venta" value={t.meses_venta} suffix=" m" hint="Tiempo en vender todo el lote" />
-                        <StatCard label="ROI mensual" value={t.roi_mensual} isPct hint="ROI repartido en el ciclo" />
-                        <StatCard label="ROI anualizado" value={t.roi_anualizado} isPct />
+                        <StatCard label="ROI anual. realista" value={t.roi_anualizado_realista} isPct hint={`Con FUC ${fuc}% — descuenta tiempo muerto`} />
+                        <StatCard label="ROI anual. teórico" value={t.roi_anualizado} isPct hint="Reinversión sin fricción (techo ideal)" />
                         <StatCard label="Punto equil." value={t.punto_equilibrio_uds} suffix=" uds" hint="Unidades para recuperar la inversión" />
                         <StatCard label="Recuperación" value={t.meses_recuperacion} suffix=" m" hint="Mes en que el flujo acumulado vuelve a 0" />
                         <StatCard label="TIR anual" value={t.tir_anual} isPct />

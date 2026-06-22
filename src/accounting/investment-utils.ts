@@ -240,6 +240,7 @@ export function calcTiempo(
   costeo: ItemCosteo,
   plazoImportacionMeses: number,
   costoCapitalAnual: number,
+  fucPct = 100,
 ): ItemTiempo {
   const { flujos, mesesVenta } = buildFlujos(it, costeo, plazoImportacionMeses);
   const lead = Math.max(0, plazoImportacionMeses || 0);
@@ -266,6 +267,9 @@ export function calcTiempo(
   const roi = costeo.roi;
   const roiMensual = ciclo > 0 ? roi / ciclo : 0;
   const roiAnualizado = ciclo > 0 ? Math.pow(1 + roi, 12 / ciclo) - 1 : 0;
+  // Realista: descuenta el tiempo muerto entre ciclos vía el FUC (meses activos = 12×FUC).
+  const fuc = Math.min(1, Math.max(0.01, (fucPct || 100) / 100));
+  const roiAnualizadoRealista = ciclo > 0 ? Math.pow(1 + roi, (12 * fuc) / ciclo) - 1 : 0;
 
   const tasaMes = tasaMensual(costoCapitalAnual);
   const vanVal = round2(van(flujos, tasaMes));
@@ -277,6 +281,7 @@ export function calcTiempo(
     ciclo_meses:          ciclo,
     roi_mensual:          roiMensual,
     roi_anualizado:       roiAnualizado,
+    roi_anualizado_realista: roiAnualizadoRealista,
     punto_equilibrio_uds: puntoEquilibrio,
     meses_recuperacion:   mesesRecuperacion,
     van:                  vanVal,
@@ -290,9 +295,10 @@ export function calcItem(
   it: InvestmentItem,
   plazoImportacionMeses: number,
   costoCapitalAnual: number,
+  fucPct = 100,
 ): ItemCalc {
   const costeo = calcCosteo(it);
-  const tiempo = calcTiempo(it, costeo, plazoImportacionMeses, costoCapitalAnual);
+  const tiempo = calcTiempo(it, costeo, plazoImportacionMeses, costoCapitalAnual, fucPct);
   return { costeo, tiempo };
 }
 
@@ -315,6 +321,8 @@ export function calcResumen(analysis: InvestmentAnalysis, calcs: ItemCalc[]): In
   const roi = inversion > 0 ? round2(ganancia / inversion) : 0;
   const ciclo = inversion > 0 ? round2(cicloPonderado / inversion) : 0;
   const roiAnualizado = ciclo > 0 ? Math.pow(1 + roi, 12 / ciclo) - 1 : 0;
+  const fuc = Math.min(1, Math.max(0.01, (analysis.fuc_pct || 100) / 100));
+  const roiAnualizadoRealista = ciclo > 0 ? Math.pow(1 + roi, (12 * fuc) / ciclo) - 1 : 0;
 
   // TIR anual del flujo agregado.
   const maxLen = Math.max(1, ...calcs.map(c => c.tiempo.flujos.length));
@@ -333,6 +341,7 @@ export function calcResumen(analysis: InvestmentAnalysis, calcs: ItemCalc[]): In
     roi,
     ciclo_meses:   ciclo,
     roi_anualizado: roiAnualizado,
+    roi_anualizado_realista: roiAnualizadoRealista,
     van:           round2(van_),
     tir_anual:     tirAnual,
   };

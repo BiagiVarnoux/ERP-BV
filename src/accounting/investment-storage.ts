@@ -26,6 +26,7 @@ function rowToAnalysis(row: Record<string, unknown>): InvestmentAnalysis {
     notas:                   (row.notas as string) || undefined,
     costo_capital_anual:     row.costo_capital_anual != null ? Number(row.costo_capital_anual) : 12,
     plazo_importacion_meses: row.plazo_importacion_meses != null ? Number(row.plazo_importacion_meses) : 1,
+    fuc_pct:                 row.fuc_pct != null ? Number(row.fuc_pct) : 75,
     estado:                  (row.estado as InvestmentEstado) || 'BORRADOR',
     embarque_id:             (row.embarque_id as string) || undefined,
     items:                   [],

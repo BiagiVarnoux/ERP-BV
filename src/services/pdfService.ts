@@ -1469,7 +1469,8 @@ export interface InvestmentPDFItem {
   roi: number;
   // temporal
   ciclo_meses: number;
-  roi_anualizado: number;
+  roi_anualizado: number;          // teórico
+  roi_anualizado_realista: number; // con FUC
   meses_recuperacion: number;
   van: number;
   tir_anual: number;
@@ -1491,7 +1492,9 @@ export interface InvestmentPDFData {
     ganancia: number;
     roi: number;
     ciclo_meses: number;
-    roi_anualizado: number;
+    roi_anualizado: number;          // teórico
+    roi_anualizado_realista: number; // con FUC
+    fuc_pct: number;
     van: number;
     tir_anual: number;
   };
@@ -1589,7 +1592,8 @@ export function exportInvestmentAnalysisToPDF(data: InvestmentPDFData): void {
       { content: String(i + 1), styles: { halign: 'center' as const } },
       p.nombre || '—',
       { content: fmtMes(p.ciclo_meses), styles: { halign: 'center' as const } },
-      { content: fmtPct(p.roi_anualizado), styles: { halign: 'center' as const, fontStyle: 'bold' as const } },
+      { content: fmtPct(p.roi_anualizado_realista), styles: { halign: 'center' as const, fontStyle: 'bold' as const } },
+      { content: fmtPct(p.roi_anualizado), styles: { halign: 'center' as const } },
       { content: fmtMes(p.meses_recuperacion), styles: { halign: 'center' as const } },
       { content: `Bs ${fmtN(p.van)}`, styles: { halign: 'right' as const, textColor: vanColor, fontStyle: 'bold' as const } },
       { content: fmtPct(p.tir_anual), styles: { halign: 'center' as const, fontStyle: 'bold' as const } },
@@ -1598,7 +1602,7 @@ export function exportInvestmentAnalysisToPDF(data: InvestmentPDFData): void {
 
   autoTable(doc, {
     startY: currentY,
-    head: [['#', 'Producto', 'Ciclo de caja', 'ROI anualizado', 'Recuperación', 'VAN', 'TIR anual']],
+    head: [['#', 'Producto', 'Ciclo de caja', 'ROI anual. realista', 'ROI anual. teórico', 'Recuperación', 'VAN', 'TIR anual']],
     body: tiempoBody,
     headStyles: { fillColor: LIC_CLR.teal, fontSize: 8, textColor: [255, 255, 255] },
     styles: { fontSize: 8.5, cellPadding: 2.5 },
@@ -1626,7 +1630,8 @@ export function exportInvestmentAnalysisToPDF(data: InvestmentPDFData): void {
     ['Ganancia neta', `Bs ${fmtN(r.ganancia)}`, true],
     ['ROI simple', fmtPct(r.roi), true],
     ['Ciclo de caja (ponderado)', fmtMes(r.ciclo_meses)],
-    ['ROI anualizado', fmtPct(r.roi_anualizado), true],
+    [`ROI anualizado realista (FUC ${r.fuc_pct}%)`, fmtPct(r.roi_anualizado_realista), true],
+    ['ROI anualizado teórico', fmtPct(r.roi_anualizado)],
     [`VAN (a ${data.analysis.costo_capital_anual}% anual)`, `Bs ${fmtN(r.van)}`, true],
     ['TIR anual', fmtPct(r.tir_anual), true],
   ];

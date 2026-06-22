@@ -33,22 +33,24 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
   const [items, setItems] = useState<InvestmentItem[]>(analysis.items);
   const [costoCapital, setCostoCapital] = useState(analysis.costo_capital_anual);
   const [plazoImport, setPlazoImport] = useState(analysis.plazo_importacion_meses);
+  const [fuc, setFuc] = useState(analysis.fuc_pct);
   const [saving, setSaving] = useState(false);
   const [embarqueOpen, setEmbarqueOpen] = useState(false);
 
   const calcs = useMemo(
-    () => items.map(it => calcItem(it, plazoImport, costoCapital)),
-    [items, plazoImport, costoCapital],
+    () => items.map(it => calcItem(it, plazoImport, costoCapital, fuc)),
+    [items, plazoImport, costoCapital, fuc],
   );
   const resumen = useMemo(
-    () => calcResumen({ ...analysis, items }, calcs),
-    [analysis, items, calcs],
+    () => calcResumen({ ...analysis, items, fuc_pct: fuc }, calcs),
+    [analysis, items, calcs, fuc],
   );
 
   const isDirty =
     JSON.stringify(items) !== JSON.stringify(analysis.items) ||
     costoCapital !== analysis.costo_capital_anual ||
-    plazoImport !== analysis.plazo_importacion_meses;
+    plazoImport !== analysis.plazo_importacion_meses ||
+    fuc !== analysis.fuc_pct;
 
   // ── Edición de items ──────────────────────────────────────────────────────
   const updateItem = useCallback((id: string, changes: Partial<InvestmentItem>) => {
@@ -69,13 +71,14 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
       await InvestmentStorage.update(analysis.id, companyId, {
         costo_capital_anual:     costoCapital,
         plazo_importacion_meses: plazoImport,
+        fuc_pct:                 fuc,
       });
       await InvestmentStorage.upsertItems(companyId, items);
       const idsActuales = new Set(items.map(i => i.id));
       for (const old of analysis.items) {
         if (!idsActuales.has(old.id)) await InvestmentStorage.deleteItem(old.id, old.analysis_id);
       }
-      onUpdated({ ...analysis, items, costo_capital_anual: costoCapital, plazo_importacion_meses: plazoImport });
+      onUpdated({ ...analysis, items, costo_capital_anual: costoCapital, plazo_importacion_meses: plazoImport, fuc_pct: fuc });
       toast.success('Análisis guardado');
     } catch (e) {
       toast.error('Error al guardar');
@@ -109,11 +112,12 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
           roi:                  calcs[i].costeo.roi,
           ciclo_meses:          calcs[i].tiempo.ciclo_meses,
           roi_anualizado:       calcs[i].tiempo.roi_anualizado,
+          roi_anualizado_realista: calcs[i].tiempo.roi_anualizado_realista,
           meses_recuperacion:   calcs[i].tiempo.meses_recuperacion,
           van:                  calcs[i].tiempo.van,
           tir_anual:            calcs[i].tiempo.tir_anual,
         })),
-        resumen,
+        resumen: { ...resumen, fuc_pct: fuc },
       });
       toast.success('PDF generado');
     } catch (e) {
@@ -213,6 +217,8 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
             plazoImport={plazoImport}
             onCostoCapital={setCostoCapital}
             onPlazoImport={setPlazoImport}
+            fuc={fuc}
+            onFuc={setFuc}
             onUpdateItem={updateItem}
           />
         </TabsContent>
@@ -232,6 +238,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated, onReload }: Pro
                 setItems(analysis.items);
                 setCostoCapital(analysis.costo_capital_anual);
                 setPlazoImport(analysis.plazo_importacion_meses);
+                setFuc(analysis.fuc_pct);
               }}
             >
               Descartar cambios

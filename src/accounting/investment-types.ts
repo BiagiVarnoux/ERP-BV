@@ -93,6 +93,7 @@ export interface InvestmentAnalysis {
   // Parámetros financieros
   costo_capital_anual: number;       // % anual — tasa de descuento para VAN/TIR
   plazo_importacion_meses: number;   // meses desde el pago hasta la mercadería en almacén
+  fuc_pct: number;                   // Factor de Utilización de Capital (% ) — tiempo activo / total
 
   estado: InvestmentEstado;
   embarque_id?: string;              // set cuando se "envía a embarque"
@@ -151,7 +152,8 @@ export interface ItemTiempo {
   meses_venta: number;         // tiempo estimado para vender todo el lote
   ciclo_meses: number;         // plazo_importacion + meses_venta (capital atrapado)
   roi_mensual: number;         // ROI repartido linealmente en el ciclo
-  roi_anualizado: number;      // (1+ROI)^(12/ciclo) − 1 — comparable entre proyectos
+  roi_anualizado: number;          // TEÓRICO: (1+ROI)^(12/ciclo) − 1 (reinversión sin fricción)
+  roi_anualizado_realista: number; // REALISTA: (1+ROI)^((12×FUC)/ciclo) − 1 (descuenta tiempo muerto)
   punto_equilibrio_uds: number; // unidades a vender para recuperar la inversión
   meses_recuperacion: number;  // cuándo se recupera la inversión según velocidad de venta
   van: number;                 // Valor Actual Neto del flujo mensual
@@ -173,7 +175,8 @@ export interface InvestmentResumen {
   ganancia: number;
   roi: number;
   ciclo_meses: number;         // ciclo ponderado por inversión
-  roi_anualizado: number;
+  roi_anualizado: number;          // teórico
+  roi_anualizado_realista: number; // con FUC
   van: number;
   tir_anual: number;
 }
