@@ -36,12 +36,40 @@ import {
   calcPrecioBs, calcPrecioBOB, calcPesoVolumen, calcPesoEfectivo, getPesoEfectivoPorMetodo,
   calcGAEstimado, calcIVAEstimado, calcTotalBsProducto,
   calcCostoFinalPorProducto, generateShipmentNumber,
-  getAllCategories, saveCustomCategory,
 } from '@/accounting/shipment-utils';
 import { ShipmentCloseModal, ProductLink } from '@/components/inventory/ShipmentCloseModal';
 import { FileAttachments } from '@/components/shipments/FileAttachments';
 import { supabase } from '@/integrations/supabase/client';
 import { exportShipmentToPDF, ShipmentPDFData } from '@/services/pdfService';
+import { useProductCategories, ProductCategoryRow } from '@/hooks/useProductCategories';
+
+// Dropdown de categoría: lee de las categorías de Configuración (product_categories).
+// Guarda el NOMBRE de la categoría (consistente con products.categoria). Si el valor
+// actual no está en la lista (embarques antiguos), lo conserva como opción extra.
+function CategorySelect({ categories, value, onChange, className }: {
+  categories: ProductCategoryRow[];
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+}) {
+  const known = !value || categories.some(c => c.nombre === value);
+  return (
+    <Select value={value || undefined} onValueChange={onChange}>
+      <SelectTrigger className={className ?? 'h-9'}><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+      <SelectContent>
+        {categories.map(c => (
+          <SelectItem key={c.id} value={c.nombre}>
+            {c.codigo ? <span className="font-mono text-xs text-muted-foreground mr-1.5">{c.codigo}</span> : null}{c.nombre}
+          </SelectItem>
+        ))}
+        {!known && <SelectItem value={value}>{value} <span className="text-muted-foreground">(antiguo)</span></SelectItem>}
+        {categories.length === 0 && (
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">Define categorías en Configuración</div>
+        )}
+      </SelectContent>
+    </Select>
+  );
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -50,7 +78,7 @@ function emptyProduct(shipment_id: string): ShipmentProduct {
     id: crypto.randomUUID(),
     shipment_id,
     nombre: '',
-    categoria: 'electronica',
+    categoria: '',
     cantidad: 1,
     precio_usd: 0,
     tax_pct: 0,
@@ -737,10 +765,7 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
   onCreate: () => void;
   onCancel: () => void;
 }) {
-  const allCategories = getAllCategories();
-  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [pendingProductId, setPendingProductId] = useState<string | null>(null);
+  const { categories } = useProductCategories();
 
   function updateProduct(id: string, patch: Partial<ShipmentProduct>) {
     const updated = draft.products.map(p => {
@@ -767,29 +792,6 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
   function removeProduct(id: string) {
     if (draft.products.length <= 1) return;
     onChange({ ...draft, products: draft.products.filter(p => p.id !== id) });
-  }
-
-  function handleCategorySelect(productId: string, value: string) {
-    if (value === '__nueva__') {
-      setPendingProductId(productId);
-      setNewCategoryName('');
-      setShowCategoryDialog(true);
-    } else {
-      updateProduct(productId, { categoria: value });
-    }
-  }
-
-  function handleCreateCategory() {
-    if (!newCategoryName.trim()) return;
-    const slug = newCategoryName.toLowerCase().replace(/\s+/g, '_');
-    saveCustomCategory(slug, newCategoryName);
-    if (pendingProductId) {
-      updateProduct(pendingProductId, { categoria: slug });
-    }
-    setShowCategoryDialog(false);
-    setNewCategoryName('');
-    setPendingProductId(null);
-    toast.success(`Categoría "${newCategoryName}" creada`);
   }
 
   return (
@@ -841,15 +843,7 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
                     </div>
                     <div className="col-span-3">
                       <Label className="text-xs">Categoría</Label>
-                      <Select value={p.categoria} onValueChange={v => handleCategorySelect(p.id, v)}>
-                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(allCategories).map(([k, v]) => (
-                            <SelectItem key={k} value={k}>{v}</SelectItem>
-                          ))}
-                          <SelectItem value="__nueva__">➕ Nueva categoría...</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <CategorySelect categories={categories} value={p.categoria} onChange={v => updateProduct(p.id, { categoria: v })} />
                     </div>
                     <div className="col-span-1">
                       <Label className="text-xs">Cant.</Label>
@@ -943,31 +937,6 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
         </div>
       </div>
 
-      {/* Category Dialog */}
-      <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Nueva Categoría</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Nombre de la categoría</Label>
-              <Input
-                value={newCategoryName}
-                onChange={e => setNewCategoryName(e.target.value)}
-                placeholder="Ej: Textiles, Ferretería..."
-                onKeyDown={e => e.key === 'Enter' && handleCreateCategory()}
-              />
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowCategoryDialog(false)}>Cancelar</Button>
-              <Button onClick={handleCreateCategory} disabled={!newCategoryName.trim()}>
-                Crear Categoría
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
@@ -1183,7 +1152,6 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
 // ─── Tab: Productos ────────────────────────────────────────────────────────────
 
 function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean; onSave: (s: Shipment) => void }) {
-  const allCategories = getAllCategories();
   const activeCompanyId = useActiveCompanyId();
   const [editingProduct, setEditingProduct] = useState<ShipmentProduct | null>(null);
   const [viewFilesProduct, setViewFilesProduct] = useState<ShipmentProduct | null>(null);
@@ -1297,7 +1265,7 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
                   )}
                 </TableCell>
                 <TableCell>
-                  <span className="text-sm">{allCategories[p.categoria] ?? p.categoria}</span>
+                  <span className="text-sm">{p.categoria}</span>
                 </TableCell>
                 <TableCell className="text-right">{p.cantidad}</TableCell>
                 <TableCell className="text-right">{fmt(p.precio_usd_total ?? p.precio_usd)}</TableCell>
@@ -1373,10 +1341,8 @@ function ProductEditDialog({ product, tcParalelo, shipmentId, companyId, onSave,
   onSave: (p: ShipmentProduct) => void;
   onCancel: () => void;
 }) {
-  const allCategories = getAllCategories();
+  const { categories } = useProductCategories();
   const [p, setP] = useState<ShipmentProduct>(product);
-  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
 
   function update(patch: Partial<ShipmentProduct>) {
     setP(prev => {
@@ -1403,25 +1369,6 @@ function ProductEditDialog({ product, tcParalelo, shipmentId, companyId, onSave,
       }
       return next;
     });
-  }
-
-  function handleCategorySelect(value: string) {
-    if (value === '__nueva__') {
-      setNewCategoryName('');
-      setShowCategoryDialog(true);
-    } else {
-      update({ categoria: value });
-    }
-  }
-
-  function handleCreateCategory() {
-    if (!newCategoryName.trim()) return;
-    const slug = newCategoryName.toLowerCase().replace(/\s+/g, '_');
-    saveCustomCategory(slug, newCategoryName);
-    update({ categoria: slug });
-    setShowCategoryDialog(false);
-    setNewCategoryName('');
-    toast.success(`Categoría "${newCategoryName}" creada`);
   }
 
   const tcEfectivo = p.tc_producto ?? tcParalelo;
@@ -1463,15 +1410,7 @@ function ProductEditDialog({ product, tcParalelo, shipmentId, companyId, onSave,
             <div className="grid grid-cols-12 gap-4 items-end">
               <div className="col-span-4">
                 <Label className="text-xs">Categoría</Label>
-                <Select value={p.categoria} onValueChange={handleCategorySelect}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(allCategories).map(([k, v]) => (
-                      <SelectItem key={k} value={k}>{v}</SelectItem>
-                    ))}
-                    <SelectItem value="__nueva__">➕ Nueva categoría...</SelectItem>
-                  </SelectContent>
-                </Select>
+                <CategorySelect categories={categories} value={p.categoria} onChange={v => update({ categoria: v })} />
               </div>
               <div className="col-span-2">
                 <Label className="text-xs">Cant.</Label>
@@ -1620,25 +1559,6 @@ function ProductEditDialog({ product, tcParalelo, shipmentId, companyId, onSave,
             <Button onClick={() => onSave(p)} disabled={!p.nombre.trim()}>
               Guardar cambios
             </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog crear categoría */}
-      <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Nueva Categoría</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Nombre de la categoría</Label>
-              <Input value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)}
-                placeholder="Ej: Textiles, Ferretería..."
-                onKeyDown={e => e.key === 'Enter' && handleCreateCategory()} />
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowCategoryDialog(false)}>Cancelar</Button>
-              <Button onClick={handleCreateCategory} disabled={!newCategoryName.trim()}>Crear Categoría</Button>
-            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -2050,7 +1970,6 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
 // ─── Tab: Costos Finales ───────────────────────────────────────────────────────
 
 function CostosFinalesTab({ s }: { s: Shipment }) {
-  const allCategories = getAllCategories();
   const costos = calcCostoFinalPorProducto(s);
   const [showWithIVA, setShowWithIVA] = useState(false);
 
@@ -2128,7 +2047,7 @@ function CostosFinalesTab({ s }: { s: Shipment }) {
                 <TableCell>
                   <div>
                     <p className="font-medium text-sm">{p.nombre}</p>
-                    <p className="text-xs text-muted-foreground">{allCategories[p.categoria] ?? p.categoria}</p>
+                    <p className="text-xs text-muted-foreground">{p.categoria}</p>
                   </div>
                 </TableCell>
                 <TableCell className="text-right">{p.cantidad}</TableCell>
