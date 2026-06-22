@@ -53,9 +53,10 @@ function rowToItem(row: Record<string, unknown>): InvestmentItem {
     m3:                row.m3 != null ? Number(row.m3) : undefined,
     peso_bruto:        row.peso_bruto != null ? Number(row.peso_bruto) : undefined,
     usa_peso_bruto:    Boolean(row.usa_peso_bruto),
-    tarifa_envio:      Number(row.tarifa_envio) || 12,
-    tarifa_manipuleo:  Number(row.tarifa_manipuleo) || 25,
-    ga_pct:            Number(row.ga_pct) || 5,
+    // Nullish (no `|| default`): 0 es un valor válido que debe preservarse.
+    tarifa_envio:      row.tarifa_envio != null ? Number(row.tarifa_envio) : 12,
+    tarifa_manipuleo:  row.tarifa_manipuleo != null ? Number(row.tarifa_manipuleo) : 25,
+    ga_pct:            row.ga_pct != null ? Number(row.ga_pct) : 5,
     ga_manual:         row.ga_manual != null ? Number(row.ga_manual) : undefined,
     usa_ga_manual:     Boolean(row.usa_ga_manual),
     iva_aduana_manual: row.iva_aduana_manual != null ? Number(row.iva_aduana_manual) : undefined,
