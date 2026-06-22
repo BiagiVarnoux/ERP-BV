@@ -115,7 +115,10 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
       conF: number; sinF: number; ultima: string; diasVenta: number | null;
       matched: string[];
     }> = {};
-    if (!shipment || !realized) return out;
+    // Solo hay ventas atribuibles cuando el embarque está CERRADO (sus productos
+    // entraron a inventario). Antes de eso, cualquier venta de un producto del
+    // mismo nombre pertenece a OTRO embarque, no a este.
+    if (!shipment || !realized || !isCerrado) return out;
 
     for (const it of items) {
       const mappedProds = (it.mapped_shipment_product_ids ?? [])
@@ -152,7 +155,7 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
       };
     }
     return out;
-  }, [items, shipment, realized, prodById]);
+  }, [items, shipment, realized, prodById, isCerrado]);
 
   const hayVentas = Object.values(realizedByItem).some(r => r.unidades > 0);
 
@@ -338,7 +341,14 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
                   Resultado real — ventas (planeado vs realizado)
                 </p>
-                {!realized ? (
+                {!isCerrado ? (
+                  <p className="text-sm text-muted-foreground flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                    El embarque vinculado aún no está cerrado, así que sus productos todavía no entraron a inventario.
+                    Las ventas reales aparecerán cuando cierres el embarque. (Las ventas de productos del mismo nombre
+                    en otros embarques no se cuentan aquí.)
+                  </p>
+                ) : !realized ? (
                   <p className="text-sm text-muted-foreground">Cargando ventas...</p>
                 ) : !hayVentas ? (
                   <p className="text-sm text-muted-foreground">
@@ -397,8 +407,10 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
                       </tbody>
                     </table>
                     <p className="text-[11px] text-muted-foreground mt-3">
-                      Productos emparejados por nombre + especificación + condición (se muestran bajo cada ítem).
-                      "Días en vender" = desde el ingreso a inventario hasta la última venta.
+                      Cifras <strong>a nivel de producto</strong>: bajo costo promedio (CPP) el inventario es un pool,
+                      así que las ventas no se pueden separar por embarque. Incluyen todas las ventas del producto
+                      emparejado (por nombre + especificación + condición, mostrado bajo cada ítem), no solo las de
+                      este embarque. "Días en vender" = desde el ingreso a inventario hasta la última venta.
                     </p>
                   </div>
                 )}
