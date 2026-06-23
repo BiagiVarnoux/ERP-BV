@@ -710,9 +710,17 @@ export default function AuxiliaryLedgersPage() {
                         const movementsLoaded = (entry as any)._movementsLoaded as boolean;
                         // Movimientos del trimestre para la vista expandida
                         const allMovements = clientMovements[entry.id] ?? [];
-                        const quarterMovements = allMovements.filter(
-                          m => m.movement_date >= selectedQuarter.startDate && m.movement_date <= selectedQuarter.endDate
-                        );
+                        const quarterMovements = allMovements
+                          .filter(
+                            m => m.movement_date >= selectedQuarter.startDate && m.movement_date <= selectedQuarter.endDate
+                          )
+                          .sort((a, b) => {
+                            const ta = journalEntries.find(e => e.id === a.journal_entry_id)?.entry_time || '';
+                            const tb = journalEntries.find(e => e.id === b.journal_entry_id)?.entry_time || '';
+                            return a.movement_date.localeCompare(b.movement_date)
+                              || ta.localeCompare(tb)
+                              || (a.journal_entry_id || '').localeCompare(b.journal_entry_id || '');
+                          });
 
                         return (
                           <Collapsible

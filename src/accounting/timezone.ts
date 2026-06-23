@@ -17,3 +17,13 @@ export function nowInAppTZ(): { year: number; month: number; day: number } {
 export function todayISO(): string {
   return new Date().toLocaleDateString('sv-SE', { timeZone: APP_TIMEZONE });
 }
+
+/** Returns the current time as 'HH:mm' (24h) in the app timezone. */
+export function nowTimeHHMM(): string {
+  return new Date().toLocaleTimeString('en-GB', {
+    timeZone: APP_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}

@@ -1,6 +1,6 @@
 // src/accounting/data-adapter.ts
 import { Account, JournalEntry, AuxiliaryLedgerEntry, AuxiliaryLedgerDefinition, AuxiliaryMovementDetail, KardexDefinition, seedAccounts } from './types';
-import { cmpDate, round2 } from './utils';
+import { cmpEntryOrder, round2 } from './utils';
 import { supabase } from '@/integrations/supabase/client';
 import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 
@@ -92,9 +92,9 @@ export const LocalAdapter: IDataAdapter = {
   },
   async saveEntry(e){ 
     const list = await this.loadEntries(); 
-    list.push(e); 
-    list.sort((a,b)=> cmpDate(a.date,b.date) || a.id.localeCompare(b.id)); 
-    localStorage.setItem(LS_ENTRIES, JSON.stringify(list)); 
+    list.push(e);
+    list.sort(cmpEntryOrder);
+    localStorage.setItem(LS_ENTRIES, JSON.stringify(list));
   },
   async deleteEntry(id){ 
     const list = await this.loadEntries(); 
@@ -295,7 +295,7 @@ export function createSupaAdapter(companyId: string): IDataAdapter {
       const supa = await getSupabase(); if (!supa) return LocalAdapter.loadEntries();
       const heads = await fetchAllPaginated<any>((from, to) =>
         supa.from("journal_entries")
-          .select("id,date,memo,void_of")
+          .select("id,date,entry_time,memo,void_of")
           .eq("company_id", companyId)
           .order("date")
           .range(from, to)
@@ -312,15 +312,15 @@ export function createSupaAdapter(companyId: string): IDataAdapter {
         allLines.push(...part);
       }
       const map = new Map<string, JournalEntry>();
-      for (const h of heads) map.set(h.id, { id: h.id, date: String(h.date), memo: h.memo || undefined, void_of: h.void_of || undefined, lines: [] });
+      for (const h of heads) map.set(h.id, { id: h.id, date: String(h.date), entry_time: h.entry_time || undefined, memo: h.memo || undefined, void_of: h.void_of || undefined, lines: [] });
       for (const l of allLines) { const e = map.get(l.entry_id)!; if (e) e.lines.push({ account_id: l.account_id, debit: Number(l.debit)||0, credit: Number(l.credit)||0, line_memo: l.line_memo||undefined }); }
-      return Array.from(map.values()).filter(e => e.lines.length > 0).sort((a,b)=> cmpDate(a.date,b.date) || a.id.localeCompare(b.id));
+      return Array.from(map.values()).filter(e => e.lines.length > 0).sort(cmpEntryOrder);
     },
     async saveEntry(e){
       const supa = await getSupabase(); if (!supa) return LocalAdapter.saveEntry(e);
       const { data: { user } } = await supa.auth.getUser();
       if (!user) throw new Error("Usuario no autenticado");
-      const { error: e1 } = await supa.from("journal_entries").upsert({ id: e.id, date: e.date, memo: e.memo||null, void_of: e.void_of||null, user_id: user.id, company_id: companyId });
+      const { error: e1 } = await supa.from("journal_entries").upsert({ id: e.id, date: e.date, entry_time: e.entry_time||null, memo: e.memo||null, void_of: e.void_of||null, user_id: user.id, company_id: companyId });
       if (e1) throw e1;
       const { error: eDel } = await supa.from("journal_lines").delete().eq("entry_id", e.id);
       if (eDel) throw eDel;

@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Undo2, Trash2, Pencil, ArrowUpDown, AlertTriangle } from 'lucide-react';
 import { AccountLabel } from './AccountLabel';
 import { JournalEntry, Account } from '@/accounting/types';
-import { fmt, round2 } from '@/accounting/utils';
+import { fmt, round2, cmpEntryOrder } from '@/accounting/utils';
 import { Badge } from '@/components/ui/badge';
 
 interface JournalEntriesTableProps {
@@ -33,7 +33,7 @@ export function JournalEntriesTable({
   onDelete,
 }: JournalEntriesTableProps) {
   const sortedEntries = [...entries].sort((a, b) =>
-    sortOrder === 'asc' ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id)
+    sortOrder === 'asc' ? cmpEntryOrder(a, b) : cmpEntryOrder(b, a)
   );
 
   return (
@@ -85,7 +85,12 @@ export function JournalEntriesTable({
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>{e.date}</TableCell>
+                      <TableCell>
+                        {e.date}
+                        {e.entry_time && (
+                          <span className="ml-1 text-xs text-muted-foreground">{e.entry_time}</span>
+                        )}
+                      </TableCell>
                       <TableCell></TableCell>
                       <TableCell>
                         <div className="text-sm space-y-1">

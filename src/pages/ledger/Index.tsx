@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Download } from 'lucide-react';
 import { useAccounting } from '@/accounting/AccountingProvider';
-import { cmpDate, signedBalanceFor, fmt } from '@/accounting/utils';
+import { cmpEntryOrder, signedBalanceFor, fmt } from '@/accounting/utils';
 import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString } from '@/accounting/quarterly-utils';
 import {
   PeriodType,
@@ -89,7 +89,7 @@ export default function LedgerPage() {
       .filter(e => isDateInPeriod(e.date, resolvedPeriod))
       .flatMap(e => e.lines.map(l => ({ e, l })))
       .filter(x => x.l.account_id === ledgerAccount)
-      .sort((a, b) => cmpDate(a.e.date, b.e.date));
+      .sort((a, b) => cmpEntryOrder(a.e, b.e));
 
     // Build ledger entries with running balance
     let running = initialBalance;

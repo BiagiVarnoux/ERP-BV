@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/alert-dialog';
 
 export function KardexCPP() {
-  const { accounts, kardexDefinitions } = useAccounting();
+  const { accounts, kardexDefinitions, entries } = useAccounting();
   const { can } = useUserAccess();
   const isReadOnly = !can('auxiliary_ledgers', 'create') && !can('auxiliary_ledgers', 'edit') && !can('auxiliary_ledgers', 'delete');
   const activeCompanyId = useActiveCompanyId();
@@ -113,10 +113,20 @@ export function KardexCPP() {
     loadKardex();
   }, [selectedKardexDefId, selectedKardexDef]);
 
-  // Calculate CPP for each movement using centralized utility
+  // Calculate CPP for each movement using centralized utility.
+  // Ordena por (fecha, hora del asiento, id del asiento, created_at) para que el
+  // CPP respete el mismo orden intradía que el Libro Diario y el Mayor.
   const movementsWithCPP = useMemo(() => {
-    return calculateCPP(movements);
-  }, [movements]);
+    const timeOf = (jid?: string) =>
+      (jid && entries.find(e => e.id === jid)?.entry_time) || '';
+    const ordered = [...movements].sort((a, b) =>
+      a.fecha.localeCompare(b.fecha)
+      || timeOf(a.journal_entry_id).localeCompare(timeOf(b.journal_entry_id))
+      || (a.journal_entry_id || '').localeCompare(b.journal_entry_id || '')
+      || a.created_at.localeCompare(b.created_at)
+    );
+    return calculateCPP(ordered);
+  }, [movements, entries]);
 
   const handleOpenModal = () => {
     setFormData({

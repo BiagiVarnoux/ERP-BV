@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableHead, TableHeader, TableRow, TableCell } from '@/components/ui/table';
-import { Save, Plus, Eye, EyeOff } from 'lucide-react';
+import { Save, Plus, Eye, EyeOff, Clock } from 'lucide-react';
 import { JournalLineRow } from './JournalLineRow';
 import { Account, JournalEntry } from '@/accounting/types';
 import { LineDraft } from '@/hooks/useJournalForm';
@@ -14,6 +14,8 @@ import { fmt } from '@/accounting/utils';
 interface JournalEntryFormProps {
   date: string;
   onDateChange: (date: string) => void;
+  entryTime: string;
+  onEntryTimeChange: (time: string) => void;
   memo: string;
   onMemoChange: (memo: string) => void;
   lines: LineDraft[];
@@ -33,6 +35,8 @@ interface JournalEntryFormProps {
 export function JournalEntryForm({
   date,
   onDateChange,
+  entryTime,
+  onEntryTimeChange,
   memo,
   onMemoChange,
   lines,
@@ -48,6 +52,7 @@ export function JournalEntryForm({
   onSave,
   onClear,
 }: JournalEntryFormProps) {
+  const [showTime, setShowTime] = React.useState(false);
   return (
     <Card className="shadow-sm">
       <CardHeader>
@@ -56,8 +61,29 @@ export function JournalEntryForm({
       <CardContent className="space-y-4">
         <div className="grid grid-cols-6 gap-3">
           <div>
-            <Label>Fecha</Label>
+            <div className="flex items-center justify-between">
+              <Label>Fecha</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 px-1.5 text-xs text-muted-foreground"
+                title="Ajustar la hora del asiento (ordena asientos del mismo día)"
+                onClick={() => setShowTime(v => !v)}
+              >
+                <Clock className="w-3.5 h-3.5 mr-1" />
+                Hora
+              </Button>
+            </div>
             <Input type="date" value={date} onChange={e => onDateChange(e.target.value)} />
+            {showTime && (
+              <Input
+                type="time"
+                className="mt-2"
+                value={entryTime}
+                onChange={e => onEntryTimeChange(e.target.value)}
+              />
+            )}
           </div>
           <div className="col-span-5">
             <Label>Glosa</Label>

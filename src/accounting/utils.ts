@@ -1,7 +1,7 @@
 // src/accounting/utils.ts
 import { AccountType, Side, Account, JournalEntry } from './types';
 import { getQuarterIdentifier } from './quarterly-utils';
-export { APP_TIMEZONE, nowInAppTZ, todayISO } from './timezone';
+export { APP_TIMEZONE, nowInAppTZ, todayISO, nowTimeHHMM } from './timezone';
 
 /** Round to 2 decimal places - use for all financial calculations */
 export function round2(n: number): number {
@@ -36,8 +36,23 @@ export function formatDecimal(n: number): string {
   return n === 0 ? "" : n.toString().replace(".", ",");
 }
 
-export function cmpDate(a: string, b: string) { 
-  return a.localeCompare(b); 
+export function cmpDate(a: string, b: string) {
+  return a.localeCompare(b);
+}
+
+/**
+ * Orden canónico de asientos: fecha → hora intradía → id.
+ * La hora ('HH:mm') desempata asientos del mismo día. Los asientos sin hora
+ * (legacy, entry_time vacío) caen primero y se desempatan por id, preservando
+ * el comportamiento previo cuando ningún asiento tiene hora.
+ */
+export function cmpEntryOrder(
+  a: { date: string; entry_time?: string | null; id: string },
+  b: { date: string; entry_time?: string | null; id: string }
+): number {
+  return a.date.localeCompare(b.date)
+    || (a.entry_time || '').localeCompare(b.entry_time || '')
+    || a.id.localeCompare(b.id);
 }
 
 export function generateEntryId(date: string, existing: JournalEntry[]) {

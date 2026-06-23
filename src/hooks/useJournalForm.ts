@@ -3,7 +3,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import { FiscalYear, JournalEntry, JournalLine, Account } from '@/accounting/types';
 import { isDateInClosedPeriod } from '@/accounting/fiscal-year-utils';
-import { todayISO, toDecimal, formatDecimal, generateEntryId, round2 } from '@/accounting/utils';
+import { todayISO, nowTimeHHMM, toDecimal, formatDecimal, generateEntryId, round2 } from '@/accounting/utils';
 import { KardexData } from '@/components/kardex/InlineKardexPopup';
 
 export type LineDraft = {
@@ -26,6 +26,8 @@ export interface UseJournalFormReturn {
   // State
   date: string;
   setDate: (date: string) => void;
+  entryTime: string;
+  setEntryTime: (time: string) => void;
   memo: string;
   setMemo: (memo: string) => void;
   lines: LineDraft[];
@@ -56,6 +58,7 @@ export function useJournalForm({
   onKardexPopupOpen,
 }: UseJournalFormProps): UseJournalFormReturn {
   const [date, setDate] = useState<string>(todayISO());
+  const [entryTime, setEntryTime] = useState<string>(nowTimeHHMM());
   const [memo, setMemo] = useState<string>('');
   const [lines, setLines] = useState<LineDraft[]>([{}, {}, {}]);
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
@@ -158,12 +161,14 @@ export function useJournalForm({
       return null;
     }
     const id = editingEntry ? editingEntry.id : generateEntryId(date, entries);
-    return { id, date, memo: memo.trim() || undefined, lines: clean };
-  }, [lines, accounts, editingEntry, date, memo, entries, fiscalYears]);
+    const time = entryTime.trim();
+    return { id, date, entry_time: time || undefined, memo: memo.trim() || undefined, lines: clean };
+  }, [lines, accounts, editingEntry, date, entryTime, memo, entries, fiscalYears]);
 
   const clearForm = useCallback(() => {
     setMemo('');
     setLines([{}, {}, {}]);
+    setEntryTime(nowTimeHHMM());
     setEditingEntry(null);
   }, []);
 
@@ -173,6 +178,7 @@ export function useJournalForm({
       return;
     }
     setDate(entry.date);
+    setEntryTime(entry.entry_time || '');
     setMemo(entry.memo || '');
     setLines(
       entry.lines.map(l => ({
@@ -188,6 +194,8 @@ export function useJournalForm({
   return {
     date,
     setDate,
+    entryTime,
+    setEntryTime,
     memo,
     setMemo,
     lines,

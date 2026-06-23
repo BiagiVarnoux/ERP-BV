@@ -519,6 +519,7 @@ export type Database = {
         Row: {
           created_at: string
           date: string
+          entry_time: string | null
           id: string
           memo: string | null
           user_id: string
@@ -527,6 +528,7 @@ export type Database = {
         Insert: {
           created_at?: string
           date: string
+          entry_time?: string | null
           id: string
           memo?: string | null
           user_id: string
@@ -535,6 +537,7 @@ export type Database = {
         Update: {
           created_at?: string
           date?: string
+          entry_time?: string | null
           id?: string
           memo?: string | null
           user_id?: string

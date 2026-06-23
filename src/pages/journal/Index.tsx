@@ -390,6 +390,7 @@ export default function JournalPage() {
     const inv: JournalEntry = {
       id: generateEntryId(orig.date, entries),
       date: orig.date,
+      entry_time: orig.entry_time,
       memo: (orig.memo ? `${orig.memo} ` : '') + '(ANULACIÓN)',
       void_of: orig.id,
       lines: orig.lines.map(l => ({
@@ -462,6 +463,8 @@ export default function JournalPage() {
           <JournalEntryForm
           date={form.date}
           onDateChange={form.setDate}
+          entryTime={form.entryTime}
+          onEntryTimeChange={form.setEntryTime}
           memo={form.memo}
           onMemoChange={form.setMemo}
           lines={form.lines}

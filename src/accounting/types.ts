@@ -57,12 +57,14 @@ export interface JournalLine {
   line_memo?: string; 
 }
 
-export interface JournalEntry { 
-  id: string; 
-  date: string; 
-  memo?: string; 
-  lines: JournalLine[]; 
-  void_of?: string; 
+export interface JournalEntry {
+  id: string;
+  date: string;
+  /** Hora intradía opcional 'HH:mm'. Desempata el orden de asientos del mismo día. undefined = legacy (orden por id). */
+  entry_time?: string;
+  memo?: string;
+  lines: JournalLine[];
+  void_of?: string;
 }
 
 export interface AuxiliaryLedgerDefinition {
