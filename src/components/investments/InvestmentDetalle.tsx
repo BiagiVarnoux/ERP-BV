@@ -63,6 +63,9 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
   const removeItem = useCallback((id: string) => {
     setItems(prev => prev.filter(it => it.id !== id));
   }, []);
+  const reorderItems = useCallback((reordered: InvestmentItem[]) => {
+    setItems(reordered);
+  }, []);
 
   // ── Guardar ───────────────────────────────────────────────────────────────
   const handleSave = async () => {
@@ -199,6 +202,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
             onUpdate={updateItem}
             onAdd={addItem}
             onRemove={removeItem}
+            onReorder={reorderItems}
           />
         </TabsContent>
 

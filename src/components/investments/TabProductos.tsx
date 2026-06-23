@@ -8,7 +8,7 @@ import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from '@/comp
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Plus, Trash2, ChevronDown, ChevronRight, ExternalLink, AlertTriangle,
-  TrendingUp, TrendingDown, Box, Weight,
+  TrendingUp, TrendingDown, Box, Weight, GripVertical,
 } from 'lucide-react';
 import { InvestmentItem, ItemCalc, InvestmentResumen } from '@/accounting/investment-types';
 import { fmt, toDecimal, round2 } from '@/accounting/utils';
@@ -21,15 +21,35 @@ interface Props {
   onUpdate: (id: string, changes: Partial<InvestmentItem>) => void;
   onAdd: () => void;
   onRemove: (id: string) => void;
+  onReorder: (items: InvestmentItem[]) => void;
 }
 
-export function TabProductos({ items, calcs, resumen, onUpdate, onAdd, onRemove }: Props) {
+export function TabProductos({ items, calcs, resumen, onUpdate, onAdd, onRemove, onReorder }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+
   const toggle = (id: string) => setExpandedIds(prev => {
     const s = new Set(prev);
     if (s.has(id)) s.delete(id); else s.add(id);
     return s;
   });
+
+  function handleDragStart(idx: number) { setDragIdx(idx); }
+  function handleDragOver(e: React.DragEvent, idx: number) {
+    e.preventDefault();
+    if (idx !== dragIdx) setOverIdx(idx);
+  }
+  function handleDrop(idx: number) {
+    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setOverIdx(null); return; }
+    const reordered = [...items];
+    const [moved] = reordered.splice(dragIdx, 1);
+    reordered.splice(idx, 0, moved);
+    onReorder(reordered);
+    setDragIdx(null);
+    setOverIdx(null);
+  }
+  function handleDragEnd() { setDragIdx(null); setOverIdx(null); }
 
   return (
     <TooltipProvider>
@@ -44,15 +64,29 @@ export function TabProductos({ items, calcs, resumen, onUpdate, onAdd, onRemove 
         ) : (
           <div className="rounded-lg border divide-y overflow-hidden">
             {items.map((it, i) => (
-              <ItemRow
+              <div
                 key={it.id}
-                item={it}
-                calc={calcs[i]}
-                expanded={expandedIds.has(it.id)}
-                onToggle={() => toggle(it.id)}
-                onChange={c => onUpdate(it.id, c)}
-                onRemove={() => onRemove(it.id)}
-              />
+                draggable
+                onDragStart={() => handleDragStart(i)}
+                onDragOver={e => handleDragOver(e, i)}
+                onDrop={() => handleDrop(i)}
+                onDragEnd={handleDragEnd}
+                style={{
+                  opacity: dragIdx === i ? 0.4 : 1,
+                  borderTop: overIdx === i && dragIdx !== i ? '2px solid hsl(var(--primary))' : undefined,
+                  transition: 'opacity 0.15s',
+                }}
+              >
+                <ItemRow
+                  item={it}
+                  calc={calcs[i]}
+                  expanded={expandedIds.has(it.id)}
+                  onToggle={() => toggle(it.id)}
+                  onChange={c => onUpdate(it.id, c)}
+                  onRemove={() => onRemove(it.id)}
+                  showDragHandle
+                />
+              </div>
             ))}
           </div>
         )}
@@ -71,13 +105,14 @@ export function TabProductos({ items, calcs, resumen, onUpdate, onAdd, onRemove 
 
 // ─── Fila de producto ─────────────────────────────────────────────────────────
 
-function ItemRow({ item: p, calc, expanded, onToggle, onChange, onRemove }: {
+function ItemRow({ item: p, calc, expanded, onToggle, onChange, onRemove, showDragHandle }: {
   item: InvestmentItem;
   calc: ItemCalc;
   expanded: boolean;
   onToggle: () => void;
   onChange: (c: Partial<InvestmentItem>) => void;
   onRemove: () => void;
+  showDragHandle?: boolean;
 }) {
   const { costeo } = calc;
   const sinFactura = p.modalidad_venta === 'sin_factura';
@@ -90,6 +125,15 @@ function ItemRow({ item: p, calc, expanded, onToggle, onChange, onRemove }: {
     <Collapsible open={expanded} onOpenChange={onToggle}>
       <CollapsibleTrigger asChild>
         <div className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/40 transition-colors ${isUnprofitable ? 'bg-red-50/30 dark:bg-red-950/10' : ''}`}>
+          {showDragHandle && (
+            <span
+              className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              onClick={e => e.stopPropagation()}
+              title="Arrastra para reordenar"
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </span>
+          )}
           {expanded
             ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
