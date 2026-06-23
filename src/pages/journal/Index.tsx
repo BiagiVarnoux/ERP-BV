@@ -15,7 +15,7 @@ import { PeriodType, getCurrentMonth, isDateInPeriod, resolvePeriod } from '@/ac
 import { PeriodSelector } from '@/components/reports/PeriodSelector';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { supabase } from '@/integrations/supabase/client';
-import { getCurrentKardexState } from '@/accounting/kardex-utils';
+import { postKardexMovement } from '@/accounting/domain/kardex-posting';
 import { exportJournalToCSV } from '@/services/exportService';
 import { exportJournalToPDF, JournalEntryPDF } from '@/services/pdfService';
 import { logAuditEntry } from '@/services/auditService';
@@ -228,79 +228,18 @@ export default function JournalPage() {
       
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        for (let i = 0; i < form.lines.length; i++) {
-          const line = form.lines[i];
+        for (const line of form.lines) {
           if (line.kardexData && line.account_id) {
             const kardexDef = kardexDefinitions.find(d => d.account_id === line.account_id);
             if (!kardexDef) continue;
-            
-            const { data: existingKardex, error: kardexError } = await supabase
-              .from('kardex_entries')
-              .select('id')
-              .eq('account_id', line.account_id)
-              .eq('company_id', activeCompanyId)
-              .maybeSingle();
-            
-            if (kardexError) throw kardexError;
-            
-            let kardexId = existingKardex?.id;
-            
-            if (!kardexId) {
-              const { data: newKardex, error: createError } = await supabase
-                .from('kardex_entries')
-                .insert({ account_id: line.account_id, user_id: user.id, company_id: activeCompanyId })
-                .select()
-                .single();
-              if (createError) throw createError;
-              kardexId = newKardex.id;
-            }
-            
-            const { data: allMovements } = await supabase
-              .from('kardex_movements')
-              .select('*')
-              .eq('kardex_id', kardexId)
-              .eq('company_id', activeCompanyId)
-              .order('fecha', { ascending: true })
-              .order('created_at', { ascending: true });
-            
-            const currentState = getCurrentKardexState(allMovements || []);
-            
-            let nuevoSaldo = 0;
-            let nuevoCostoUnitario = 0;
-            let nuevoSaldoValorado = 0;
-            
-            const entrada = Number(line.kardexData.entrada);
-            const salida = Number(line.kardexData.salidas);
-            const costoTotal = Number(line.kardexData.costo_total);
-            
-            if (entrada > 0) {
-              nuevoSaldo = currentState.currentBalance + entrada;
-              nuevoSaldoValorado = currentState.currentValuedBalance + costoTotal;
-              nuevoCostoUnitario = nuevoSaldo > 0 ? nuevoSaldoValorado / nuevoSaldo : 0;
-            } else if (salida > 0) {
-              nuevoSaldo = currentState.currentBalance - salida;
-              nuevoCostoUnitario = currentState.currentUnitCost;
-              nuevoSaldoValorado = nuevoSaldo * nuevoCostoUnitario;
-            }
-            
-            const { error: movError } = await supabase
-              .from('kardex_movements')
-              .insert({
-                kardex_id: kardexId,
-                user_id: user.id,
-                company_id: activeCompanyId,
-                fecha: je.date,
-                concepto: line.kardexData.concepto,
-                entrada: entrada,
-                salidas: salida,
-                costo_total: costoTotal,
-                journal_entry_id: je.id,
-                saldo: nuevoSaldo,
-                costo_unitario: nuevoCostoUnitario,
-                saldo_valorado: nuevoSaldoValorado
-              });
-            
-            if (movError) throw movError;
+            await postKardexMovement({
+              accountId: line.account_id,
+              companyId: activeCompanyId,
+              userId: user.id,
+              fecha: je.date,
+              journalEntryId: je.id,
+              data: line.kardexData,
+            });
           }
         }
       }

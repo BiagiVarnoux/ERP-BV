@@ -67,6 +67,13 @@ export interface ShipmentProduct {
   precio_bs_pagado_total?: number; // Total pagado en Bs por toda la cantidad (fuente de verdad cuando existe)
   tc_producto?: number;            // T/C calculado
 
+  // Pago del producto (compra en USD vía cuenta con kárdex CPP — FaceBank/USDT).
+  // Al registrar el pago se crea un asiento Debe A.4.1 (Inv. Tránsito) / Haber
+  // cuenta_pago, y una salida de USD en el kárdex de la cuenta. precio_bs_pagado_total
+  // recibe los Bs reales del CPP (fuente de verdad para el costeo del cierre).
+  cuenta_pago_id?: string;          // Cuenta con kárdex usada para pagar (A.8 FaceBank, A.7 USDT, ...)
+  pago_journal_entry_id?: string;   // Asiento generado por el pago (para revertir al editar/borrar)
+
   // Dimensiones (se ingresan cuando llega al almacén)
   m1?: number;              // cm
   m2?: number;              // cm

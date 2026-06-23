@@ -26,6 +26,9 @@ import { generateEntryId } from '@/accounting/utils';
 import { CONDICION_OPTIONS } from '@/accounting/product-condicion';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
+import { InlineKardexPopup, KardexData } from '@/components/kardex/InlineKardexPopup';
+import { registrarPagoProducto, revertirPagoProducto } from '@/accounting/domain/embarque-pago';
+import { supabase } from '@/integrations/supabase/client';
 
 import {
   Shipment, ShipmentProduct, ShipmentExpense,
@@ -1156,6 +1159,7 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
 
 function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean; onSave: (s: Shipment) => void }) {
   const activeCompanyId = useActiveCompanyId();
+  const { adapter, setEntries } = useAccounting();
   const [editingProduct, setEditingProduct] = useState<ShipmentProduct | null>(null);
   const [viewFilesProduct, setViewFilesProduct] = useState<ShipmentProduct | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -1168,8 +1172,19 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
   function addProduct() {
     onSave({ ...s, products: [...s.products, emptyProduct(s.id)] });
   }
-  function removeProduct(id: string) {
+  async function removeProduct(id: string) {
     if (s.products.length <= 1) return;
+    const prod = s.products.find(p => p.id === id);
+    // Si el producto tenía un pago registrado, revertir su asiento + kárdex.
+    if (prod?.pago_journal_entry_id && activeCompanyId) {
+      try {
+        await revertirPagoProducto({ adapter, companyId: activeCompanyId, journalEntryId: prod.pago_journal_entry_id });
+        setEntries(await adapter.loadEntries());
+      } catch (e: unknown) {
+        toast.error(`No se pudo revertir el pago: ${e instanceof Error ? e.message : String(e)}`);
+        return;
+      }
+    }
     onSave({ ...s, products: s.products.filter(p => p.id !== id) });
   }
 
@@ -1305,6 +1320,8 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
           product={editingProduct}
           tcParalelo={s.tc_paralelo}
           shipmentId={s.id}
+          shipmentNumero={s.numero}
+          shipmentStatus={s.status}
           companyId={activeCompanyId}
           onSave={saveProduct}
           onCancel={() => setEditingProduct(null)}
@@ -1336,16 +1353,72 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
 
 // ─── Dialog de edición de producto ────────────────────────────────────────────
 
-function ProductEditDialog({ product, tcParalelo, shipmentId, companyId, onSave, onCancel }: {
+function ProductEditDialog({ product, tcParalelo, shipmentId, shipmentNumero, shipmentStatus, companyId, onSave, onCancel }: {
   product: ShipmentProduct;
   tcParalelo: number;
   shipmentId: string;
+  shipmentNumero: string;
+  shipmentStatus: ShipmentStatus;
   companyId: string;
   onSave: (p: ShipmentProduct) => void;
   onCancel: () => void;
 }) {
   const { categories } = useProductCategories();
+  const { accounts, kardexDefinitions, entries, setEntries, adapter } = useAccounting();
   const [p, setP] = useState<ShipmentProduct>(product);
+  const [pagoPopupOpen, setPagoPopupOpen] = useState(false);
+  const [pagando, setPagando] = useState(false);
+
+  // Cuentas que pueden pagar (tienen kárdex CPP: FaceBank/USDT)
+  const cuentasPago = accounts.filter(a => kardexDefinitions.some(k => k.account_id === a.id));
+  const usdAPagar = round2(p.precio_usd_total ?? (p.precio_usd * p.cantidad));
+  const yaPagado = !!p.pago_journal_entry_id;
+  const cuentaPagoNombre = accounts.find(a => a.id === p.cuenta_pago_id)?.name;
+  // Solo se permite registrar el pago en un embarque aún no cerrado.
+  const puedePagar = shipmentStatus !== 'CERRADO';
+
+  // Registra el pago: crea el asiento (Debe A.4.1 / Haber cuenta_pago) + salida de
+  // kárdex (USD), guarda el link en el producto y persiste el embarque (sin huérfanos).
+  async function handlePagoSave(kardex: KardexData) {
+    if (!p.cuenta_pago_id) { toast.error('Elige la cuenta de pago'); return; }
+    setPagando(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Sin sesión activa');
+      const entryId = generateEntryId(p.fecha_compra || todayISO(), entries);
+      const memo = `Compra ${p.nombre}${p.especificacion ? ' ' + p.especificacion : ''} — ${shipmentNumero}`;
+      const { bsTotal } = await registrarPagoProducto({
+        adapter, companyId, userId: user.id, entryId,
+        fecha: p.fecha_compra || todayISO(),
+        cuentaPagoId: p.cuenta_pago_id, kardex, memo,
+      });
+      setEntries(await adapter.loadEntries());
+      // Guardar el link + Bs real como fuente de verdad; persiste el embarque y cierra.
+      onSave({ ...p, pago_journal_entry_id: entryId, precio_bs_pagado_total: bsTotal, precio_bs_pagado: undefined });
+      toast.success(`Pago registrado — asiento ${entryId} (Bs ${fmt(bsTotal)})`);
+    } catch (e: unknown) {
+      toast.error(`Error al registrar el pago: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setPagando(false);
+      setPagoPopupOpen(false);
+    }
+  }
+
+  // Revierte el pago: borra asiento + kárdex y limpia el link en el producto.
+  async function handleRevertPago() {
+    if (!p.pago_journal_entry_id) return;
+    setPagando(true);
+    try {
+      await revertirPagoProducto({ adapter, companyId, journalEntryId: p.pago_journal_entry_id });
+      setEntries(await adapter.loadEntries());
+      onSave({ ...p, pago_journal_entry_id: undefined, cuenta_pago_id: undefined, precio_bs_pagado_total: undefined });
+      toast.success('Pago revertido');
+    } catch (e: unknown) {
+      toast.error(`Error al revertir: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setPagando(false);
+    }
+  }
 
   function update(patch: Partial<ShipmentProduct>) {
     setP(prev => {
@@ -1518,6 +1591,57 @@ function ProductEditDialog({ product, tcParalelo, shipmentId, companyId, onSave,
               </div>
             </div>
 
+            {/* Pago del producto — compra en USD vía cuenta con kárdex CPP (FaceBank/USDT) */}
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                  <ShoppingCart className="w-3.5 h-3.5" /> Pago del producto
+                </Label>
+                <span className="text-xs text-muted-foreground">
+                  A pagar: <strong className="text-foreground">{fmt(usdAPagar)} USD</strong>
+                </span>
+              </div>
+
+              {yaPagado ? (
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="text-sm flex items-center gap-2 flex-wrap">
+                    <CheckCircle className="w-4 h-4 text-success shrink-0" />
+                    <span>
+                      Pagado con <strong>{cuentaPagoNombre ?? p.cuenta_pago_id}</strong>
+                      {' · '}<strong>Bs {fmt(p.precio_bs_pagado_total ?? 0)}</strong>
+                    </span>
+                    <span className="text-xs text-muted-foreground">(asiento {p.pago_journal_entry_id})</span>
+                  </div>
+                  <Button size="sm" variant="ghost" className="text-destructive" onClick={handleRevertPago} disabled={pagando}>
+                    Revertir pago
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-end gap-2 flex-wrap">
+                  <div className="flex-1 min-w-[220px]">
+                    <Label className="text-xs">Cuenta de pago (kárdex CPP)</Label>
+                    <Select value={p.cuenta_pago_id ?? ''} onValueChange={v => update({ cuenta_pago_id: v })}>
+                      <SelectTrigger className="h-9"><SelectValue placeholder="FaceBank / USDT..." /></SelectTrigger>
+                      <SelectContent>
+                        {cuentasPago.map(a => (
+                          <SelectItem key={a.id} value={a.id}>{a.id} · {a.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button size="sm" onClick={() => setPagoPopupOpen(true)}
+                    disabled={!p.cuenta_pago_id || usdAPagar <= 0 || !puedePagar || pagando}>
+                    Registrar pago
+                  </Button>
+                </div>
+              )}
+              {!puedePagar && !yaPagado && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                  El embarque está cerrado: no se puede registrar el pago.
+                </p>
+              )}
+            </div>
+
             {/* Fila 3: Batería + BOB tributos en la misma línea */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1565,6 +1689,18 @@ function ProductEditDialog({ product, tcParalelo, shipmentId, companyId, onSave,
           </div>
         </DialogContent>
       </Dialog>
+
+      {pagoPopupOpen && p.cuenta_pago_id && (
+        <InlineKardexPopup
+          isOpen={pagoPopupOpen}
+          onClose={() => setPagoPopupOpen(false)}
+          accountId={p.cuenta_pago_id}
+          forceMovementType="salida"
+          defaultCantidad={usdAPagar}
+          initialConcepto={`Compra ${p.nombre} — ${shipmentNumero}`}
+          onSave={handlePagoSave}
+        />
+      )}
     </>
   );
 }

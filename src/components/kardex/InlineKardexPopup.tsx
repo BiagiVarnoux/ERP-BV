@@ -26,6 +26,10 @@ interface InlineKardexPopupProps {
   onSave: (data: KardexData) => void;
   initialData?: KardexData;
   initialConcepto?: string;
+  // Precarga opcional (p.ej. pago de un producto de embarque: salida de USD ya conocida).
+  // No desactiva el cálculo CPP — a diferencia de initialData.
+  forceMovementType?: 'entrada' | 'salida';
+  defaultCantidad?: number;
 }
 
 export function InlineKardexPopup({
@@ -36,6 +40,8 @@ export function InlineKardexPopup({
   onSave,
   initialData,
   initialConcepto,
+  forceMovementType,
+  defaultCantidad,
 }: InlineKardexPopupProps) {
   const { accounts, kardexDefinitions } = useAccounting();
   const activeCompanyId = useActiveCompanyId();
@@ -59,14 +65,14 @@ export function InlineKardexPopup({
         setMovementType(initialData.entrada > 0 ? 'entrada' : 'salida');
       } else {
         setConcepto(initialConcepto ?? '');
-        setCantidad('');
+        setCantidad(defaultCantidad != null && defaultCantidad > 0 ? String(defaultCantidad) : '');
         setCostoTotal('');
-        setMovementType('entrada');
+        setMovementType(forceMovementType ?? 'entrada');
         setSaldoActual(0);
         setCostoUnitarioActual(0);
       }
     }
-  }, [isOpen, initialData, initialConcepto]);
+  }, [isOpen, initialData, initialConcepto, forceMovementType, defaultCantidad]);
 
   // Load kardex data when opening or switching to salida
   useEffect(() => {
