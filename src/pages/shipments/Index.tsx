@@ -526,12 +526,15 @@ export default function ShipmentsPage() {
         const productId = link?.isNew ? newProductIds[product.id] : link?.productId;
         if (!productId) continue;
 
-        // A) Create the lot
+        // A) Create the lot — enlazado a su embarque y producto del embarque
+        // (trazabilidad lote → embarque para el Análisis de Inversión, Fase 3)
         const { data: newLot, error: lotError } = await supabase
           .from('inventory_lots')
           .insert({
             product_id: productId,
             import_lot_id: null,
+            shipment_id: s.id,
+            shipment_product_id: product.id,
             fecha_ingreso: todayISO(),
             cantidad_inicial: product.cantidad,
             cantidad_disponible: product.cantidad,

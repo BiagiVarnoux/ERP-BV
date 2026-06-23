@@ -360,34 +360,43 @@ export type Database = {
         Row: {
           cantidad_disponible: number
           cantidad_inicial: number
+          company_id: string | null
           costo_unitario: number
           created_at: string
           fecha_ingreso: string
           id: string
           import_lot_id: string | null
           product_id: string
+          shipment_id: string | null
+          shipment_product_id: string | null
           user_id: string
         }
         Insert: {
           cantidad_disponible?: number
           cantidad_inicial?: number
+          company_id?: string | null
           costo_unitario?: number
           created_at?: string
           fecha_ingreso?: string
           id?: string
           import_lot_id?: string | null
           product_id: string
+          shipment_id?: string | null
+          shipment_product_id?: string | null
           user_id: string
         }
         Update: {
           cantidad_disponible?: number
           cantidad_inicial?: number
+          company_id?: string | null
           costo_unitario?: number
           created_at?: string
           fecha_ingreso?: string
           id?: string
           import_lot_id?: string | null
           product_id?: string
+          shipment_id?: string | null
+          shipment_product_id?: string | null
           user_id?: string
         }
         Relationships: [
@@ -1031,6 +1040,19 @@ export type Database = {
     Functions: {
       assign_default_owner_role: { Args: { _user_id: string }; Returns: Json }
       create_sale: { Args: { payload: Json }; Returns: Json }
+      get_shipment_realized_sales: {
+        Args: { p_company_id: string; p_shipment_id: string }
+        Returns: {
+          shipment_product_id: string
+          unidades: number
+          ingreso_neto: number
+          costo: number
+          con_factura: number
+          sin_factura: number
+          primera_entrada: string
+          ultima_venta: string
+        }[]
+      }
       get_balance_sheet: {
         Args: { as_of_date: string }
         Returns: {

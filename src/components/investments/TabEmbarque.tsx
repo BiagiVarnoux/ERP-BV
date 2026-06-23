@@ -11,39 +11,10 @@ import { Ship, Link2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { InvestmentItem, ItemCalc } from '@/accounting/investment-types';
 import { ShipmentStorage } from '@/accounting/shipment-storage';
-import { InvestmentStorage, RealizedData, RealizedProduct } from '@/accounting/investment-storage';
+import { InvestmentStorage, ShipmentRealizedRow } from '@/accounting/investment-storage';
 import { Shipment, ShipmentProduct, SHIPMENT_STATUS_LABELS } from '@/accounting/shipment-types';
-import { fmt } from '@/accounting/utils';
+import { fmt, round2 } from '@/accounting/utils';
 import { StatCard, Pct } from './ui-helpers';
-
-// Normaliza para emparejar nombres (trim, minúsculas, espacios colapsados).
-function norm(s?: string | null): string {
-  return (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
-// Empareja una fila del embarque a un producto del catálogo por nombre, afinando
-// con especificación y condición cuando hay varios candidatos.
-function matchProduct(sp: ShipmentProduct, products: RealizedProduct[]): RealizedProduct | null {
-  const n = norm(sp.nombre);
-  let cands = products.filter(p => norm(p.nombre) === n);
-  if (cands.length === 0) {
-    cands = products.filter(p => {
-      const pn = norm(p.nombre);
-      return pn.length > 2 && (pn.includes(n) || n.includes(pn));
-    });
-  }
-  if (cands.length > 1 && sp.especificacion) {
-    const e = norm(sp.especificacion);
-    const nar = cands.filter(p => norm(p.especificacion) === e);
-    if (nar.length) cands = nar;
-  }
-  if (cands.length > 1 && sp.condicion) {
-    const c = norm(sp.condicion);
-    const nar = cands.filter(p => norm(p.condicion) === c);
-    if (nar.length) cands = nar;
-  }
-  return cands[0] ?? null;
-}
 
 function daysBetween(a: string, b: string): number | null {
   const da = Date.parse(a), db = Date.parse(b);
@@ -68,7 +39,8 @@ function prodLabel(p: ShipmentProduct): string {
 export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId, onUpdateItem }: Props) {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [realized, setRealized] = useState<RealizedData | null>(null);
+  // Ventas reales atribuidas a este embarque, indexadas por shipment_product_id.
+  const [realized, setRealized] = useState<Record<string, ShipmentRealizedRow>>({});
 
   useEffect(() => {
     setLoading(true);
@@ -79,11 +51,11 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
   }, []);
 
   useEffect(() => {
-    if (!companyId) return;
-    InvestmentStorage.fetchRealizedData(companyId)
+    if (!companyId || !embarqueId) { setRealized({}); return; }
+    InvestmentStorage.fetchShipmentRealized(companyId, embarqueId)
       .then(setRealized)
-      .catch(e => { console.error('Error cargando ventas reales', e); });
-  }, [companyId]);
+      .catch(e => { console.error('Error cargando ventas reales', e); setRealized({}); });
+  }, [companyId, embarqueId]);
 
   const shipment = useMemo(
     () => shipments.find(s => s.id === embarqueId),
@@ -106,56 +78,40 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
     onUpdateItem(item.id, { mapped_shipment_product_ids: next });
   }, [onUpdateItem]);
 
-  // ── Resultado real por producto del análisis (Fase 2) ─────────────────────
-  // Resuelve productos del catálogo (por nombre+espec+condición) desde las filas
-  // del embarque mapeadas, y agrega las ventas confirmadas.
+  // ── Resultado real por producto del análisis (Fase 3) ─────────────────────
+  // Cadena exacta: cada ítem suma las ventas atribuidas a sus filas del embarque
+  // mapeadas (shipment_product_id), provenientes del RPC. Solo cuenta las ventas
+  // que consumieron lotes de ESTE embarque — nada de fuzzy match por nombre.
   const realizedByItem = useMemo(() => {
     const out: Record<string, {
       unidades: number; precioReal: number; margen: number; roiReal: number;
       conF: number; sinF: number; ultima: string; diasVenta: number | null;
-      matched: string[];
     }> = {};
-    // Solo hay ventas atribuibles cuando el embarque está CERRADO (sus productos
-    // entraron a inventario). Antes de eso, cualquier venta de un producto del
-    // mismo nombre pertenece a OTRO embarque, no a este.
-    if (!shipment || !realized || !isCerrado) return out;
+    if (!shipment || !isCerrado) return out;
 
     for (const it of items) {
-      const mappedProds = (it.mapped_shipment_product_ids ?? [])
-        .map(id => prodById.get(id))
-        .filter((p): p is ShipmentProduct => !!p);
-
-      const pids = new Set<string>();
-      const matched: string[] = [];
-      for (const sp of mappedProds) {
-        const m = matchProduct(sp, realized.products);
-        if (m && !pids.has(m.id)) { pids.add(m.id); matched.push(m.nombre.trim()); }
+      let unidades = 0, ingreso = 0, costo = 0, conF = 0, sinF = 0;
+      let ultima = '', primera = '';
+      for (const spid of it.mapped_shipment_product_ids ?? []) {
+        const r = realized[spid];
+        if (!r) continue;
+        unidades += r.unidades; ingreso += r.ingreso_neto; costo += r.costo;
+        conF += r.con_factura; sinF += r.sin_factura;
+        if (r.ultima_venta && (!ultima || r.ultima_venta > ultima)) ultima = r.ultima_venta;
+        if (r.primera_entrada && (!primera || r.primera_entrada < primera)) primera = r.primera_entrada;
       }
-
-      let unidades = 0, ingreso = 0, costo = 0, margen = 0, conF = 0, sinF = 0;
-      let ultima = '', ingresoDate = '';
-      for (const pid of pids) {
-        const a = realized.byProduct[pid];
-        if (a) {
-          unidades += a.unidades; ingreso += a.ingreso_neto; costo += a.costo; margen += a.margen;
-          conF += a.con_factura; sinF += a.sin_factura;
-          if (a.ultima_venta && (!ultima || a.ultima_venta > ultima)) ultima = a.ultima_venta;
-        }
-        const ing = realized.ingresoByProduct[pid];
-        if (ing && (!ingresoDate || ing < ingresoDate)) ingresoDate = ing;
-      }
+      const margen = round2(ingreso - costo);
       out[it.id] = {
         unidades,
         precioReal: unidades > 0 ? ingreso / unidades : 0,
         margen,
         roiReal: costo > 0 ? margen / costo : 0,
         conF, sinF, ultima,
-        diasVenta: ingresoDate && ultima ? daysBetween(ingresoDate, ultima) : null,
-        matched,
+        diasVenta: primera && ultima ? daysBetween(primera, ultima) : null,
       };
     }
     return out;
-  }, [items, shipment, realized, prodById, isCerrado]);
+  }, [items, shipment, realized, isCerrado]);
 
   const hayVentas = Object.values(realizedByItem).some(r => r.unidades > 0);
 
@@ -345,11 +301,8 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
                   <p className="text-sm text-muted-foreground flex items-start gap-2">
                     <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
                     El embarque vinculado aún no está cerrado, así que sus productos todavía no entraron a inventario.
-                    Las ventas reales aparecerán cuando cierres el embarque. (Las ventas de productos del mismo nombre
-                    en otros embarques no se cuentan aquí.)
+                    Las ventas reales aparecerán cuando cierres el embarque.
                   </p>
-                ) : !realized ? (
-                  <p className="text-sm text-muted-foreground">Cargando ventas...</p>
                 ) : !hayVentas ? (
                   <p className="text-sm text-muted-foreground">
                     Aún no hay ventas registradas para los productos mapeados. Aparecerán aquí a medida que vendas.
@@ -384,9 +337,6 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
                             <tr key={it.id} className="border-b last:border-0">
                               <td className="py-2 pr-3">
                                 {it.nombre || `Producto ${i + 1}`}
-                                {r && r.matched.length > 0 && (
-                                  <span className="block text-[10px] text-muted-foreground">↳ {r.matched.join(', ')}</span>
-                                )}
                               </td>
                               <td className="text-right px-2 font-mono">Bs {fmt(planPrecio)}</td>
                               <td className={`text-right px-2 font-mono ${precioColor}`}>
@@ -407,10 +357,10 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
                       </tbody>
                     </table>
                     <p className="text-[11px] text-muted-foreground mt-3">
-                      Cifras <strong>a nivel de producto</strong>: bajo costo promedio (CPP) el inventario es un pool,
-                      así que las ventas no se pueden separar por embarque. Incluyen todas las ventas del producto
-                      emparejado (por nombre + especificación + condición, mostrado bajo cada ítem), no solo las de
-                      este embarque. "Días en vender" = desde el ingreso a inventario hasta la última venta.
+                      Cifras <strong>atribuidas exactamente a este embarque</strong> (trazabilidad FIFO por lote):
+                      solo cuentan las ventas que consumieron stock de las filas mapeadas, no las de otros embarques
+                      del mismo producto. El COGS es el costo real del lote. "Días en vender" = desde el ingreso a
+                      inventario hasta la última venta.
                     </p>
                   </div>
                 )}
