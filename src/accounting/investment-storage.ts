@@ -150,7 +150,25 @@ export const InvestmentStorage = {
       .eq('company_id', companyId)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    return (data || []).map(r => rowToAnalysis(r as Record<string, unknown>));
+    const analyses = (data || []).map(r => rowToAnalysis(r as Record<string, unknown>));
+    if (analyses.length === 0) return analyses;
+
+    const ids = analyses.map(a => a.id);
+    const { data: itemsData } = await supabase
+      .from('investment_analysis_items')
+      .select('*')
+      .in('analysis_id', ids)
+      .order('orden');
+    const itemsByAnalysis = new Map<string, typeof itemsData>(ids.map(id => [id, []]));
+    for (const row of itemsData ?? []) {
+      const r = row as Record<string, unknown>;
+      const list = itemsByAnalysis.get(r.analysis_id as string);
+      if (list) list.push(row);
+    }
+    for (const a of analyses) {
+      a.items = (itemsByAnalysis.get(a.id) ?? []).map(r => rowToItem(r as Record<string, unknown>));
+    }
+    return analyses;
   },
 
   async loadOne(id: string): Promise<InvestmentAnalysis> {
