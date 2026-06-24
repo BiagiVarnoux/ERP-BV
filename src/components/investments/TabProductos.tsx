@@ -66,11 +66,11 @@ export function TabProductos({ items, calcs, resumen, onUpdate, onAdd, onRemove,
             {items.map((it, i) => (
               <div
                 key={it.id}
-                draggable
+                className="drag-row"
                 onDragStart={() => handleDragStart(i)}
                 onDragOver={e => handleDragOver(e, i)}
                 onDrop={() => handleDrop(i)}
-                onDragEnd={handleDragEnd}
+                onDragEnd={e => { (e.currentTarget as HTMLElement).draggable = false; handleDragEnd(); }}
                 style={{
                   opacity: dragIdx === i ? 0.4 : 1,
                   borderTop: overIdx === i && dragIdx !== i ? '2px solid hsl(var(--primary))' : undefined,
@@ -129,6 +129,11 @@ function ItemRow({ item: p, calc, expanded, onToggle, onChange, onRemove, showDr
             <span
               className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors shrink-0"
               onClick={e => e.stopPropagation()}
+              onMouseDown={e => {
+                e.stopPropagation();
+                const row = (e.currentTarget as HTMLElement).closest('.drag-row') as HTMLElement | null;
+                if (row) row.draggable = true;
+              }}
               title="Arrastra para reordenar"
             >
               <GripVertical className="h-3.5 w-3.5" />

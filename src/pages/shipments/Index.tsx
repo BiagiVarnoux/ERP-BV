@@ -1241,11 +1241,11 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
             {s.products.map((p, idx) => (
               <TableRow
                 key={p.id}
-                draggable={canEdit}
-                onDragStart={() => handleDragStart(idx)}
-                onDragOver={e => handleDragOver(e, idx)}
-                onDrop={() => handleDrop(idx)}
-                onDragEnd={handleDragEnd}
+                className={canEdit ? 'drag-row' : undefined}
+                onDragStart={canEdit ? () => handleDragStart(idx) : undefined}
+                onDragOver={canEdit ? e => handleDragOver(e, idx) : undefined}
+                onDrop={canEdit ? () => handleDrop(idx) : undefined}
+                onDragEnd={canEdit ? e => { (e.currentTarget as HTMLElement).draggable = false; handleDragEnd(); } : undefined}
                 style={{
                   opacity: dragIdx === idx ? 0.4 : 1,
                   borderTop: overIdx === idx && dragIdx !== idx ? '2px solid hsl(var(--primary))' : undefined,
@@ -1256,6 +1256,10 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
                   <TableCell className="w-6 pr-0">
                     <span
                       className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors flex items-center"
+                      onMouseDown={e => {
+                        const row = (e.currentTarget as HTMLElement).closest('.drag-row') as HTMLElement | null;
+                        if (row) row.draggable = true;
+                      }}
                       title="Arrastra para reordenar"
                     >
                       <GripVertical className="w-4 h-4" />
