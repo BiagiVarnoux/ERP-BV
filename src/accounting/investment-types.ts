@@ -125,7 +125,8 @@ export interface ItemCosteo {
   impuestos: number;
   manipuleo: number;
   bateria: number;
-  costo_unitario: number;      // costo importación por unidad (total_individual)
+  costo_unitario: number;      // costo importación por unidad CON IVA aduana (total_individual)
+  costo_unitario_sin_iva: number; // costo contable del inventario (sin IVA — = costo real del embarque/COGS)
 
   // Totales por cantidad
   inversion: number;           // costo_unitario × cantidad + extras (capital comprometido)

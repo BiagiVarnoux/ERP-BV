@@ -286,9 +286,10 @@ function ItemForm({ item: p, calc, onChange }: {
           <StatCard label="Precio Bs" value={costeo.precio_bs} hint="(USD + tax) × T/C" />
           <StatCard label="Envío" value={costeo.envio} hint="peso × tarifa × T/C envío" />
           <StatCard label="GA" value={costeo.ga} hint="Gravamen arancelario" />
-          <StatCard label="IVA aduana" value={costeo.iva_aduana} />
+          <StatCard label="IVA aduana" value={costeo.iva_aduana} hint="Crédito fiscal (recuperable) — no es costo contable del inventario" />
           <StatCard label="Manipuleo" value={costeo.manipuleo} />
-          <StatCard label="Costo unit." value={costeo.costo_unitario} bold hint="Costo total puesto en almacén / unidad" />
+          <StatCard label="Costo unit. CON IVA" value={costeo.costo_unitario} bold hint="Desembolso total por unidad, IVA aduana incluido" />
+          <StatCard label="Costo unit. SIN IVA" value={costeo.costo_unitario_sin_iva} bold hint="Costo contable del inventario — el que va a libros y al COGS real del embarque" />
           <StatCard label="Inversión" value={costeo.inversion} bold hint="Capital comprometido = costo import. × cantidad + extras" />
           <StatCard label="Precio piso" value={costeo.precio_piso} hint="Venta mínima para no perder" />
         </div>

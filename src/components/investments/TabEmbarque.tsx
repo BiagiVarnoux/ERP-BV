@@ -224,7 +224,7 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
                         <th className="text-left py-2 pr-3 font-medium">Producto</th>
                         <th className="text-right px-2 font-medium">Cant. plan</th>
                         <th className="text-right px-2 font-medium">Cant. real</th>
-                        <th className="text-right px-2 font-medium">Costo est.</th>
+                        <th className="text-right px-2 font-medium" title="Costo contable estimado, sin IVA aduana">Costo est. (s/IVA)</th>
                         <th className="text-right px-2 font-medium">Costo real</th>
                         <th className="text-right px-2 font-medium">Δ</th>
                       </tr>
@@ -235,7 +235,9 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
                           .map(id => prodById.get(id))
                           .filter((p): p is ShipmentProduct => !!p);
                         const realQty = mapped.reduce((s, p) => s + (p.cantidad || 0), 0);
-                        const costoEst = calcs[i].costeo.costo_unitario;
+                        // Costo estimado SIN IVA: el embarque capitaliza el inventario sin IVA aduana
+                        // (crédito fiscal), así que la comparación contra el COGS real debe ser sin IVA.
+                        const costoEst = calcs[i].costeo.costo_unitario_sin_iva;
 
                         // Costo real unitario = promedio ponderado de costo_total_unitario (solo si cerrado)
                         let costoReal: number | null = null;

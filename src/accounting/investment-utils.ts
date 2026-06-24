@@ -68,7 +68,10 @@ export function calcCosteo(it: InvestmentItem): ItemCosteo {
   const sinFactura = it.modalidad_venta === 'sin_factura';
 
   const extras = round2((it.garantia || 0) + (it.pasaje || 0) + (it.envio_local || 0) + (it.otros_costos || 0));
-  const costoUnit = c.total_individual;         // costo importación por unidad
+  const costoUnit = c.total_individual;         // costo importación por unidad (CON IVA aduana)
+  // Costo contable del inventario: sin el IVA aduana (que es crédito fiscal, no costo).
+  // Es el mismo número que se capitaliza en el embarque y va al COGS real.
+  const costoUnitSinIva = round2(costoUnit - c.iva_aduana);
   const totalImport = c.total_import;           // costoUnit × cantidad
   const inversion = round2(totalImport + extras);
 
@@ -114,6 +117,7 @@ export function calcCosteo(it: InvestmentItem): ItemCosteo {
     manipuleo:            c.manipuleo,
     bateria:              c.bateria,
     costo_unitario:       costoUnit,
+    costo_unitario_sin_iva: costoUnitSinIva,
     inversion,
     ingreso_total:        ingresoTotal,
     ingreso_con_factura:  ingresoCon,
