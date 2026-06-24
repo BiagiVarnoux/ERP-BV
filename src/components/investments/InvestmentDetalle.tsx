@@ -35,6 +35,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
   const [plazoImport, setPlazoImport] = useState(analysis.plazo_importacion_meses);
   const [fuc, setFuc] = useState(analysis.fuc_pct);
   const [embarqueId, setEmbarqueId] = useState(analysis.embarque_id);
+  const [nombre, setNombre] = useState(analysis.nombre);
   const [saving, setSaving] = useState(false);
 
   const calcs = useMemo(
@@ -47,6 +48,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
   );
 
   const isDirty =
+    nombre !== analysis.nombre ||
     JSON.stringify(items) !== JSON.stringify(analysis.items) ||
     costoCapital !== analysis.costo_capital_anual ||
     plazoImport !== analysis.plazo_importacion_meses ||
@@ -73,6 +75,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
     try {
       setSaving(true);
       await InvestmentStorage.update(analysis.id, companyId, {
+        nombre,
         costo_capital_anual:     costoCapital,
         plazo_importacion_meses: plazoImport,
         fuc_pct:                 fuc,
@@ -83,7 +86,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
       for (const old of analysis.items) {
         if (!idsActuales.has(old.id)) await InvestmentStorage.deleteItem(old.id, old.analysis_id);
       }
-      onUpdated({ ...analysis, items, costo_capital_anual: costoCapital, plazo_importacion_meses: plazoImport, fuc_pct: fuc, embarque_id: embarqueId });
+      onUpdated({ ...analysis, nombre, items, costo_capital_anual: costoCapital, plazo_importacion_meses: plazoImport, fuc_pct: fuc, embarque_id: embarqueId });
       toast.success('Análisis guardado');
     } catch (e) {
       toast.error('Error al guardar');
@@ -151,7 +154,14 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
         </Button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-xl font-bold truncate">{analysis.nombre}</h1>
+            <input
+              className="text-xl font-bold bg-transparent border-b border-transparent hover:border-muted-foreground/30 focus:border-primary focus:outline-none rounded-sm px-0.5 -mx-0.5 w-full min-w-0 transition-colors"
+              value={nombre}
+              onChange={e => setNombre(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+              placeholder="Nombre del análisis"
+              title="Clic para editar el nombre"
+            />
             <Badge className={`shrink-0 text-xs ${INVESTMENT_ESTADO_COLORS[analysis.estado]}`}>
               {INVESTMENT_ESTADO_LABELS[analysis.estado]}
             </Badge>

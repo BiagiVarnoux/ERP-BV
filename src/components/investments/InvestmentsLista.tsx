@@ -11,6 +11,8 @@ import { Plus, TrendingUp, Trash2, Calculator } from 'lucide-react';
 import {
   InvestmentAnalysis, INVESTMENT_ESTADO_LABELS, INVESTMENT_ESTADO_COLORS,
 } from '@/accounting/investment-types';
+import { calcItem, calcResumen } from '@/accounting/investment-utils';
+import { fmt } from '@/accounting/utils';
 import { NuevoAnalisisModal } from './NuevoAnalisisModal';
 
 interface Props {
@@ -75,8 +77,9 @@ export function InvestmentsLista({ analyses, loading, companyId, onCreated, onDe
                     {INVESTMENT_ESTADO_LABELS[a.estado]}
                   </Badge>
                 </div>
-                <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
-                  <span>Costo capital: {a.costo_capital_anual}% · Imp.: {a.plazo_importacion_meses}m</span>
+                <AnalysisStats analysis={a} />
+                <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+                  <span>Capital: {a.costo_capital_anual}% · Imp.: {a.plazo_importacion_meses}m</span>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -118,6 +121,32 @@ export function InvestmentsLista({ analyses, loading, companyId, onCreated, onDe
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+function AnalysisStats({ analysis: a }: { analysis: InvestmentAnalysis }) {
+  if (a.items.length === 0) {
+    return <p className="text-xs text-muted-foreground mt-3">Sin productos</p>;
+  }
+  const calcs = a.items.map(it => calcItem(it, a.plazo_importacion_meses, a.costo_capital_anual, a.fuc_pct));
+  const r = calcResumen(a, calcs);
+  const roiPct = (r.roi * 100).toFixed(1);
+  const roiColor = r.roi < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400';
+  return (
+    <div className="grid grid-cols-3 gap-2 mt-3 mb-1">
+      <div>
+        <p className="text-[10px] text-muted-foreground">Inversión</p>
+        <p className="text-xs font-mono font-medium">Bs {fmt(r.inversion)}</p>
+      </div>
+      <div>
+        <p className="text-[10px] text-muted-foreground">Ganancia</p>
+        <p className={`text-xs font-mono font-medium ${r.ganancia < 0 ? 'text-red-500' : ''}`}>Bs {fmt(r.ganancia)}</p>
+      </div>
+      <div>
+        <p className="text-[10px] text-muted-foreground">ROI · {a.items.length} prod.</p>
+        <p className={`text-xs font-mono font-semibold ${roiColor}`}>{roiPct}%</p>
+      </div>
     </div>
   );
 }
