@@ -66,7 +66,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
     setItems(prev => prev.filter(it => it.id !== id));
   }, []);
   const reorderItems = useCallback((reordered: InvestmentItem[]) => {
-    setItems(reordered);
+    setItems(reordered.map((it, i) => ({ ...it, orden: i })));
   }, []);
 
   // ── Guardar ───────────────────────────────────────────────────────────────
