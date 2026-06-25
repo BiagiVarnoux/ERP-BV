@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, ReceiptText, Loader2, Banknote, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
+import { Plus, ReceiptText, Loader2, Banknote, AlertTriangle, CheckCircle2, Clock, Building2, Zap, ShoppingCart, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
@@ -21,6 +21,7 @@ import {
   voidReceivable,
   type ReceivableRow,
   type Moneda,
+  type CanalFilter,
 } from '@/domain/receivables';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -37,7 +38,6 @@ function estadoBadge(row: ReceivableRow) {
   if (row.estado === 'paid')   return <Badge className="bg-green-600 hover:bg-green-700 text-xs">Cobrado</Badge>;
   if (row.estado === 'voided') return <Badge variant="outline" className="text-xs text-muted-foreground">Anulado</Badge>;
   if (row.estado === 'partial') return <Badge className="bg-amber-500 hover:bg-amber-600 text-xs">Parcial</Badge>;
-  // open
   return <Badge className="bg-blue-600 hover:bg-blue-700 text-xs">Abierto</Badge>;
 }
 
@@ -70,6 +70,28 @@ function estadoFilterLabel(f: EstadoFilter): string {
   }
 }
 
+interface CanalTab {
+  key: CanalFilter;
+  label: string;
+  icon: React.ReactNode;
+  color: string;
+}
+
+const CANAL_TABS: CanalTab[] = [
+  { key: 'all',        label: 'Todos',        icon: <ReceiptText className="w-3.5 h-3.5" />, color: '' },
+  { key: 'licitacion', label: 'Licitaciones', icon: <Building2 className="w-3.5 h-3.5" />,   color: 'text-violet-600' },
+  { key: 'electronica', label: 'Electrónica', icon: <Zap className="w-3.5 h-3.5" />,          color: 'text-blue-600' },
+  { key: 'pedido',     label: 'Pedido',       icon: <ShoppingCart className="w-3.5 h-3.5" />, color: 'text-emerald-600' },
+  { key: 'general',   label: 'General',      icon: <Globe className="w-3.5 h-3.5" />,         color: 'text-orange-600' },
+  { key: 'sin_canal',  label: 'Sin canal',    icon: null,                                       color: 'text-muted-foreground' },
+];
+
+function matchesCanal(row: ReceivableRow, canal: CanalFilter): boolean {
+  if (canal === 'all') return true;
+  if (canal === 'sin_canal') return !row.sale_canal;
+  return row.sale_canal === canal;
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ReceivablesPage() {
@@ -81,6 +103,7 @@ export default function ReceivablesPage() {
   const [loading, setLoading] = useState(true);
 
   // Filters
+  const [canalFilter, setCanalFilter]   = useState<CanalFilter>('all');
   const [estadoFilter, setEstadoFilter] = useState<EstadoFilter>('open');
   const [search, setSearch]             = useState('');
 
@@ -134,11 +157,34 @@ export default function ReceivablesPage() {
     setCobradoMes(total);
   }
 
+  // ── Canal summary (for tabs) ─────────────────────────────────────────────────
+
+  const canalSummary = useMemo(() => {
+    const openRows = rows.filter(r => r.estado === 'open' || r.estado === 'partial');
+    const summary: Record<CanalFilter, { count: number; pendiente: number }> = {
+      all:        { count: openRows.length, pendiente: round2(openRows.reduce((s, r) => s + r.monto_pendiente, 0)) },
+      licitacion: { count: 0, pendiente: 0 },
+      electronica:{ count: 0, pendiente: 0 },
+      pedido:     { count: 0, pendiente: 0 },
+      general:    { count: 0, pendiente: 0 },
+      sin_canal:  { count: 0, pendiente: 0 },
+    };
+    for (const r of openRows) {
+      const c: CanalFilter = (r.sale_canal as CanalFilter | null) ?? 'sin_canal';
+      const key = ['licitacion', 'electronica', 'pedido', 'general'].includes(c) ? c : 'sin_canal';
+      summary[key].count++;
+      summary[key].pendiente = round2(summary[key].pendiente + r.monto_pendiente);
+    }
+    return summary;
+  }, [rows]);
+
   // ── Filtered rows ────────────────────────────────────────────────────────────
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return rows.filter(r => {
+      const matchCanal = matchesCanal(r, canalFilter);
+
       const matchSearch = !q
         || r.numero_documento.toLowerCase().includes(q)
         || (r.customer_razon_social ?? '').toLowerCase().includes(q);
@@ -149,19 +195,20 @@ export default function ReceivablesPage() {
       if (estadoFilter === 'vencidos') matchEstado = isOpenLike && isVencido(r);
       if (estadoFilter === 'paid')     matchEstado = r.estado === 'paid';
 
-      return matchSearch && matchEstado;
+      return matchCanal && matchSearch && matchEstado;
     });
-  }, [rows, estadoFilter, search]);
+  }, [rows, canalFilter, estadoFilter, search]);
 
-  // ── KPIs ─────────────────────────────────────────────────────────────────────
+  // ── KPIs (for active canal) ───────────────────────────────────────────────────
 
   const kpis = useMemo(() => {
-    const openRows   = rows.filter(r => r.estado === 'open' || r.estado === 'partial');
+    const scope = canalFilter === 'all' ? rows : rows.filter(r => matchesCanal(r, canalFilter));
+    const openRows   = scope.filter(r => r.estado === 'open' || r.estado === 'partial');
     const totalPend  = round2(openRows.reduce((s, r) => s + r.monto_pendiente, 0));
     const countOpen  = openRows.length;
     const countVenc  = openRows.filter(isVencido).length;
     return { totalPend, countOpen, countVenc };
-  }, [rows]);
+  }, [rows, canalFilter]);
 
   // ── Payment modal ─────────────────────────────────────────────────────────────
 
@@ -243,6 +290,8 @@ export default function ReceivablesPage() {
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
+  const activeTab = CANAL_TABS.find(t => t.key === canalFilter) ?? CANAL_TABS[0];
+
   return (
     <div className="space-y-6">
       <ReadOnlyBanner />
@@ -259,11 +308,45 @@ export default function ReceivablesPage() {
         )}
       </div>
 
+      {/* Canal tabs */}
+      <div className="flex items-center gap-1 border-b">
+        {CANAL_TABS.map(tab => {
+          const isActive = canalFilter === tab.key;
+          const summary = canalSummary[tab.key];
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setCanalFilter(tab.key)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                isActive
+                  ? 'border-primary text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+              }`}
+            >
+              {tab.icon && <span className={isActive ? tab.color : ''}>{tab.icon}</span>}
+              {tab.label}
+              {summary.count > 0 && (
+                <Badge
+                  variant={isActive ? 'default' : 'secondary'}
+                  className="text-[10px] px-1.5 py-0 h-4 min-w-4"
+                >
+                  {summary.count}
+                </Badge>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
       {/* KPI strip */}
       <div className="grid grid-cols-4 gap-4">
         <div className="rounded-lg border bg-card p-4 space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Banknote className="w-4 h-4" /> Total pendiente
+            <Banknote className="w-4 h-4" />
+            Total pendiente
+            {canalFilter !== 'all' && (
+              <span className={`text-xs font-medium ${activeTab.color}`}>· {activeTab.label}</span>
+            )}
           </div>
           <div className="text-2xl font-bold">Bs {fmt(kpis.totalPend)}</div>
         </div>
@@ -318,7 +401,7 @@ export default function ReceivablesPage() {
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
           <ReceiptText className="w-12 h-12 mb-4 opacity-40" />
-          <p>No hay cuentas por cobrar registradas.</p>
+          <p>No hay cuentas por cobrar{canalFilter !== 'all' ? ` para ${activeTab.label}` : ''} registradas.</p>
         </div>
       ) : (
         <div className="rounded-md border">
@@ -327,6 +410,7 @@ export default function ReceivablesPage() {
               <TableRow>
                 <TableHead>Nº Documento</TableHead>
                 <TableHead>Cliente</TableHead>
+                <TableHead>Canal</TableHead>
                 <TableHead>Fecha emisión</TableHead>
                 <TableHead>Vencimiento</TableHead>
                 <TableHead className="text-right">Monto original</TableHead>
@@ -343,6 +427,13 @@ export default function ReceivablesPage() {
                   <TableRow key={row.id} className={row.estado === 'voided' ? 'opacity-60' : ''}>
                     <TableCell className="font-mono text-xs">{row.numero_documento}</TableCell>
                     <TableCell className="text-sm">{row.customer_razon_social ?? '—'}</TableCell>
+                    <TableCell>
+                      {row.sale_canal ? (
+                        <CanalBadge canal={row.sale_canal} />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-sm">{row.fecha_emision}</TableCell>
                     <TableCell className="text-sm">
                       {row.fecha_vencimiento ? (
@@ -582,4 +673,21 @@ export default function ReceivablesPage() {
       </Dialog>
     </div>
   );
+}
+
+// ─── CanalBadge ───────────────────────────────────────────────────────────────
+
+function CanalBadge({ canal }: { canal: string }) {
+  switch (canal) {
+    case 'licitacion':
+      return <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-violet-600 border-violet-300">Licitación</Badge>;
+    case 'electronica':
+      return <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-blue-600 border-blue-300">Electrónica</Badge>;
+    case 'pedido':
+      return <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-emerald-600 border-emerald-300">Pedido</Badge>;
+    case 'general':
+      return <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-orange-600 border-orange-300">General</Badge>;
+    default:
+      return <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">{canal}</Badge>;
+  }
 }

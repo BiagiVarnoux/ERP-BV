@@ -7,6 +7,7 @@ import { logAuditEntry } from '@/services/auditService';
 
 export type ReceivableEstado = 'open' | 'partial' | 'paid' | 'voided';
 export type Moneda = 'BOB' | 'USD' | 'USDT';
+export type CanalFilter = 'all' | 'licitacion' | 'electronica' | 'pedido' | 'general' | 'sin_canal';
 
 export interface ReceivableRow {
   id: string;
@@ -26,6 +27,7 @@ export interface ReceivableRow {
   updated_at: string;
   // joined
   customer_razon_social?: string | null;
+  sale_canal?: string | null;
 }
 
 export interface CreateReceivableInput {
@@ -55,7 +57,8 @@ export async function listReceivables(): Promise<ReceivableRow[]> {
     .from('receivables')
     .select(`
       *,
-      customers ( razon_social )
+      customers ( razon_social ),
+      sales ( canal )
     `)
     .eq('company_id', companyId)
     .order('fecha_emision', { ascending: false });
@@ -65,9 +68,11 @@ export async function listReceivables(): Promise<ReceivableRow[]> {
   return ((data ?? []) as unknown[]).map((row: unknown) => {
     const r = row as Record<string, unknown>;
     const customers = r.customers as { razon_social?: string | null } | null;
+    const sales = r.sales as { canal?: string | null } | null;
     return {
       ...(r as ReceivableRow),
       customer_razon_social: customers?.razon_social ?? null,
+      sale_canal: sales?.canal ?? null,
     };
   });
 }
