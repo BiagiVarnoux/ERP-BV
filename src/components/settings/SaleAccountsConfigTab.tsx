@@ -47,8 +47,9 @@ export function SaleAccountsConfigTab() {
   const [dirty, setDirty] = useState(false);
 
   // Solo cuentas de tipo ACTIVO para métodos de pago
+  // Account.id = código (ej: "A.1"), Account.name = nombre
   const activoAccounts = accounts.filter(a => a.type === 'ACTIVO').sort((a, b) =>
-    a.codigo.localeCompare(b.codigo, 'es', { numeric: true })
+    a.id.localeCompare(b.id, 'es', { numeric: true })
   );
 
   useEffect(() => {
@@ -94,7 +95,7 @@ export function SaleAccountsConfigTab() {
 
   function effectiveAccount(tipoPago: TipoPago) {
     const codigo = effectiveCodigo(tipoPago);
-    return accounts.find(a => a.codigo === codigo);
+    return accounts.find(a => a.id === codigo);
   }
 
   if (loading) {
@@ -157,9 +158,9 @@ export function SaleAccountsConfigTab() {
                         </SelectTrigger>
                         <SelectContent className="max-h-64">
                           {activoAccounts.map(a => (
-                            <SelectItem key={a.id} value={a.codigo}>
-                              <span className="font-mono text-xs text-muted-foreground mr-2">{a.codigo}</span>
-                              {a.nombre}
+                            <SelectItem key={a.id} value={a.id}>
+                              <span className="font-mono text-xs text-muted-foreground mr-2">{a.id}</span>
+                              {a.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
