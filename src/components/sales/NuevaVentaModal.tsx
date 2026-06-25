@@ -17,15 +17,14 @@ import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import {
   calculateTaxes,
   createSale,
-  loadSaleAccountConfig,
+  loadPaymentMethods,
   CANAL_LABELS,
-  TIPO_PAGO_LABELS,
   type Canal,
   type TipoPago,
   type SaleItemInput,
   type MetodoValuacion,
   type SaleItemEnriched,
-  type SaleAccountConfig,
+  type PaymentMethod,
 } from '@/domain/sales';
 import { fetchProductsStockBatch, fetchLastPricesByCanal } from '@/domain/sales/stockService';
 import { condicionLabel } from '@/accounting/product-condicion';
@@ -60,13 +59,13 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmStockOpen, setConfirmStockOpen] = useState(false);
-  const [paymentConfig, setPaymentConfig] = useState<SaleAccountConfig>({});
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
 
   // Header
   const [fecha, setFecha] = useState(todayISO());
   const [canal, setCanal] = useState<Canal>('electronica');
   const [conFactura, setConFactura] = useState(false);
-  const [tipoPago, setTipoPago] = useState<TipoPago>('caja_mn');
+  const [tipoPago, setTipoPago] = useState<string>('caja_mn');
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [glosa, setGlosa] = useState('');
@@ -84,7 +83,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     resetForm();
     loadProductsAndStock();
     if (activeCompanyId) {
-      loadSaleAccountConfig(activeCompanyId).then(setPaymentConfig).catch(() => {});
+      loadPaymentMethods(activeCompanyId).then(setPaymentMethods).catch(() => {});
     }
   }, [isOpen]);
 
@@ -94,24 +93,25 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     fetchLastPricesByCanal(products.map(p => p.id), canal).then(setSuggestedPrices);
   }, [canal, products]);
 
-  // CxC disponibles por canal
-  const CXC_BY_CANAL: Record<Canal, TipoPago> = {
+  // CxC del sistema: cada canal muestra solo su CxC específica
+  const CXC_BY_CANAL: Record<Canal, string> = {
     electronica: 'cxc_electronica',
     pedido: 'cxc_pedido',
     licitacion: 'cxc_licitaciones',
     general: 'cxc',
   };
-  const CXC_ALL: TipoPago[] = ['cxc', 'cxc_electronica', 'cxc_pedido', 'cxc_licitaciones'];
-  const tipoPagoOptions = useMemo<TipoPago[]>(() => {
+  const CXC_SISTEMA = new Set(['cxc', 'cxc_electronica', 'cxc_pedido', 'cxc_licitaciones']);
+
+  const tipoPagoOptions = useMemo<PaymentMethod[]>(() => {
     const cxcForCanal = CXC_BY_CANAL[canal];
-    return (Object.keys(TIPO_PAGO_LABELS) as TipoPago[]).filter(
-      t => !CXC_ALL.includes(t) || t === cxcForCanal
+    return paymentMethods.filter(m =>
+      m.enabled && (!CXC_SISTEMA.has(m.tipo_pago) || m.tipo_pago === cxcForCanal)
     );
-  }, [canal]);
+  }, [canal, paymentMethods]);
 
   // Resetear tipo_pago si ya no es válido para el nuevo canal
   useEffect(() => {
-    if (CXC_ALL.includes(tipoPago) && tipoPago !== CXC_BY_CANAL[canal]) {
+    if (CXC_SISTEMA.has(tipoPago) && tipoPago !== CXC_BY_CANAL[canal]) {
       setTipoPago('caja_mn');
     }
   }, [canal]);
@@ -290,7 +290,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
         },
         cleanItems,
         activeCompanyId,
-        paymentConfig,
+        Object.fromEntries(paymentMethods.map(m => [m.tipo_pago, m.account_codigo])),
       );
       toast.success(`Venta ${result.numero} registrada`);
       await reloadEntries();
@@ -630,11 +630,11 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
 
                 <div>
                   <Label>Tipo de Pago</Label>
-                  <Select value={tipoPago} onValueChange={(v: TipoPago) => setTipoPago(v)}>
+                  <Select value={tipoPago} onValueChange={setTipoPago}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {tipoPagoOptions.map(t => (
-                        <SelectItem key={t} value={t}>{TIPO_PAGO_LABELS[t]}</SelectItem>
+                      {tipoPagoOptions.map(m => (
+                        <SelectItem key={m.tipo_pago} value={m.tipo_pago}>{m.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

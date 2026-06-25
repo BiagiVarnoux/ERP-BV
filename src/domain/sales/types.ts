@@ -32,7 +32,7 @@ export interface SaleHeaderInput {
   fecha: string;            // YYYY-MM-DD
   canal: Canal;
   con_factura: boolean;
-  tipo_pago: TipoPago;
+  tipo_pago: TipoPago | string; // string para métodos personalizados
   cliente_nombre?: string | null;
   glosa?: string | null;
   aux_entry_id?: string | null;
