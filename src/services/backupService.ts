@@ -195,6 +195,8 @@ export interface BackupData {
   // v3.2 fields — análisis de inversión
   investment_analyses?: any[];
   investment_analysis_items?: any[];
+  // v3.3 fields — configuración de cuentas de venta
+  company_sale_account_config?: any[];
 }
 
 export async function createFullBackup(activeCompanyId?: string): Promise<BackupData> {
@@ -237,6 +239,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     product_categories,
     investment_analyses,
     investment_analysis_items,
+    company_sale_account_config,
   ] = await Promise.all([
     fetchAllCompanyRows('accounts', companyId),
     fetchAllCompanyRows('journal_entries', companyId),
@@ -284,6 +287,8 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     // v3.2: análisis de inversión
     fetchAllCompanyRows('investment_analyses', companyId),
     fetchAllInvestmentItems(companyId),
+    // v3.3: configuración de cuentas de venta
+    fetchAllCompanyRows('company_sale_account_config', companyId),
   ]);
 
   return {
@@ -322,6 +327,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     product_categories,
     investment_analyses,
     investment_analysis_items,
+    company_sale_account_config,
   };
 }
 
@@ -417,6 +423,7 @@ async function _performRestoreInternal(
 
   // investment_analyses → cascades to investment_analysis_items
   await safeDeleteCompany('investment_analyses', companyId);
+  await safeDeleteCompany('company_sale_account_config', companyId);
 
   await safeDeleteCompany('shipments', companyId);
   await safeDeleteCompany('debt_payments', companyId);
@@ -666,6 +673,17 @@ async function _performRestoreInternal(
     const safe = backup.investment_analysis_items.filter((r: any) => validIds.has(r.analysis_id));
     if (safe.length > 0) await chunkedInsert('investment_analysis_items', safe);
   }
+
+  // v3.3: configuración de cuentas de venta (UNIQUE company_id + tipo_pago → upsert)
+  if (backup.company_sale_account_config?.length) {
+    const { error } = await supabase
+      .from('company_sale_account_config')
+      .upsert(
+        backup.company_sale_account_config.map((r: any) => ({ ...r, company_id: companyId })),
+        { onConflict: 'company_id,tipo_pago' }
+      );
+    if (error) throw new Error(`Error insertando en company_sale_account_config: ${error.message}`);
+  }
 }
 
 // ─── Public API ────────────────────────────────────────────────────────────────
@@ -788,6 +806,7 @@ export function validateBackupFile(data: any): { valid: boolean; error?: string 
     'licitaciones', 'licitacion_productos', 'licitacion_documentos',
     'product_categories',
     'investment_analyses', 'investment_analysis_items',
+    'company_sale_account_config',
   ];
 
   for (const key of optionalArrays) {

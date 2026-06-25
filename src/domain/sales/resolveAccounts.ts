@@ -1,6 +1,6 @@
 import type { Canal, TipoPago, ResolvedAccounts } from './types';
 
-const PAYMENT_ACCOUNTS: Record<TipoPago, string> = {
+export const DEFAULT_PAYMENT_ACCOUNTS: Record<TipoPago, string> = {
   caja_mn: 'A.2',
   banco_mn: 'A.1',
   banco_me: 'A.3',
@@ -14,6 +14,9 @@ const PAYMENT_ACCOUNTS: Record<TipoPago, string> = {
   cxc_pedido: 'A.5.3',
   cxc_licitaciones: 'A.5.1',
 };
+
+// Alias privado para no romper la firma de resolveAccounts
+const PAYMENT_ACCOUNTS = DEFAULT_PAYMENT_ACCOUNTS;
 
 const REVENUE_ACCOUNTS: Record<Canal, string> = {
   licitacion: 'I.1.1',
@@ -51,9 +54,13 @@ export const CANAL_LABELS: Record<Canal, string> = {
   general: 'General',
 };
 
-export function resolveAccounts(canal: Canal, tipoPago: TipoPago): ResolvedAccounts {
+export function resolveAccounts(
+  canal: Canal,
+  tipoPago: TipoPago,
+  paymentConfig?: Partial<Record<TipoPago, string>>,
+): ResolvedAccounts {
   return {
-    payment_account: PAYMENT_ACCOUNTS[tipoPago],
+    payment_account: paymentConfig?.[tipoPago] ?? PAYMENT_ACCOUNTS[tipoPago],
     revenue_account: REVENUE_ACCOUNTS[canal],
     cogs_account: COGS_ACCOUNTS[canal],
   };

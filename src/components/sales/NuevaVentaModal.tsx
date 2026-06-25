@@ -17,6 +17,7 @@ import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import {
   calculateTaxes,
   createSale,
+  loadSaleAccountConfig,
   CANAL_LABELS,
   TIPO_PAGO_LABELS,
   type Canal,
@@ -24,6 +25,7 @@ import {
   type SaleItemInput,
   type MetodoValuacion,
   type SaleItemEnriched,
+  type SaleAccountConfig,
 } from '@/domain/sales';
 import { fetchProductsStockBatch, fetchLastPricesByCanal } from '@/domain/sales/stockService';
 import { condicionLabel } from '@/accounting/product-condicion';
@@ -58,6 +60,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmStockOpen, setConfirmStockOpen] = useState(false);
+  const [paymentConfig, setPaymentConfig] = useState<SaleAccountConfig>({});
 
   // Header
   const [fecha, setFecha] = useState(todayISO());
@@ -80,6 +83,9 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     if (!isOpen) return;
     resetForm();
     loadProductsAndStock();
+    if (activeCompanyId) {
+      loadSaleAccountConfig(activeCompanyId).then(setPaymentConfig).catch(() => {});
+    }
   }, [isOpen]);
 
   // Actualizar precios sugeridos cuando cambia el canal
@@ -284,6 +290,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
         },
         cleanItems,
         activeCompanyId,
+        paymentConfig,
       );
       toast.success(`Venta ${result.numero} registrada`);
       await reloadEntries();

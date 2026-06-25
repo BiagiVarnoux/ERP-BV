@@ -9,9 +9,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
-import { Copy, Plus, Trash2, Database, History, LayoutGrid, ShieldCheck, Tag, Pencil, Check, X } from 'lucide-react';
+import { Copy, Plus, Trash2, Database, History, LayoutGrid, ShieldCheck, Tag, Pencil, Check, X, BookOpen } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ModuleConfigTab } from '@/components/settings/ModuleConfigTab';
+import { SaleAccountsConfigTab } from '@/components/settings/SaleAccountsConfigTab';
 import {
   Table,
   TableBody,
@@ -202,11 +203,20 @@ export default function SettingsPage() {
             <Tag className="h-4 w-4 mr-1.5" />
             Categorías
           </TabsTrigger>
+          <TabsTrigger value="cuentas_venta">
+            <BookOpen className="h-4 w-4 mr-1.5" />
+            Cuentas de Venta
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Tab: Módulos ── */}
         <TabsContent value="modules">
           <ModuleConfigTab />
+        </TabsContent>
+
+        {/* ── Tab: Cuentas de Venta ── */}
+        <TabsContent value="cuentas_venta" className="mt-2">
+          <SaleAccountsConfigTab />
         </TabsContent>
 
         {/* ── Tab: General (contenido existente) ── */}

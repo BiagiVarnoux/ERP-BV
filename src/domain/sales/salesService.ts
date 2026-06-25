@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { calculateTaxes } from './calculateTaxes';
 import { resolveAccounts } from './resolveAccounts';
-import type { CreateSalePayload, SaleHeaderInput, SaleItemInput, SaleRow } from './types';
+import type { CreateSalePayload, SaleHeaderInput, SaleItemInput, SaleRow, TipoPago } from './types';
 import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 import { logAuditEntry } from '@/services/auditService';
 
@@ -14,7 +14,8 @@ export interface CreateSaleResult {
 export async function createSale(
   header: SaleHeaderInput,
   items: SaleItemInput[],
-  companyId: string = DEFAULT_COMPANY_ID
+  companyId: string = DEFAULT_COMPANY_ID,
+  paymentConfig?: Partial<Record<TipoPago, string>>,
 ): Promise<CreateSaleResult> {
   if (items.length === 0) throw new Error('Agrega al menos un producto');
   for (const it of items) {
@@ -24,7 +25,7 @@ export async function createSale(
   }
 
   const totals = calculateTaxes(items, header.con_factura);
-  const accounts = resolveAccounts(header.canal, header.tipo_pago);
+  const accounts = resolveAccounts(header.canal, header.tipo_pago, paymentConfig);
 
   const payload = {
     ...header,
