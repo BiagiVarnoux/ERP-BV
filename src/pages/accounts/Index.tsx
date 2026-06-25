@@ -8,13 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Pencil, Trash2, Save, Banknote, Calendar, Tag, BarChart3, TrendingUp, Settings2, FileDown, Upload } from 'lucide-react';
+import { Pencil, Trash2, Save, Banknote, Calendar, Tag, BarChart3, TrendingUp, Settings2, FileDown, Upload, Hash } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { AccountsBulkUploadModal } from '@/components/accounts/AccountsBulkUploadModal';
 import { AIAccountAssistant } from '@/components/accounts/AIAccountAssistant';
+import { RenameAccountCodeModal } from '@/components/accounts/RenameAccountCodeModal';
 import type { AccountClassificationSuggestion } from '@/services/accountAiService';
 import { exportChartOfAccountsToPDF } from '@/services/pdfService';
 import { downloadCSV } from '@/services/exportService';
@@ -70,6 +71,7 @@ export default function AccountsPage() {
   const [editingAccId, setEditingAccId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
+  const [renamingAccount, setRenamingAccount] = useState<Account | null>(null);
 
   function exportAccountsToCSV() {
     const headers = ['codigo','nombre','tipo','lado_normal','activa','clasificacion_resultado','subclasificacion_resultado','clasificacion_flujo','es_efectivo','es_corriente','es_partida_no_monetaria','es_capital_trabajo','es_financiera','es_extraordinaria','afecta_ebitda'];
@@ -140,6 +142,10 @@ export default function AccountsPage() {
 
   function canDeleteAccount(id: string) {
     return !entries.some(e => e.lines.some(l => l.account_id === id));
+  }
+
+  async function handleAccountRenamed() {
+    setAccounts(await adapter.loadAccounts());
   }
 
   function applyAISuggestion(s: AccountClassificationSuggestion) {
@@ -442,7 +448,8 @@ export default function AccountsPage() {
                     <TableCell>{a.is_active ? "Activa" : "Inactiva"}</TableCell>
                     {!isReadOnly && (
                       <TableCell className="text-right">
-                        <Button size="sm" variant="ghost" onClick={() => editAccount(a)} title="Editar"><Pencil className="w-4 h-4" /></Button>
+                        <Button size="sm" variant="ghost" onClick={() => editAccount(a)} title="Editar propiedades"><Pencil className="w-4 h-4" /></Button>
+                        <Button size="sm" variant="ghost" onClick={() => setRenamingAccount(a)} title="Renombrar código"><Hash className="w-4 h-4" /></Button>
                         <Button size="sm" variant="ghost" onClick={() => toggleAccountStatus(a)}>{a.is_active ? "Desactivar" : "Activar"}</Button>
                         <Button size="sm" variant="ghost" onClick={() => deleteAccount(a.id)} disabled={!canDeleteAccount(a.id)} title="Eliminar"><Trash2 className="w-4 h-4" /></Button>
                       </TableCell>
@@ -460,6 +467,13 @@ export default function AccountsPage() {
         onClose={() => setShowBulkUpload(false)}
         onImport={handleBulkImport}
         existingAccounts={accounts}
+      />
+
+      <RenameAccountCodeModal
+        account={renamingAccount}
+        existingIds={accounts.map(a => a.id)}
+        onClose={() => setRenamingAccount(null)}
+        onRenamed={handleAccountRenamed}
       />
     </div>
   );
