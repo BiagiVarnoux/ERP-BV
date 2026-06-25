@@ -14,6 +14,8 @@ import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { AccountsBulkUploadModal } from '@/components/accounts/AccountsBulkUploadModal';
+import { AIAccountAssistant } from '@/components/accounts/AIAccountAssistant';
+import type { AccountClassificationSuggestion } from '@/services/accountAiService';
 import { exportChartOfAccountsToPDF } from '@/services/pdfService';
 import { downloadCSV } from '@/services/exportService';
 import {
@@ -140,6 +142,26 @@ export default function AccountsPage() {
     return !entries.some(e => e.lines.some(l => l.account_id === id));
   }
 
+  function applyAISuggestion(s: AccountClassificationSuggestion) {
+    setAccDraft(prev => ({
+      ...prev,
+      name: s.suggested_name,
+      type: s.type,
+      normal_side: s.normal_side,
+      is_current: s.is_current,
+      is_cash_equivalent: s.is_cash_equivalent,
+      clasificacion_resultado: s.clasificacion_resultado,
+      subclasificacion_resultado: s.subclasificacion_resultado,
+      clasificacion_flujo: s.clasificacion_flujo,
+      es_partida_no_monetaria: s.es_partida_no_monetaria,
+      es_capital_trabajo: s.es_capital_trabajo,
+      es_financiera: s.es_financiera,
+      es_extraordinaria: s.es_extraordinaria,
+      afecta_ebitda: s.afecta_ebitda,
+    }));
+    setShowAdvanced(true);
+  }
+
   async function toggleAccountStatus(account: Account) {
     if (isReadOnly) { toast.error("No tienes permisos para modificar cuentas"); return; }
     const updated = { ...account, is_active: !account.is_active };
@@ -181,6 +203,9 @@ export default function AccountsPage() {
         <CardContent className="space-y-4">
           {!isReadOnly && (
             <>
+              {/* AI assistant */}
+              <AIAccountAssistant onApplySuggestion={applyAISuggestion} />
+
               {/* Row 1: Basic fields */}
               <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
                 <div className="md:col-span-1">
