@@ -18,7 +18,7 @@ function getCorsHeaders(requestOrigin: string | null) {
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 
-const MAX_SYSTEM_PROMPT_LENGTH = 10000;
+const MAX_SYSTEM_PROMPT_LENGTH = 25000;
 const MAX_USER_PROMPT_LENGTH = 5000;
 
 serve(async (req) => {
