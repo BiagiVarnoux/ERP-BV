@@ -520,6 +520,17 @@ async function _performRestoreInternal(
   if (backup.import_lots?.length) {
     await chunkedInsert('import_lots', backup.import_lots.map(l => ({ ...l, user_id: userId })));
   }
+  // shipments antes que inventory_lots: inventory_lots.shipment_id → shipments.id (FK).
+  // (también es padre de licitaciones.embarque_id, que se inserta más abajo.)
+  if (backup.shipments?.length) {
+    const shipmentRows = backup.shipments.map((s: any) => {
+      if (s.user_id && s.data) return { ...s, user_id: userId };
+      // Old localStorage format — convert
+      const { id, numero, status, ...rest } = s;
+      return { id, user_id: userId, numero, status, data: rest };
+    });
+    await chunkedInsert('shipments', shipmentRows);
+  }
   if (backup.inventory_lots?.length) {
     await chunkedInsert('inventory_lots', backup.inventory_lots.map(l => ({ ...l, user_id: userId })));
   }
@@ -544,16 +555,6 @@ async function _performRestoreInternal(
       .from('report_settings')
       .upsert([row], { onConflict: 'company_id' });
     if (rsErr) throw new Error(`Error insertando en report_settings: ${rsErr.message}`);
-  }
-
-  if (backup.shipments?.length) {
-    const shipmentRows = backup.shipments.map((s: any) => {
-      if (s.user_id && s.data) return { ...s, user_id: userId };
-      // Old localStorage format — convert
-      const { id, numero, status, ...rest } = s;
-      return { id, user_id: userId, numero, status, data: rest };
-    });
-    await chunkedInsert('shipments', shipmentRows);
   }
 
   if (backup.sales?.length) {
