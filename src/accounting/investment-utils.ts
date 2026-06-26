@@ -28,6 +28,7 @@ function toLicitacionProducto(it: InvestmentItem): LicitacionProducto {
     cantidad:          it.cantidad,
     tc:                it.tc,
     tc_envio:          it.tc_envio,
+    tc_oficial:        it.tc_oficial,
     precio_usd:        it.precio_usd,
     tax_pct:           it.tax_pct,
     m1:                it.m1,
@@ -58,11 +59,11 @@ function toLicitacionProducto(it: InvestmentItem): LicitacionProducto {
 const IVA_VENTA_RATE = 0.13;
 const IT_RATE        = 0.03;
 
-export function calcCosteo(it: InvestmentItem): ItemCosteo {
+export function calcCosteo(it: InvestmentItem, tcOficialDefault?: number): ItemCosteo {
   // Lado de costos de importación: reutiliza el motor de licitaciones (no depende
   // del precio de venta). Las salidas de venta (iva_pagar, ganancia, etc.) las
   // recalculamos aquí porque manejamos venta mixta con/sin factura.
-  const c = calcProducto(toLicitacionProducto(it));
+  const c = calcProducto(toLicitacionProducto(it), tcOficialDefault);
 
   const cantidad = Math.max(0, it.cantidad || 0);
   const sinFactura = it.modalidad_venta === 'sin_factura';
@@ -300,8 +301,9 @@ export function calcItem(
   plazoImportacionMeses: number,
   costoCapitalAnual: number,
   fucPct = 100,
+  tcOficialDefault?: number,
 ): ItemCalc {
-  const costeo = calcCosteo(it);
+  const costeo = calcCosteo(it, tcOficialDefault);
   const tiempo = calcTiempo(it, costeo, plazoImportacionMeses, costoCapitalAnual, fucPct);
   return { costeo, tiempo };
 }

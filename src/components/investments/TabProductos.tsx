@@ -10,21 +10,25 @@ import {
   Plus, Trash2, ChevronDown, ChevronRight, ExternalLink, AlertTriangle,
   TrendingUp, TrendingDown, Box, Weight, GripVertical,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { InvestmentItem, ItemCalc, InvestmentResumen } from '@/accounting/investment-types';
 import { fmt, toDecimal, round2 } from '@/accounting/utils';
+import { TC_OFICIAL } from '@/accounting/licitacion-utils';
 import { NumInput, Pct, Field, StatCard } from './ui-helpers';
 
 interface Props {
   items: InvestmentItem[];
   calcs: ItemCalc[];
   resumen: InvestmentResumen;
+  tcOficial: number;
+  onTcOficial: (v: number) => void;
   onUpdate: (id: string, changes: Partial<InvestmentItem>) => void;
   onAdd: () => void;
   onRemove: (id: string) => void;
   onReorder: (items: InvestmentItem[]) => void;
 }
 
-export function TabProductos({ items, calcs, resumen, onUpdate, onAdd, onRemove, onReorder }: Props) {
+export function TabProductos({ items, calcs, resumen, tcOficial, onTcOficial, onUpdate, onAdd, onRemove, onReorder }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
@@ -54,6 +58,37 @@ export function TabProductos({ items, calcs, resumen, onUpdate, onAdd, onRemove,
   return (
     <TooltipProvider>
       <div className="space-y-5">
+        {/* T/C aduanero por defecto del análisis */}
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 px-4 py-3">
+          <div className="flex flex-col">
+            <span className="text-xs font-semibold">T/C aduana (tributos)</span>
+            <span className="text-[11px] text-muted-foreground">
+              Base para GA + IVA aduanero de todos los productos. Cada producto puede sobreescribirlo.
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 ml-auto">
+            <span className="text-xs text-muted-foreground">Bs</span>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              className="h-8 w-24 text-right font-mono"
+              value={tcOficial}
+              onChange={e => onTcOficial(toDecimal(e.target.value) || 0)}
+            />
+            {tcOficial !== TC_OFICIAL && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" className="text-[11px] text-primary hover:underline" onClick={() => onTcOficial(TC_OFICIAL)}>
+                    oficial {TC_OFICIAL}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Restablecer al T/C oficial histórico ({TC_OFICIAL})</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        </div>
+
         {items.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground border rounded-lg">
             <p className="mb-3">No hay productos en este análisis</p>
@@ -80,6 +115,7 @@ export function TabProductos({ items, calcs, resumen, onUpdate, onAdd, onRemove,
                 <ItemRow
                   item={it}
                   calc={calcs[i]}
+                  tcOficialDefault={tcOficial}
                   expanded={expandedIds.has(it.id)}
                   onToggle={() => toggle(it.id)}
                   onChange={c => onUpdate(it.id, c)}
@@ -105,9 +141,10 @@ export function TabProductos({ items, calcs, resumen, onUpdate, onAdd, onRemove,
 
 // ─── Fila de producto ─────────────────────────────────────────────────────────
 
-function ItemRow({ item: p, calc, expanded, onToggle, onChange, onRemove, showDragHandle }: {
+function ItemRow({ item: p, calc, tcOficialDefault, expanded, onToggle, onChange, onRemove, showDragHandle }: {
   item: InvestmentItem;
   calc: ItemCalc;
+  tcOficialDefault: number;
   expanded: boolean;
   onToggle: () => void;
   onChange: (c: Partial<InvestmentItem>) => void;
@@ -200,7 +237,7 @@ function ItemRow({ item: p, calc, expanded, onToggle, onChange, onRemove, showDr
 
       <CollapsibleContent>
         <div className="px-4 pb-5 pt-1 bg-muted/20 border-t">
-          <ItemForm item={p} calc={calc} onChange={onChange} />
+          <ItemForm item={p} calc={calc} tcOficialDefault={tcOficialDefault} onChange={onChange} />
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -209,9 +246,10 @@ function ItemRow({ item: p, calc, expanded, onToggle, onChange, onRemove, showDr
 
 // ─── Formulario detallado ──────────────────────────────────────────────────────
 
-function ItemForm({ item: p, calc, onChange }: {
+function ItemForm({ item: p, calc, tcOficialDefault, onChange }: {
   item: InvestmentItem;
   calc: ItemCalc;
+  tcOficialDefault: number;
   onChange: (c: Partial<InvestmentItem>) => void;
 }) {
   const { costeo } = calc;
@@ -247,6 +285,7 @@ function ItemForm({ item: p, calc, onChange }: {
           <Field label="Tax prov. %"><NumInput value={p.tax_pct} onChange={n('tax_pct')} min="0" /></Field>
           <Field label="T/C compra"><NumInput value={p.tc} onChange={n('tc')} min="0" /></Field>
           <Field label="T/C envío"><NumInput value={p.tc_envio} onChange={n('tc_envio')} min="0" placeholder="= compra" /></Field>
+          <Field label="T/C aduana" hint="GA + IVA"><NumInput value={p.tc_oficial} onChange={n('tc_oficial')} min="0" step="0.01" placeholder={`= análisis (${tcOficialDefault})`} /></Field>
           <Field label="GA %" hint="Gravamen"><NumInput value={p.ga_pct} onChange={n('ga_pct')} min="0" /></Field>
         </div>
 
@@ -285,7 +324,7 @@ function ItemForm({ item: p, calc, onChange }: {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
           <StatCard label="Precio Bs" value={costeo.precio_bs} hint="(USD + tax) × T/C" />
           <StatCard label="Envío" value={costeo.envio} hint="peso × tarifa × T/C envío" />
-          <StatCard label="GA" value={costeo.ga} hint="Gravamen arancelario" />
+          <StatCard label="GA" value={costeo.ga} hint={`Gravamen arancelario (T/C aduana ${p.tc_oficial ?? tcOficialDefault})`} />
           <StatCard label="IVA aduana" value={costeo.iva_aduana} hint="Crédito fiscal (recuperable) — no es costo contable del inventario" />
           <StatCard label="Manipuleo" value={costeo.manipuleo} />
           <StatCard label="Costo unit. CON IVA" value={costeo.costo_unitario} bold hint="Desembolso total por unidad, IVA aduana incluido" />

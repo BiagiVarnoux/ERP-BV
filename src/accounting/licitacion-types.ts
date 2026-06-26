@@ -114,6 +114,7 @@ export interface LicitacionProducto {
   cantidad: number;
   tc: number;              // T/C paralelo (compra del producto)
   tc_envio?: number;       // T/C al momento del flete (puede diferir)
+  tc_oficial?: number;     // T/C para tributos aduaneros (GA + IVA). undefined = hereda el de la cotización (→ TC_OFICIAL)
 
   // Precio de compra
   precio_usd: number;
@@ -174,6 +175,10 @@ export interface Licitacion {
 
   // Financiero
   precio_referencial?: number;
+
+  // T/C para tributos aduaneros (GA + IVA) por defecto de toda la cotización.
+  // Cada producto puede sobreescribirlo. undefined = usar TC_OFICIAL (6.97).
+  tc_oficial?: number;
 
   // Estado
   estado: LicitacionEstado;

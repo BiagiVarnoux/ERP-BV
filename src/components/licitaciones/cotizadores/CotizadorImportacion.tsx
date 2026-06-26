@@ -18,7 +18,7 @@ import {
 import { Plus, Trash2, ChevronDown, ChevronRight, ExternalLink, AlertTriangle, TrendingUp, TrendingDown, Download, Weight, Box } from 'lucide-react';
 import { toast } from 'sonner';
 import { Licitacion, LicitacionProducto } from '@/accounting/licitacion-types';
-import { calcProducto, calcResumen, emptyProducto } from '@/accounting/licitacion-utils';
+import { calcProducto, calcResumen, emptyProducto, TC_OFICIAL } from '@/accounting/licitacion-utils';
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
 import { fmt, round2 } from '@/accounting/utils';
 import { toDecimal } from '@/accounting/utils';
@@ -66,11 +66,12 @@ function Pct({ v, decimals = 1 }: { v: number; decimals?: number }) {
 
 export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   const [productos, setProductos] = useState<LicitacionProducto[]>(licitacion.productos);
+  const [tcOficial, setTcOficial] = useState<number>(licitacion.tc_oficial ?? TC_OFICIAL);
   const [saving, setSaving] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
-  // Recalcular todo cada vez que cambia productos
-  const calcs = useMemo(() => productos.map(calcProducto), [productos]);
+  // Recalcular todo cada vez que cambia productos o el T/C aduanero por defecto
+  const calcs = useMemo(() => productos.map(p => calcProducto(p, tcOficial)), [productos, tcOficial]);
   const resumen = useMemo(() => calcResumen(productos, calcs), [productos, calcs]);
 
   // ── Edición ────────────────────────────────────────────────────────────────
@@ -103,6 +104,10 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   const handleSave = async () => {
     try {
       setSaving(true);
+      // Persistir el T/C aduanero por defecto de la cotización si cambió
+      if (tcOficial !== (licitacion.tc_oficial ?? TC_OFICIAL)) {
+        await LicitacionStorage.update(licitacion.id, { tc_oficial: tcOficial });
+      }
       // Upsert todos los productos actuales
       await LicitacionStorage.upsertProductos(productos);
       // Eliminar los que fueron quitados (están en licitacion.productos pero no en productos)
@@ -110,7 +115,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
       for (const p of licitacion.productos) {
         if (!idsActuales.has(p.id)) await LicitacionStorage.deleteProducto(p.id, p.licitacion_id);
       }
-      onUpdated({ ...licitacion, productos });
+      onUpdated({ ...licitacion, productos, tc_oficial: tcOficial });
       toast.success('Cotización guardada');
     } catch {
       toast.error('Error al guardar');
@@ -119,7 +124,9 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
     }
   };
 
-  const isDirty = JSON.stringify(productos) !== JSON.stringify(licitacion.productos);
+  const isDirty =
+    JSON.stringify(productos) !== JSON.stringify(licitacion.productos) ||
+    tcOficial !== (licitacion.tc_oficial ?? TC_OFICIAL);
 
   // ── Exportar PDF ───────────────────────────────────────────────────────────
 
@@ -164,6 +171,41 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   return (
     <TooltipProvider>
       <div className="space-y-5">
+        {/* T/C aduanero por defecto de la cotización */}
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 px-4 py-3">
+          <div className="flex flex-col">
+            <span className="text-xs font-semibold">T/C aduana (tributos)</span>
+            <span className="text-[11px] text-muted-foreground">
+              Base para GA + IVA aduanero de todos los productos. Cada producto puede sobreescribirlo.
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 ml-auto">
+            <span className="text-xs text-muted-foreground">Bs</span>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              className="h-8 w-24 text-right font-mono"
+              value={tcOficial}
+              onChange={e => setTcOficial(toDecimal(e.target.value) || 0)}
+            />
+            {tcOficial !== TC_OFICIAL && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-[11px] text-primary hover:underline"
+                    onClick={() => setTcOficial(TC_OFICIAL)}
+                  >
+                    oficial {TC_OFICIAL}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Restablecer al T/C oficial histórico ({TC_OFICIAL})</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        </div>
+
         {/* Tabla de productos */}
         <div className="space-y-3">
           {productos.length === 0 ? (
@@ -180,6 +222,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
                   key={p.id}
                   producto={p}
                   calc={calcs[i]}
+                  tcOficialDefault={tcOficial}
                   expanded={expandedIds.has(p.id)}
                   onToggle={() => toggleExpand(p.id)}
                   onChange={changes => updateProducto(p.id, changes)}
@@ -214,7 +257,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
 
           {isDirty && (
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setProductos(licitacion.productos)}>
+              <Button variant="outline" onClick={() => { setProductos(licitacion.productos); setTcOficial(licitacion.tc_oficial ?? TC_OFICIAL); }}>
                 Descartar cambios
               </Button>
               <Button onClick={handleSave} disabled={saving}>
@@ -230,9 +273,10 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
 
 // ─── Fila de producto ──────────────────────────────────────────────────────────
 
-function ProductoRow({ producto: p, calc, expanded, onToggle, onChange, onRemove }: {
+function ProductoRow({ producto: p, calc, tcOficialDefault, expanded, onToggle, onChange, onRemove }: {
   producto: LicitacionProducto;
   calc: ReturnType<typeof calcProducto>;
+  tcOficialDefault: number;
   expanded: boolean;
   onToggle: () => void;
   onChange: (c: Partial<LicitacionProducto>) => void;
@@ -322,7 +366,7 @@ function ProductoRow({ producto: p, calc, expanded, onToggle, onChange, onRemove
       {/* Formulario expandido */}
       <CollapsibleContent>
         <div className="px-4 pb-5 pt-1 bg-muted/20 border-t space-y-5">
-          <ProductoForm producto={p} calc={calc} onChange={onChange} />
+          <ProductoForm producto={p} calc={calc} tcOficialDefault={tcOficialDefault} onChange={onChange} />
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -331,9 +375,10 @@ function ProductoRow({ producto: p, calc, expanded, onToggle, onChange, onRemove
 
 // ─── Formulario detallado de producto ─────────────────────────────────────────
 
-function ProductoForm({ producto: p, calc, onChange }: {
+function ProductoForm({ producto: p, calc, tcOficialDefault, onChange }: {
   producto: LicitacionProducto;
   calc: ReturnType<typeof calcProducto>;
+  tcOficialDefault: number;
   onChange: (c: Partial<LicitacionProducto>) => void;
 }) {
   const n = (k: keyof LicitacionProducto) => (v: number | undefined) => onChange({ [k]: v });
@@ -378,6 +423,9 @@ function ProductoForm({ producto: p, calc, onChange }: {
           </Field>
           <Field label="T/C envío">
             <NumInput value={p.tc_envio} onChange={n('tc_envio')} min="0" step="0.01" placeholder="= T/C compra" />
+          </Field>
+          <Field label="T/C aduana" hint="tributos GA + IVA">
+            <NumInput value={p.tc_oficial} onChange={n('tc_oficial')} min="0" step="0.01" placeholder={`= cotiz. (${tcOficialDefault})`} />
           </Field>
           <Field label="GA %" hint="Gravamen Arancelario">
             <NumInput value={p.ga_pct} onChange={n('ga_pct')} min="0" />
@@ -518,7 +566,7 @@ function ProductoForm({ producto: p, calc, onChange }: {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {[
           { label: 'Precio Bs',   value: calc.precio_bs,       hint: '(USD + tax) × T/C' },
-          { label: 'Precio BOB',  value: calc.precio_bob,      hint: 'USD × 6.97 (oficial)' },
+          { label: 'Precio BOB',  value: calc.precio_bob,      hint: `USD × ${p.tc_oficial ?? tcOficialDefault} (T/C aduana)` },
           {
             label: p.usa_peso_bruto ? 'Peso bruto' : 'Peso vol.',
             value: calc.peso,

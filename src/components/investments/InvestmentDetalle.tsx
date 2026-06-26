@@ -12,6 +12,7 @@ import {
   INVESTMENT_ESTADO_LABELS, INVESTMENT_ESTADO_COLORS,
 } from '@/accounting/investment-types';
 import { calcItem, calcResumen, emptyItem } from '@/accounting/investment-utils';
+import { TC_OFICIAL } from '@/accounting/licitacion-utils';
 import { InvestmentStorage } from '@/accounting/investment-storage';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { TabProductos } from './TabProductos';
@@ -34,13 +35,14 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
   const [costoCapital, setCostoCapital] = useState(analysis.costo_capital_anual);
   const [plazoImport, setPlazoImport] = useState(analysis.plazo_importacion_meses);
   const [fuc, setFuc] = useState(analysis.fuc_pct);
+  const [tcOficial, setTcOficial] = useState<number>(analysis.tc_oficial ?? TC_OFICIAL);
   const [embarqueId, setEmbarqueId] = useState(analysis.embarque_id);
   const [nombre, setNombre] = useState(analysis.nombre);
   const [saving, setSaving] = useState(false);
 
   const calcs = useMemo(
-    () => items.map(it => calcItem(it, plazoImport, costoCapital, fuc)),
-    [items, plazoImport, costoCapital, fuc],
+    () => items.map(it => calcItem(it, plazoImport, costoCapital, fuc, tcOficial)),
+    [items, plazoImport, costoCapital, fuc, tcOficial],
   );
   const resumen = useMemo(
     () => calcResumen({ ...analysis, items, fuc_pct: fuc }, calcs),
@@ -53,6 +55,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
     costoCapital !== analysis.costo_capital_anual ||
     plazoImport !== analysis.plazo_importacion_meses ||
     fuc !== analysis.fuc_pct ||
+    tcOficial !== (analysis.tc_oficial ?? TC_OFICIAL) ||
     (embarqueId ?? null) !== (analysis.embarque_id ?? null);
 
   // ── Edición de items ──────────────────────────────────────────────────────
@@ -79,6 +82,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
         costo_capital_anual:     costoCapital,
         plazo_importacion_meses: plazoImport,
         fuc_pct:                 fuc,
+        tc_oficial:              tcOficial,
         embarque_id:             embarqueId ?? null,
       });
       await InvestmentStorage.upsertItems(companyId, items);
@@ -86,7 +90,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
       for (const old of analysis.items) {
         if (!idsActuales.has(old.id)) await InvestmentStorage.deleteItem(old.id, old.analysis_id);
       }
-      onUpdated({ ...analysis, nombre, items, costo_capital_anual: costoCapital, plazo_importacion_meses: plazoImport, fuc_pct: fuc, embarque_id: embarqueId });
+      onUpdated({ ...analysis, nombre, items, costo_capital_anual: costoCapital, plazo_importacion_meses: plazoImport, fuc_pct: fuc, tc_oficial: tcOficial, embarque_id: embarqueId });
       toast.success('Análisis guardado');
     } catch (e) {
       toast.error('Error al guardar');
@@ -209,6 +213,8 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
             items={items}
             calcs={calcs}
             resumen={resumen}
+            tcOficial={tcOficial}
+            onTcOficial={setTcOficial}
             onUpdate={updateItem}
             onAdd={addItem}
             onRemove={removeItem}
@@ -258,6 +264,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
                 setCostoCapital(analysis.costo_capital_anual);
                 setPlazoImport(analysis.plazo_importacion_meses);
                 setFuc(analysis.fuc_pct);
+                setTcOficial(analysis.tc_oficial ?? TC_OFICIAL);
                 setEmbarqueId(analysis.embarque_id);
               }}
             >

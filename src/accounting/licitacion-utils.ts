@@ -4,7 +4,9 @@
 import { LicitacionProducto, ProductoCalc, LicitacionResumen } from './licitacion-types';
 import { round2, round6 } from './utils';
 
-// Tipo de cambio oficial boliviano (fijo por ley)
+// Tipo de cambio "oficial" histórico boliviano. Tras la flexibilización cambiaria
+// es solo el VALOR POR DEFECTO: la cotización (y cada producto) puede definir su
+// propio T/C para los tributos aduaneros (GA + IVA).
 export const TC_OFICIAL = 6.97;
 
 // Tasas fijas
@@ -17,19 +19,25 @@ const GA_CIF_EXTRA    = 0.02;     // 2% adicional sobre PRECIO_BOB para base CIF
 /**
  * Calcula todos los valores derivados para un producto de cotización.
  * Todas las fórmulas reproducen exactamente el Excel de referencia.
+ *
+ * @param tcOficialDefault T/C aduanero por defecto de la cotización. El producto
+ *   puede sobreescribirlo con `p.tc_oficial`. Si ambos faltan, se usa TC_OFICIAL.
  */
-export function calcProducto(p: LicitacionProducto): ProductoCalc {
+export function calcProducto(p: LicitacionProducto, tcOficialDefault?: number): ProductoCalc {
   const tc       = p.tc || 0;
   const tcEnvio  = p.tc_envio ?? tc;
   const cantidad = p.cantidad || 1;
 
   const precioUsd = p.precio_usd ?? 0;
 
+  // T/C para tributos aduaneros: override del producto → default de la cotización → oficial.
+  const tcOficial = p.tc_oficial ?? tcOficialDefault ?? TC_OFICIAL;
+
   // — Costo de compra en Bs (con tax del proveedor) —
   const precio_bs  = round2((precioUsd * (1 + p.tax_pct / 100)) * tc);
 
-  // — Precio BOB a tipo de cambio oficial (base para tributos aduaneros) —
-  const precio_bob = round2(precioUsd * TC_OFICIAL);
+  // — Precio BOB al T/C aduanero (base para tributos aduaneros) —
+  const precio_bob = round2(precioUsd * tcOficial);
 
   // — Peso volumétrico (kg) — siempre calculado para referencia —
   const peso_vol = p.m1 && p.m2 && p.m3

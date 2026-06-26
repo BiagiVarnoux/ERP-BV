@@ -36,6 +36,7 @@ export interface InvestmentItem {
   cantidad: number;
   tc: number;
   tc_envio?: number;
+  tc_oficial?: number;     // T/C para tributos aduaneros (GA + IVA). undefined = hereda el del análisis (→ TC_OFICIAL)
 
   // Compra
   precio_usd: number;
@@ -98,6 +99,7 @@ export interface InvestmentAnalysis {
   costo_capital_anual: number;       // % anual — tasa de descuento para VAN/TIR
   plazo_importacion_meses: number;   // meses desde el pago hasta la mercadería en almacén
   fuc_pct: number;                   // Factor de Utilización de Capital (% ) — tiempo activo / total
+  tc_oficial?: number;               // T/C para tributos aduaneros (GA + IVA) por defecto. undefined = TC_OFICIAL (6.97)
 
   estado: InvestmentEstado;
   embarque_id?: string;              // set cuando se "envía a embarque"
