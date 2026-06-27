@@ -141,6 +141,7 @@ export function calcResumen(
 ): LicitacionResumen {
   let total_import   = 0;
   let total_ofertado = 0;
+  let precio_piso_total = 0;
   let iva_pagar      = 0;
   let it_pagar       = 0;
   let extras         = 0;
@@ -148,11 +149,12 @@ export function calcResumen(
   for (let i = 0; i < productos.length; i++) {
     const c = calcs[i];
     const p = productos[i];
-    total_import   += c.total_import;
-    total_ofertado += c.total_ofertado;
-    iva_pagar      += c.iva_pagar;
-    it_pagar       += c.it_pagar;
-    extras         += (p.garantia || 0) + (p.pasaje || 0) + (p.envio_local || 0) + (p.otros_costos || 0);
+    total_import      += c.total_import;
+    total_ofertado    += c.total_ofertado;
+    precio_piso_total += c.precio_piso * (p.cantidad || 1);
+    iva_pagar         += c.iva_pagar;
+    it_pagar          += c.it_pagar;
+    extras            += (p.garantia || 0) + (p.pasaje || 0) + (p.envio_local || 0) + (p.otros_costos || 0);
   }
 
   const costos   = round2(total_import + iva_pagar + it_pagar + extras);
@@ -160,10 +162,11 @@ export function calcResumen(
   const roi      = costos > 0 ? round2(ganancia / costos) : 0;
 
   return {
-    total_import:   round2(total_import),
-    total_ofertado: round2(total_ofertado),
-    iva_pagar:      round2(iva_pagar),
-    it_pagar:       round2(it_pagar),
+    total_import:      round2(total_import),
+    total_ofertado:    round2(total_ofertado),
+    precio_piso_total: round2(precio_piso_total),
+    iva_pagar:         round2(iva_pagar),
+    it_pagar:          round2(it_pagar),
     costos,
     ganancia,
     roi,

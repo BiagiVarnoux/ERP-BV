@@ -245,6 +245,7 @@ export interface ProductoCalc {
 export interface LicitacionResumen {
   total_import: number;
   total_ofertado: number;
+  precio_piso_total: number;   // Σ (precio_piso × cantidad) — oferta mínima total para no perder
   iva_pagar: number;
   it_pagar: number;
   costos: number;

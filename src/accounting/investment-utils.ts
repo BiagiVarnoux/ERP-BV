@@ -313,14 +313,23 @@ export function calcItem(
 export function calcResumen(analysis: InvestmentAnalysis, calcs: ItemCalc[]): InvestmentResumen {
   let inversion = 0, ingreso = 0, costos = 0, ganancia = 0, van_ = 0;
   let cicloPonderado = 0;
+  let gaTotal = 0, ivaAduanaTotal = 0, ivaPagar = 0, itPagar = 0;
 
-  for (const c of calcs) {
+  for (let i = 0; i < calcs.length; i++) {
+    const c = calcs[i];
+    const cantidad = analysis.items[i]?.cantidad || 0;
     inversion += c.costeo.inversion;
     ingreso   += c.costeo.ingreso_total;
     costos    += c.costeo.costos;
     ganancia  += c.costeo.ganancia;
     van_      += c.tiempo.van;
     cicloPonderado += c.tiempo.ciclo_meses * c.costeo.inversion;
+    // GA e IVA aduana son unitarios en el costeo → se multiplican por cantidad.
+    gaTotal        += c.costeo.ga * cantidad;
+    ivaAduanaTotal += c.costeo.iva_aduana * cantidad;
+    // IVA e IT a pagar ya son totales por ítem.
+    ivaPagar       += c.costeo.iva_pagar;
+    itPagar        += c.costeo.it_pagar;
   }
 
   inversion = round2(inversion);
@@ -345,6 +354,10 @@ export function calcResumen(analysis: InvestmentAnalysis, calcs: ItemCalc[]): In
     costos:        round2(costos),
     ganancia:      round2(ganancia),
     roi,
+    ga_total:         round2(gaTotal),
+    iva_aduana_total: round2(ivaAduanaTotal),
+    iva_pagar:        round2(ivaPagar),
+    it_pagar:         round2(itPagar),
     ciclo_meses:   ciclo,
     roi_anualizado: roiAnualizado,
     roi_anualizado_realista: roiAnualizadoRealista,

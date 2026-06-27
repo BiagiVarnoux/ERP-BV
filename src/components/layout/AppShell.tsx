@@ -8,6 +8,7 @@ import { CompanySwitcher } from '@/components/layout/CompanySwitcher';
 import {
   BarChart3, Package, ShoppingCart, Settings,
   Eye, ChevronDown, ChevronRight, Menu, LogOut, Users, Building2, FileText, TrendingUp,
+  PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -51,14 +52,29 @@ function NavItem({ path, label, currentPath, onClick }: {
   );
 }
 
-function ModuleSection({ label, badge, icon: Icon, isExpanded, onToggle, children }: {
+function ModuleSection({ label, badge, icon: Icon, isExpanded, collapsed, onToggle, onIconClick, children }: {
   label: string;
   badge: string;
   icon: React.ElementType;
   isExpanded: boolean;
+  collapsed?: boolean;
   onToggle: () => void;
+  onIconClick?: () => void;
   children: React.ReactNode;
 }) {
+  // Modo colapsado: solo el icono, centrado. Al hacer clic se expande el sidebar.
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        title={label}
+        onClick={onIconClick}
+        className="w-full flex items-center justify-center py-2.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+      >
+        <Icon className="h-5 w-5 shrink-0" />
+      </button>
+    );
+  }
   return (
     <div>
       <button
@@ -88,7 +104,11 @@ function ModuleSection({ label, badge, icon: Icon, isExpanded, onToggle, childre
   );
 }
 
-function SidebarContent({ onClose }: { onClose?: () => void }) {
+function SidebarContent({ onClose, collapsed = false, onSetCollapsed }: {
+  onClose?: () => void;
+  collapsed?: boolean;
+  onSetCollapsed?: (v: boolean) => void;
+}) {
   const location = useLocation();
   const { signOut } = useAuth();
   const { isOwner, isViewer, isReadOnly, canView, isSubmoduleVisible, companies, loading } = useUserAccess();
@@ -118,6 +138,12 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
       return next;
     });
 
+  // Clic en un icono del rail colapsado: expande el sidebar y abre esa sección.
+  const iconClick = (key: string) => {
+    onSetCollapsed?.(false);
+    setExpanded(prev => new Set(prev).add(key));
+  };
+
   const close = onClose ?? (() => {});
 
   const v = (module: ErpModule, sub: string) => canView(module) && isSubmoduleVisible(sub);
@@ -134,37 +160,65 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Logo + nombre ERP */}
+      {/* Logo + nombre ERP + botón minimizar */}
       <div className="px-4 pt-4 pb-2 shrink-0">
         <div className="flex items-center gap-2">
-          <span className="font-bold text-base leading-tight">ERP BV</span>
-          {isReadOnly && (
+          {!collapsed && <span className="font-bold text-base leading-tight">ERP BV</span>}
+          {!collapsed && isReadOnly && (
             <span className="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 rounded-full">
               <Eye className="w-3 h-3" />
               Solo lectura
             </span>
           )}
+          {onSetCollapsed && (
+            <button
+              type="button"
+              onClick={() => onSetCollapsed(!collapsed)}
+              title={collapsed ? 'Expandir menú' : 'Minimizar menú'}
+              aria-label={collapsed ? 'Expandir menú' : 'Minimizar menú'}
+              className={cn(
+                'hidden md:flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors',
+                collapsed ? 'mx-auto' : 'ml-auto',
+              )}
+            >
+              {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </button>
+          )}
         </div>
       </div>
-      {/* Company switcher */}
-      <CompanySwitcher />
+      {/* Company switcher (oculto en modo minimizado) */}
+      {!collapsed && <CompanySwitcher />}
 
       {!loading && isViewer && (
-        <div className="px-3 pt-3 shrink-0">
-          <NavItem
-            path="/viewer-dashboard"
-            label="Panel"
-            currentPath={location.pathname}
-            onClick={close}
-          />
-        </div>
+        collapsed ? (
+          <div className="px-2 pt-3 shrink-0 flex justify-center">
+            <Link
+              to="/viewer-dashboard"
+              title="Panel"
+              onClick={close}
+              className="flex items-center justify-center h-9 w-9 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <Eye className="h-5 w-5" />
+            </Link>
+          </div>
+        ) : (
+          <div className="px-3 pt-3 shrink-0">
+            <NavItem
+              path="/viewer-dashboard"
+              label="Panel"
+              currentPath={location.pathname}
+              onClick={close}
+            />
+          </div>
+        )
       )}
 
       <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
         {!loading && (
           <ModuleSection
             label="Finanzas" badge="FI" icon={BarChart3}
-            isExpanded={expanded.has('FI')} onToggle={() => toggle('FI')}
+            isExpanded={expanded.has('FI')} collapsed={collapsed}
+            onToggle={() => toggle('FI')} onIconClick={() => iconClick('FI')}
           >
             {fiItems.map(item => (
               <NavItem
@@ -181,7 +235,8 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         {!loading && (v('inventory', 'inventory') || v('shipments', 'shipments')) && (
           <ModuleSection
             label="Materiales" badge="MM" icon={Package}
-            isExpanded={expanded.has('MM')} onToggle={() => toggle('MM')}
+            isExpanded={expanded.has('MM')} collapsed={collapsed}
+            onToggle={() => toggle('MM')} onIconClick={() => iconClick('MM')}
           >
             {v('shipments', 'shipments') && <NavItem path="/shipments" label="Embarques"  currentPath={location.pathname} onClick={close} />}
             {v('inventory', 'inventory') && <NavItem path="/inventory" label="Inventario" currentPath={location.pathname} onClick={close} />}
@@ -191,7 +246,8 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         {!loading && (v('sales', 'sales') || v('customers', 'customers')) && (
           <ModuleSection
             label="Ventas" badge="SD" icon={ShoppingCart}
-            isExpanded={expanded.has('SD')} onToggle={() => toggle('SD')}
+            isExpanded={expanded.has('SD')} collapsed={collapsed}
+            onToggle={() => toggle('SD')} onIconClick={() => iconClick('SD')}
           >
             {v('sales',     'dashboard') && <NavItem path="/dashboard" label="Dashboard" currentPath={location.pathname} onClick={close} />}
             {v('customers', 'customers') && <NavItem path="/customers" label="Clientes"  currentPath={location.pathname} onClick={close} />}
@@ -202,7 +258,8 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         {!loading && canView('licitaciones') && (
           <ModuleSection
             label="Licitaciones" badge="" icon={FileText}
-            isExpanded={expanded.has('LICITACIONES')} onToggle={() => toggle('LICITACIONES')}
+            isExpanded={expanded.has('LICITACIONES')} collapsed={collapsed}
+            onToggle={() => toggle('LICITACIONES')} onIconClick={() => iconClick('LICITACIONES')}
           >
             <NavItem path="/licitaciones" label="Licitaciones" currentPath={location.pathname} onClick={close} />
           </ModuleSection>
@@ -211,7 +268,8 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         {!loading && v('investments', 'investments') && (
           <ModuleSection
             label="Inversión" badge="" icon={TrendingUp}
-            isExpanded={expanded.has('INVESTMENTS')} onToggle={() => toggle('INVESTMENTS')}
+            isExpanded={expanded.has('INVESTMENTS')} collapsed={collapsed}
+            onToggle={() => toggle('INVESTMENTS')} onIconClick={() => iconClick('INVESTMENTS')}
           >
             <NavItem path="/investments" label="Análisis de Inversión" currentPath={location.pathname} onClick={close} />
           </ModuleSection>
@@ -220,7 +278,8 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         {!loading && canView('holding') && companies.length > 1 && (
           <ModuleSection
             label="Holding" badge="" icon={Building2}
-            isExpanded={expanded.has('HOLDING')} onToggle={() => toggle('HOLDING')}
+            isExpanded={expanded.has('HOLDING')} collapsed={collapsed}
+            onToggle={() => toggle('HOLDING')} onIconClick={() => iconClick('HOLDING')}
           >
             <NavItem path="/holding" label="Vista Consolidada" currentPath={location.pathname} onClick={close} />
           </ModuleSection>
@@ -229,7 +288,8 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         {!loading && (canView('settings') || canView('fiscal_years') || isOwner) && (
           <ModuleSection
             label="Configuración" badge="" icon={Settings}
-            isExpanded={expanded.has('SETTINGS')} onToggle={() => toggle('SETTINGS')}
+            isExpanded={expanded.has('SETTINGS')} collapsed={collapsed}
+            onToggle={() => toggle('SETTINGS')} onIconClick={() => iconClick('SETTINGS')}
           >
             {isOwner                 && <NavItem path="/users"        label="Usuarios"      currentPath={location.pathname} onClick={close} />}
             {canView('fiscal_years') && <NavItem path="/fiscal-years" label="Gestiones"     currentPath={location.pathname} onClick={close} />}
@@ -243,10 +303,14 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
           variant="ghost"
           size="sm"
           onClick={() => signOut()}
-          className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+          title={collapsed ? 'Cerrar Sesión' : undefined}
+          className={cn(
+            'w-full gap-2 text-muted-foreground hover:text-foreground',
+            collapsed ? 'justify-center px-0' : 'justify-start',
+          )}
         >
           <LogOut className="h-4 w-4 shrink-0" />
-          Cerrar Sesión
+          {!collapsed && 'Cerrar Sesión'}
         </Button>
       </div>
     </div>
@@ -256,6 +320,12 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
 export function AppShell() {
   const { isReadOnly } = useUserAccess();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('sidebar-collapsed', String(collapsed)); } catch { /* ignore */ }
+  }, [collapsed]);
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -266,17 +336,29 @@ export function AppShell() {
         />
       )}
 
+      {/* Sidebar desktop (minimizable) */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-60 border-r bg-card flex flex-col',
+          'hidden md:flex fixed inset-y-0 left-0 z-50 border-r bg-card flex-col',
+          'transition-[width] duration-300 ease-in-out',
+          collapsed ? 'w-16' : 'w-60',
+        )}
+      >
+        <SidebarContent collapsed={collapsed} onSetCollapsed={setCollapsed} />
+      </aside>
+
+      {/* Sidebar móvil (drawer, siempre completo) */}
+      <aside
+        className={cn(
+          'md:hidden fixed inset-y-0 left-0 z-50 w-60 border-r bg-card flex flex-col',
           'transition-transform duration-300 ease-in-out',
-          mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
         <SidebarContent onClose={() => setMobileOpen(false)} />
       </aside>
 
-      <div className="flex flex-col flex-1 min-w-0 overflow-auto md:ml-60">
+      <div className={cn('flex flex-col flex-1 min-w-0 overflow-auto transition-[margin] duration-300 ease-in-out', collapsed ? 'md:ml-16' : 'md:ml-60')}>
         <header className="md:hidden shrink-0 border-b bg-card/50 backdrop-blur px-4 h-14 flex items-center gap-3">
           <Button
             variant="ghost"

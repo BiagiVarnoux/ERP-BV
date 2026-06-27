@@ -466,6 +466,19 @@ function ResumenCard({ resumen: r, count }: { resumen: InvestmentResumen; count:
           <Stat label="Ganancia" value={`Bs ${fmt(r.ganancia)}`} bold color={r.ganancia < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
           <Stat label="ROI" value={`${(r.roi * 100).toFixed(1)}%`} bold color={r.roi < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
         </div>
+
+        {/* Totales de impuestos del lote */}
+        <div className="mt-3 pt-3 border-t">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+            Impuestos del lote
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <Stat label="GA (gravamen)" value={`Bs ${fmt(r.ga_total)}`} />
+            <Stat label="IVA aduana (crédito fiscal)" value={`Bs ${fmt(r.iva_aduana_total)}`} />
+            <Stat label="IVA a pagar (venta)" value={`Bs ${fmt(r.iva_pagar)}`} />
+            <Stat label="IT a pagar (venta)" value={`Bs ${fmt(r.it_pagar)}`} />
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

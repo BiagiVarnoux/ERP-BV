@@ -691,6 +691,7 @@ function ResumenGlobal({ resumen: r, count }: { resumen: ReturnType<typeof calcR
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <SummaryItem label="Costo import." value={r.total_import} />
+          <SummaryItem label="Precio piso total" value={r.precio_piso_total} />
           <SummaryItem label="Total ofertado" value={r.total_ofertado} />
           <SummaryItem label="IVA a pagar" value={r.iva_pagar} />
           <SummaryItem label="IT a pagar" value={r.it_pagar} />

@@ -181,6 +181,11 @@ export interface InvestmentResumen {
   costos: number;
   ganancia: number;
   roi: number;
+  // Totales de impuestos del lote completo
+  ga_total: number;            // Σ (GA × cantidad) — gravamen arancelario pagado en aduana
+  iva_aduana_total: number;    // Σ (IVA aduana × cantidad) — crédito fiscal recuperable
+  iva_pagar: number;           // Σ IVA neto a pagar en la venta (13% − crédito aduana)
+  it_pagar: number;            // Σ IT a pagar (3% de la venta)
   ciclo_meses: number;         // ciclo ponderado por inversión
   roi_anualizado: number;          // teórico
   roi_anualizado_realista: number; // con FUC
