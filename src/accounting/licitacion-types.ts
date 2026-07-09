@@ -254,4 +254,11 @@ export interface LicitacionResumen {
   costos: number;
   ganancia: number;
   roi: number;
+  // Desglose de costos por tipo de gasto (todos los productos)
+  total_usd: number;           // Σ (precio_usd × cantidad) — en USD, no Bs
+  total_precio_bs: number;     // Σ (precio_bs × cantidad) — costo de compra en Bs
+  total_envio: number;         // Σ (envío × cantidad)
+  total_ga: number;            // Σ (GA × cantidad)
+  total_iva_aduana: number;    // Σ (IVA aduana × cantidad) — crédito fiscal
+  total_manipuleo: number;     // Σ (manipuleo × cantidad)
 }

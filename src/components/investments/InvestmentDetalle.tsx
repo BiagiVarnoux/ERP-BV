@@ -36,6 +36,9 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
   const [plazoImport, setPlazoImport] = useState(analysis.plazo_importacion_meses);
   const [fuc, setFuc] = useState(analysis.fuc_pct);
   const [tcOficial, setTcOficial] = useState<number>(analysis.tc_oficial ?? TC_OFICIAL);
+  // T/C de compra y envío a nivel de análisis: se aplican en bloque a todos los productos.
+  const [headerTcCompra, setHeaderTcCompra] = useState<number>(analysis.items[0]?.tc ?? 9.97);
+  const [headerTcEnvio, setHeaderTcEnvio]   = useState<number | undefined>(analysis.items[0]?.tc_envio);
   const [embarqueId, setEmbarqueId] = useState(analysis.embarque_id);
   const [nombre, setNombre] = useState(analysis.nombre);
   const [saving, setSaving] = useState(false);
@@ -63,8 +66,20 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
     setItems(prev => prev.map(it => it.id === id ? { ...it, ...changes } : it));
   }, []);
   const addItem = useCallback(() => {
-    setItems(prev => [...prev, emptyItem(analysis.id, prev.length)]);
-  }, [analysis.id]);
+    // Los productos nuevos heredan el T/C de compra/envío definido en la cabecera.
+    setItems(prev => [...prev, { ...emptyItem(analysis.id, prev.length), tc: headerTcCompra, tc_envio: headerTcEnvio }]);
+  }, [analysis.id, headerTcCompra, headerTcEnvio]);
+
+  // Aplica un T/C a TODOS los productos del análisis de una sola vez.
+  const applyTcCompraAll = useCallback((v: number | undefined) => {
+    const val = v ?? 0;
+    setHeaderTcCompra(val);
+    setItems(prev => prev.map(it => ({ ...it, tc: val })));
+  }, []);
+  const applyTcEnvioAll = useCallback((v: number | undefined) => {
+    setHeaderTcEnvio(v);
+    setItems(prev => prev.map(it => ({ ...it, tc_envio: v })));
+  }, []);
   const removeItem = useCallback((id: string) => {
     setItems(prev => prev.filter(it => it.id !== id));
   }, []);
@@ -215,6 +230,10 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
             resumen={resumen}
             tcOficial={tcOficial}
             onTcOficial={setTcOficial}
+            headerTcCompra={headerTcCompra}
+            headerTcEnvio={headerTcEnvio}
+            onTcCompraAll={applyTcCompraAll}
+            onTcEnvioAll={applyTcEnvioAll}
             onUpdate={updateItem}
             onAdd={addItem}
             onRemove={removeItem}
@@ -265,6 +284,8 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
                 setPlazoImport(analysis.plazo_importacion_meses);
                 setFuc(analysis.fuc_pct);
                 setTcOficial(analysis.tc_oficial ?? TC_OFICIAL);
+                setHeaderTcCompra(analysis.items[0]?.tc ?? 9.97);
+                setHeaderTcEnvio(analysis.items[0]?.tc_envio);
                 setEmbarqueId(analysis.embarque_id);
               }}
             >

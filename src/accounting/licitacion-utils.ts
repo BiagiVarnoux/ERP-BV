@@ -145,16 +145,31 @@ export function calcResumen(
   let iva_pagar      = 0;
   let it_pagar       = 0;
   let extras         = 0;
+  // Desglose por tipo de gasto (todos los productos)
+  let total_usd        = 0;
+  let total_precio_bs  = 0;
+  let total_envio      = 0;
+  let total_ga         = 0;
+  let total_iva_aduana = 0;
+  let total_manipuleo  = 0;
 
   for (let i = 0; i < productos.length; i++) {
     const c = calcs[i];
     const p = productos[i];
+    const cantidad = p.cantidad || 1;
     total_import      += c.total_import;
     total_ofertado    += c.total_ofertado;
-    precio_piso_total += c.precio_piso * (p.cantidad || 1);
+    precio_piso_total += c.precio_piso * cantidad;
     iva_pagar         += c.iva_pagar;
     it_pagar          += c.it_pagar;
     extras            += (p.garantia || 0) + (p.pasaje || 0) + (p.envio_local || 0) + (p.otros_costos || 0);
+    // Desglose: los valores del calc son unitarios → se multiplican por cantidad.
+    total_usd        += (p.precio_usd || 0) * cantidad;
+    total_precio_bs  += c.precio_bs  * cantidad;
+    total_envio      += c.envio      * cantidad;
+    total_ga         += c.ga         * cantidad;
+    total_iva_aduana += c.iva_aduana * cantidad;
+    total_manipuleo  += c.manipuleo  * cantidad;
   }
 
   const costos   = round2(total_import + iva_pagar + it_pagar + extras);
@@ -170,6 +185,12 @@ export function calcResumen(
     costos,
     ganancia,
     roi,
+    total_usd:         round2(total_usd),
+    total_precio_bs:   round2(total_precio_bs),
+    total_envio:       round2(total_envio),
+    total_ga:          round2(total_ga),
+    total_iva_aduana:  round2(total_iva_aduana),
+    total_manipuleo:   round2(total_manipuleo),
   };
 }
 

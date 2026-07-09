@@ -22,13 +22,24 @@ interface Props {
   resumen: InvestmentResumen;
   tcOficial: number;
   onTcOficial: (v: number) => void;
+  headerTcCompra: number;
+  headerTcEnvio: number | undefined;
+  onTcCompraAll: (v: number | undefined) => void;
+  onTcEnvioAll: (v: number | undefined) => void;
   onUpdate: (id: string, changes: Partial<InvestmentItem>) => void;
   onAdd: () => void;
   onRemove: (id: string) => void;
   onReorder: (items: InvestmentItem[]) => void;
 }
 
-export function TabProductos({ items, calcs, resumen, tcOficial, onTcOficial, onUpdate, onAdd, onRemove, onReorder }: Props) {
+export function TabProductos({
+  items, calcs, resumen, tcOficial, onTcOficial,
+  headerTcCompra, headerTcEnvio, onTcCompraAll, onTcEnvioAll,
+  onUpdate, onAdd, onRemove, onReorder,
+}: Props) {
+  // ¿Todos los productos comparten el mismo T/C? (si no, avisamos que hay valores mixtos)
+  const allSameTcCompra = items.length <= 1 || items.every(it => it.tc === items[0].tc);
+  const allSameTcEnvio  = items.length <= 1 || items.every(it => (it.tc_envio ?? null) === (items[0].tc_envio ?? null));
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
@@ -58,34 +69,63 @@ export function TabProductos({ items, calcs, resumen, tcOficial, onTcOficial, on
   return (
     <TooltipProvider>
       <div className="space-y-5">
-        {/* T/C aduanero por defecto del análisis */}
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 px-4 py-3">
-          <div className="flex flex-col">
-            <span className="text-xs font-semibold">T/C aduana (tributos)</span>
-            <span className="text-[11px] text-muted-foreground">
-              Base para GA + IVA aduanero de todos los productos. Cada producto puede sobreescribirlo.
+        {/* Tipos de cambio del análisis — se aplican a todos los productos */}
+        <div className="rounded-lg border bg-muted/30 px-4 py-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold">Tipos de cambio del análisis</span>
+            <span className="text-[11px] text-muted-foreground hidden sm:block">
+              Compra y envío se aplican a todos los productos
             </span>
           </div>
-          <div className="flex items-center gap-1.5 ml-auto">
-            <span className="text-xs text-muted-foreground">Bs</span>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              className="h-8 w-24 text-right font-mono"
-              value={tcOficial}
-              onChange={e => onTcOficial(toDecimal(e.target.value) || 0)}
-            />
-            {tcOficial !== TC_OFICIAL && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button type="button" className="text-[11px] text-primary hover:underline" onClick={() => onTcOficial(TC_OFICIAL)}>
-                    oficial {TC_OFICIAL}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Restablecer al T/C oficial histórico ({TC_OFICIAL})</TooltipContent>
-              </Tooltip>
-            )}
+          <div className="flex flex-wrap gap-x-6 gap-y-3">
+            {/* T/C compra */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                T/C compra
+                {!allSameTcCompra && (
+                  <Tooltip>
+                    <TooltipTrigger asChild><span className="text-amber-600 cursor-help">· varios</span></TooltipTrigger>
+                    <TooltipContent>Hay productos con distinto T/C. Editar aquí los iguala a todos.</TooltipContent>
+                  </Tooltip>
+                )}
+              </label>
+              <NumInput value={headerTcCompra} onChange={onTcCompraAll} min="0" step="0.01" className="w-24" />
+            </div>
+            {/* T/C envío */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                T/C envío
+                {!allSameTcEnvio && (
+                  <Tooltip>
+                    <TooltipTrigger asChild><span className="text-amber-600 cursor-help">· varios</span></TooltipTrigger>
+                    <TooltipContent>Hay productos con distinto T/C de envío. Editar aquí los iguala a todos.</TooltipContent>
+                  </Tooltip>
+                )}
+              </label>
+              <NumInput value={headerTcEnvio} onChange={onTcEnvioAll} min="0" step="0.01" placeholder="= compra" className="w-24" />
+            </div>
+            {/* T/C aduana (tributos) */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">T/C aduana (tributos)</label>
+              <div className="flex items-center gap-1.5">
+                <NumInput value={tcOficial} onChange={v => onTcOficial(v ?? 0)} min="0" step="0.01" className="w-24" />
+                {tcOficial !== TC_OFICIAL && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button type="button" className="text-[11px] text-primary hover:underline" onClick={() => onTcOficial(TC_OFICIAL)}>
+                        oficial {TC_OFICIAL}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Restablecer al T/C oficial histórico ({TC_OFICIAL})</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+            </div>
+            <div className="flex-1 min-w-[180px] flex items-end">
+              <p className="text-[11px] text-muted-foreground">
+                El T/C de aduana es la base de GA + IVA; cada producto puede sobreescribirlo individualmente.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -465,6 +505,21 @@ function ResumenCard({ resumen: r, count }: { resumen: InvestmentResumen; count:
           <Stat label="Costos totales" value={`Bs ${fmt(r.costos)}`} />
           <Stat label="Ganancia" value={`Bs ${fmt(r.ganancia)}`} bold color={r.ganancia < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
           <Stat label="ROI" value={`${(r.roi * 100).toFixed(1)}%`} bold color={r.roi < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
+        </div>
+
+        {/* Desglose de costos por tipo de gasto (todos los productos) */}
+        <div className="mt-3 pt-3 border-t">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+            Desglose de costos — todos los productos
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <Stat label="Precio total (USD)" value={`USD ${fmt(r.total_usd)}`} />
+            <Stat label="Compra (Bs)" value={`Bs ${fmt(r.total_precio_bs)}`} />
+            <Stat label="Envío" value={`Bs ${fmt(r.total_envio)}`} />
+            <Stat label="GA (gravamen)" value={`Bs ${fmt(r.ga_total)}`} />
+            <Stat label="IVA aduana" value={`Bs ${fmt(r.iva_aduana_total)}`} />
+            <Stat label="Manipuleo" value={`Bs ${fmt(r.total_manipuleo)}`} />
+          </div>
         </div>
 
         {/* Totales de impuestos del lote */}

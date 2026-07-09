@@ -181,6 +181,11 @@ export interface InvestmentResumen {
   costos: number;
   ganancia: number;
   roi: number;
+  // Desglose de costos por tipo de gasto (todos los productos)
+  total_usd: number;           // Σ (precio_usd × cantidad) — en USD, no Bs
+  total_precio_bs: number;     // Σ (precio_bs × cantidad) — costo de compra en Bs
+  total_envio: number;         // Σ (envío × cantidad)
+  total_manipuleo: number;     // Σ (manipuleo × cantidad)
   // Totales de impuestos del lote completo
   ga_total: number;            // Σ (GA × cantidad) — gravamen arancelario pagado en aduana
   iva_aduana_total: number;    // Σ (IVA aduana × cantidad) — crédito fiscal recuperable

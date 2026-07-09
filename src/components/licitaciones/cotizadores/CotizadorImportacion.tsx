@@ -67,8 +67,26 @@ function Pct({ v, decimals = 1 }: { v: number; decimals?: number }) {
 export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   const [productos, setProductos] = useState<LicitacionProducto[]>(licitacion.productos);
   const [tcOficial, setTcOficial] = useState<number>(licitacion.tc_oficial ?? TC_OFICIAL);
+  // T/C de compra y envío a nivel de licitación: se aplican en bloque a todos los productos.
+  const [headerTcCompra, setHeaderTcCompra] = useState<number>(licitacion.productos[0]?.tc ?? 9.97);
+  const [headerTcEnvio, setHeaderTcEnvio]   = useState<number | undefined>(licitacion.productos[0]?.tc_envio);
   const [saving, setSaving] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  // ¿Todos los productos comparten el mismo T/C? (si no, avisamos que hay valores mixtos)
+  const allSameTcCompra = productos.length <= 1 || productos.every(p => p.tc === productos[0].tc);
+  const allSameTcEnvio  = productos.length <= 1 || productos.every(p => (p.tc_envio ?? null) === (productos[0].tc_envio ?? null));
+
+  // Aplica un T/C a TODOS los productos de la licitación de una sola vez.
+  const applyTcCompraAll = (v: number | undefined) => {
+    const val = v ?? 0;
+    setHeaderTcCompra(val);
+    setProductos(prev => prev.map(p => ({ ...p, tc: val })));
+  };
+  const applyTcEnvioAll = (v: number | undefined) => {
+    setHeaderTcEnvio(v);
+    setProductos(prev => prev.map(p => ({ ...p, tc_envio: v })));
+  };
 
   // Recalcular todo cada vez que cambia productos o el T/C aduanero por defecto
   const calcs = useMemo(() => productos.map(p => calcProducto(p, tcOficial)), [productos, tcOficial]);
@@ -81,7 +99,8 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   }, []);
 
   const addProducto = () => {
-    const nuevo = emptyProducto(licitacion.id, productos.length);
+    // Los productos nuevos heredan el T/C de compra/envío definido en la cabecera.
+    const nuevo = { ...emptyProducto(licitacion.id, productos.length), tc: headerTcCompra, tc_envio: headerTcEnvio };
     setProductos(prev => [...prev, nuevo]);
     setExpandedIds(prev => new Set([...prev, nuevo.id]));
   };
@@ -171,38 +190,63 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   return (
     <TooltipProvider>
       <div className="space-y-5">
-        {/* T/C aduanero por defecto de la cotización */}
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 px-4 py-3">
-          <div className="flex flex-col">
-            <span className="text-xs font-semibold">T/C aduana (tributos)</span>
-            <span className="text-[11px] text-muted-foreground">
-              Base para GA + IVA aduanero de todos los productos. Cada producto puede sobreescribirlo.
+        {/* Tipos de cambio de la licitación — se aplican a todos los productos */}
+        <div className="rounded-lg border bg-muted/30 px-4 py-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold">Tipos de cambio de la licitación</span>
+            <span className="text-[11px] text-muted-foreground hidden sm:block">
+              Compra y envío se aplican a todos los productos
             </span>
           </div>
-          <div className="flex items-center gap-1.5 ml-auto">
-            <span className="text-xs text-muted-foreground">Bs</span>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              className="h-8 w-24 text-right font-mono"
-              value={tcOficial}
-              onChange={e => setTcOficial(toDecimal(e.target.value) || 0)}
-            />
-            {tcOficial !== TC_OFICIAL && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="text-[11px] text-primary hover:underline"
-                    onClick={() => setTcOficial(TC_OFICIAL)}
-                  >
-                    oficial {TC_OFICIAL}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Restablecer al T/C oficial histórico ({TC_OFICIAL})</TooltipContent>
-              </Tooltip>
-            )}
+          <div className="flex flex-wrap gap-x-6 gap-y-3">
+            {/* T/C compra */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                T/C compra
+                {!allSameTcCompra && (
+                  <Tooltip>
+                    <TooltipTrigger asChild><span className="text-amber-600 cursor-help">· varios</span></TooltipTrigger>
+                    <TooltipContent>Hay productos con distinto T/C. Editar aquí los iguala a todos.</TooltipContent>
+                  </Tooltip>
+                )}
+              </label>
+              <NumInput value={headerTcCompra} onChange={applyTcCompraAll} min="0" step="0.01" className="w-24" />
+            </div>
+            {/* T/C envío */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                T/C envío
+                {!allSameTcEnvio && (
+                  <Tooltip>
+                    <TooltipTrigger asChild><span className="text-amber-600 cursor-help">· varios</span></TooltipTrigger>
+                    <TooltipContent>Hay productos con distinto T/C de envío. Editar aquí los iguala a todos.</TooltipContent>
+                  </Tooltip>
+                )}
+              </label>
+              <NumInput value={headerTcEnvio} onChange={applyTcEnvioAll} min="0" step="0.01" placeholder="= compra" className="w-24" />
+            </div>
+            {/* T/C aduana (tributos) */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">T/C aduana (tributos)</label>
+              <div className="flex items-center gap-1.5">
+                <NumInput value={tcOficial} onChange={v => setTcOficial(v ?? 0)} min="0" step="0.01" className="w-24" />
+                {tcOficial !== TC_OFICIAL && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button type="button" className="text-[11px] text-primary hover:underline" onClick={() => setTcOficial(TC_OFICIAL)}>
+                        oficial {TC_OFICIAL}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Restablecer al T/C oficial histórico ({TC_OFICIAL})</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+            </div>
+            <div className="flex-1 min-w-[180px] flex items-end">
+              <p className="text-[11px] text-muted-foreground">
+                El T/C de aduana es la base de GA + IVA; cada producto puede sobreescribirlo individualmente.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -257,7 +301,12 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
 
           {isDirty && (
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => { setProductos(licitacion.productos); setTcOficial(licitacion.tc_oficial ?? TC_OFICIAL); }}>
+              <Button variant="outline" onClick={() => {
+                setProductos(licitacion.productos);
+                setTcOficial(licitacion.tc_oficial ?? TC_OFICIAL);
+                setHeaderTcCompra(licitacion.productos[0]?.tc ?? 9.97);
+                setHeaderTcEnvio(licitacion.productos[0]?.tc_envio);
+              }}>
                 Descartar cambios
               </Button>
               <Button onClick={handleSave} disabled={saving}>
@@ -761,6 +810,22 @@ function ResumenGlobal({ resumen: r, count }: { resumen: ReturnType<typeof calcR
             color={r.ganancia < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'}
           />
         </div>
+
+        {/* Desglose de costos por tipo de gasto (todos los productos) */}
+        <div className="mt-3 pt-3 border-t">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+            Desglose de costos — todos los productos
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <SummaryItem label="Precio total (USD)" value={r.total_usd} unit="USD" />
+            <SummaryItem label="Compra (Bs)" value={r.total_precio_bs} />
+            <SummaryItem label="Envío" value={r.total_envio} />
+            <SummaryItem label="GA (gravamen)" value={r.total_ga} />
+            <SummaryItem label="IVA aduana" value={r.total_iva_aduana} />
+            <SummaryItem label="Manipuleo" value={r.total_manipuleo} />
+          </div>
+        </div>
+
         <div className="flex items-center gap-2 mt-3 pt-3 border-t">
           <span className="text-xs text-muted-foreground">ROI global:</span>
           <span className={`text-base font-bold font-mono ${r.roi < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
@@ -802,14 +867,14 @@ function ResultCard({ label, value, isPct, hint, bold, color }: {
   );
 }
 
-function SummaryItem({ label, value, bold, color }: {
-  label: string; value: number; bold?: boolean; color?: string;
+function SummaryItem({ label, value, bold, color, unit = 'Bs' }: {
+  label: string; value: number; bold?: boolean; color?: string; unit?: string;
 }) {
   return (
     <div>
       <p className="text-[10px] text-muted-foreground">{label}</p>
       <p className={`text-sm font-mono ${bold ? 'font-semibold' : ''} ${color ?? ''}`}>
-        Bs {fmt(value)}
+        {unit} {fmt(value)}
       </p>
     </div>
   );

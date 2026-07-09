@@ -314,10 +314,12 @@ export function calcResumen(analysis: InvestmentAnalysis, calcs: ItemCalc[]): In
   let inversion = 0, ingreso = 0, costos = 0, ganancia = 0, van_ = 0;
   let cicloPonderado = 0;
   let gaTotal = 0, ivaAduanaTotal = 0, ivaPagar = 0, itPagar = 0;
+  let totalUsd = 0, totalPrecioBs = 0, totalEnvio = 0, totalManipuleo = 0;
 
   for (let i = 0; i < calcs.length; i++) {
     const c = calcs[i];
-    const cantidad = analysis.items[i]?.cantidad || 0;
+    const item = analysis.items[i];
+    const cantidad = item?.cantidad || 0;
     inversion += c.costeo.inversion;
     ingreso   += c.costeo.ingreso_total;
     costos    += c.costeo.costos;
@@ -330,6 +332,11 @@ export function calcResumen(analysis: InvestmentAnalysis, calcs: ItemCalc[]): In
     // IVA e IT a pagar ya son totales por ítem.
     ivaPagar       += c.costeo.iva_pagar;
     itPagar        += c.costeo.it_pagar;
+    // Desglose de costos (unitarios × cantidad).
+    totalUsd       += (item?.precio_usd || 0) * cantidad;
+    totalPrecioBs  += c.costeo.precio_bs * cantidad;
+    totalEnvio     += c.costeo.envio     * cantidad;
+    totalManipuleo += c.costeo.manipuleo * cantidad;
   }
 
   inversion = round2(inversion);
@@ -354,6 +361,10 @@ export function calcResumen(analysis: InvestmentAnalysis, calcs: ItemCalc[]): In
     costos:        round2(costos),
     ganancia:      round2(ganancia),
     roi,
+    total_usd:        round2(totalUsd),
+    total_precio_bs:  round2(totalPrecioBs),
+    total_envio:      round2(totalEnvio),
+    total_manipuleo:  round2(totalManipuleo),
     ga_total:         round2(gaTotal),
     iva_aduana_total: round2(ivaAduanaTotal),
     iva_pagar:        round2(ivaPagar),
