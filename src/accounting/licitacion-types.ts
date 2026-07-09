@@ -146,6 +146,9 @@ export interface LicitacionProducto {
   tiene_bateria: boolean;
   costo_bateria: number;
 
+  // Precio referencial ofertado por la entidad (Bs/unidad) — solo referencia, no entra al cálculo
+  precio_entidad?: number;
+
   // Precio ofertado — el usuario lo define; conduce el recálculo
   precio_ofertado: number;
 

@@ -202,6 +202,7 @@ export function emptyProducto(licitacion_id: string, orden: number): LicitacionP
     usa_iva_manual:  false,
     tiene_bateria:   false,
     costo_bateria:   0,
+    precio_entidad:  undefined,
     precio_ofertado: 0,
     garantia:        0,
     pasaje:          0,

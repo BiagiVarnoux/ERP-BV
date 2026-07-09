@@ -284,6 +284,8 @@ function ProductoRow({ producto: p, calc, tcOficialDefault, expanded, onToggle, 
 }) {
   const isUnprofitable = calc.ganancia < 0;
   const isBelowFloor   = p.precio_ofertado > 0 && p.precio_ofertado < calc.precio_piso;
+  // Mi oferta por encima del precio referencial de la entidad (en licitaciones suele ser motivo de descalificación).
+  const isOverEntidad  = p.precio_entidad != null && p.precio_entidad > 0 && p.precio_ofertado > p.precio_entidad;
 
   return (
     <Collapsible open={expanded} onOpenChange={onToggle}>
@@ -329,10 +331,38 @@ function ProductoRow({ producto: p, calc, tcOficialDefault, expanded, onToggle, 
             </span>
           </div>
 
-          {/* Precio ofertado */}
-          <div className="flex flex-col items-end shrink-0">
+          {/* Precio entidad (referencial) — editable inline */}
+          <div
+            className="hidden md:flex flex-col items-end shrink-0"
+            onClick={e => e.stopPropagation()}
+            onPointerDown={e => e.stopPropagation()}
+          >
+            <span className="text-[10px] text-muted-foreground">Entidad</span>
+            <NumInput
+              value={p.precio_entidad}
+              onChange={v => onChange({ precio_entidad: v })}
+              min="0"
+              step="0.01"
+              placeholder="—"
+              className="w-24"
+            />
+          </div>
+
+          {/* Precio ofertado — editable inline */}
+          <div
+            className="flex flex-col items-end shrink-0"
+            onClick={e => e.stopPropagation()}
+            onPointerDown={e => e.stopPropagation()}
+          >
             <span className="text-[10px] text-muted-foreground">Ofertado</span>
-            <span className="text-sm font-mono font-medium">Bs {fmt(p.precio_ofertado)}</span>
+            <NumInput
+              value={p.precio_ofertado || undefined}
+              onChange={v => onChange({ precio_ofertado: v ?? 0 })}
+              min="0"
+              step="0.01"
+              placeholder="0"
+              className={`w-24 font-semibold ${isOverEntidad ? 'border-amber-400 text-amber-600' : ''}`}
+            />
           </div>
 
           {/* Ganancia */}
@@ -611,8 +641,23 @@ function ProductoForm({ producto: p, calc, tcOficialDefault, onChange }: {
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Cotización licitación</p>
 
         {/* Precio ofertado — campo principal */}
-        <div className="flex items-end gap-4 mb-4">
-          <div className="space-y-1 w-48">
+        <div className="flex items-end gap-4 mb-4 flex-wrap">
+          <div className="space-y-1 w-44">
+            <label className="text-xs font-semibold">
+              Precio entidad (referencial)
+              <span className="ml-1 text-muted-foreground font-normal">— Bs/unidad</span>
+            </label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              className="h-9 font-mono text-base"
+              value={p.precio_entidad ?? ''}
+              placeholder="0.00"
+              onChange={e => onChange({ precio_entidad: e.target.value === '' ? undefined : (toDecimal(e.target.value) || 0) })}
+            />
+          </div>
+          <div className="space-y-1 w-44">
             <label className="text-xs font-semibold">
               Precio ofertado (Bs/unidad)
               <span className="ml-1 text-muted-foreground font-normal">— editable</span>
@@ -633,6 +678,15 @@ function ProductoForm({ producto: p, calc, tcOficialDefault, onChange }: {
               Bs {fmt(calc.precio_piso)}
             </p>
           </div>
+          {p.precio_entidad != null && p.precio_entidad > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Vs. entidad</p>
+              <p className={`text-sm font-mono font-semibold ${p.precio_ofertado > p.precio_entidad ? 'text-amber-600' : 'text-green-600 dark:text-green-400'}`}>
+                {p.precio_ofertado > p.precio_entidad ? '+' : ''}{fmt(p.precio_ofertado - p.precio_entidad)}
+                <span className="ml-1 font-normal">({((p.precio_ofertado / p.precio_entidad - 1) * 100).toFixed(1)}%)</span>
+              </p>
+            </div>
+          )}
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground">Total ofertado</p>
             <p className="text-sm font-mono">Bs {fmt(calc.total_ofertado)}</p>
