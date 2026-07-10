@@ -11,40 +11,17 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserAccess } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
-import { fmt, round2, nowInAppTZ, todayISO } from '@/accounting/utils';
+import { fmt, round2 } from '@/accounting/utils';
 import { listSales, voidSale, CANAL_LABELS, type SaleRow } from '@/domain/sales';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { NuevaVentaModal } from '@/components/sales/NuevaVentaModal';
-
-type PeriodFilter = 'month' | 'prev_month' | 'last30' | 'all';
-
-function periodLabel(p: PeriodFilter): string {
-  switch (p) {
-    case 'month': return 'Este mes';
-    case 'prev_month': return 'Mes anterior';
-    case 'last30': return 'Últimos 30 días';
-    case 'all': return 'Todo';
-  }
-}
-
-function isInPeriod(fecha: string, period: PeriodFilter): boolean {
-  if (period === 'all') return true;
-  const { year, month, day } = nowInAppTZ();
-  const fy = parseInt(fecha.slice(0, 4), 10);
-  const fm = parseInt(fecha.slice(5, 7), 10);
-  if (period === 'month') return fy === year && fm === month;
-  if (period === 'prev_month') {
-    const prevMonth = month === 1 ? 12 : month - 1;
-    const prevYear  = month === 1 ? year - 1 : year;
-    return fy === prevYear && fm === prevMonth;
-  }
-  if (period === 'last30') {
-    const cutoff = new Date(year, month - 1, day - 30);
-    const cutoffISO = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
-    return fecha >= cutoffISO;
-  }
-  return true;
-}
+import { usePersistedState } from '@/hooks/usePersistedState';
+import {
+  PeriodFilterBar,
+  PeriodFilterValue,
+  getDefaultPeriodFilterValue,
+  isDateInPeriodFilter,
+} from '@/components/shared/PeriodFilterBar';
 
 function margenBadgeClass(pct: number) {
   if (pct < 5) return 'bg-red-100 text-red-700 border-red-300';
@@ -78,7 +55,7 @@ export default function SalesPage() {
   const [itemsMap, setItemsMap] = useState<Record<string, string[]>>({});
 
   // Filtros
-  const [period, setPeriod] = useState<PeriodFilter>('month');
+  const [period, setPeriod] = usePersistedState<PeriodFilterValue>('sales:period', getDefaultPeriodFilterValue());
   const [search, setSearch] = useState('');
 
   // Detalle
@@ -126,7 +103,7 @@ export default function SalesPage() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return sales.filter(s =>
-      isInPeriod(s.fecha, period) &&
+      isDateInPeriodFilter(s.fecha, period) &&
       (!q || s.numero.toLowerCase().includes(q) || (s.cliente_nombre ?? '').toLowerCase().includes(q) || (s.glosa ?? '').toLowerCase().includes(q))
     );
   }, [sales, period, search]);
@@ -265,18 +242,8 @@ export default function SalesPage() {
       </div>
 
       {/* Filtros */}
-      <div className="flex items-center gap-3">
-        <div className="flex rounded-md border overflow-hidden">
-          {(['month', 'prev_month', 'last30', 'all'] as PeriodFilter[]).map(p => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`px-3 py-1.5 text-sm transition-colors ${period === p ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-            >
-              {periodLabel(p)}
-            </button>
-          ))}
-        </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <PeriodFilterBar value={period} onChange={setPeriod} />
         <Input
           className="max-w-xs"
           placeholder="Buscar por número, cliente, glosa..."

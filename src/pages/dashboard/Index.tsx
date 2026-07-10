@@ -10,6 +10,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { fmt, round2 } from '@/accounting/utils';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { CANAL_LABELS } from '@/domain/sales';
+import { usePersistedState } from '@/hooks/usePersistedState';
+import {
+  PeriodFilterBar,
+  PeriodFilterValue,
+  getDefaultPeriodFilterValue,
+  isDateInPeriodFilter,
+} from '@/components/shared/PeriodFilterBar';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -34,37 +41,6 @@ interface SaleItem {
   subtotal_neto: number;
   costo_total: number | null;
   margen_bruto: number | null;
-}
-
-// ── Period helpers ──────────────────────────────────────────────────────────
-
-type Period = 'month' | 'last30' | 'quarter' | 'year';
-
-function periodLabel(p: Period): string {
-  switch (p) {
-    case 'month':   return 'Este mes';
-    case 'last30':  return 'Últimos 30 días';
-    case 'quarter': return 'Trimestre';
-    case 'year':    return 'Año';
-  }
-}
-
-function isInPeriod(fecha: string, period: Period): boolean {
-  const d = new Date(fecha);
-  const now = new Date();
-  if (period === 'month') {
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }
-  if (period === 'last30') {
-    return d >= new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  }
-  if (period === 'quarter') {
-    const q = Math.floor(now.getMonth() / 3);
-    const qMonth = Math.floor(d.getMonth() / 3);
-    return d.getFullYear() === now.getFullYear() && qMonth === q;
-  }
-  // year
-  return d.getFullYear() === now.getFullYear();
 }
 
 // ── Margin badge ────────────────────────────────────────────────────────────
@@ -104,7 +80,7 @@ export default function SalesDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [items, setItems] = useState<SaleItem[]>([]);
-  const [period, setPeriod] = useState<Period>('month');
+  const [period, setPeriod] = usePersistedState<PeriodFilterValue>('dashboard:period', getDefaultPeriodFilterValue());
 
   useEffect(() => { load(); }, []);
 
@@ -126,7 +102,7 @@ export default function SalesDashboardPage() {
   }
 
   const filtered = useMemo(
-    () => sales.filter(s => isInPeriod(s.fecha, period)),
+    () => sales.filter(s => isDateInPeriodFilter(s.fecha, period)),
     [sales, period],
   );
 
@@ -231,17 +207,7 @@ export default function SalesDashboardPage() {
         <h1 className="text-2xl font-semibold flex items-center gap-2">
           <BarChart2 className="w-6 h-6" /> Dashboard de Ventas
         </h1>
-        <div className="flex rounded-md border overflow-hidden">
-          {(['month', 'last30', 'quarter', 'year'] as Period[]).map(p => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`px-3 py-1.5 text-sm transition-colors ${period === p ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-            >
-              {periodLabel(p)}
-            </button>
-          ))}
-        </div>
+        <PeriodFilterBar value={period} onChange={setPeriod} />
       </div>
 
       {loading ? (
