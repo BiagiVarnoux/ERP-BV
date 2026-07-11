@@ -158,6 +158,12 @@ export interface LicitacionProducto {
   envio_local: number;
   otros_costos: number;
 
+  // Origen del producto: importado (default, lleva GA/IVA aduana/flete/T·C) o
+  // compra local en Bolivia (solo precio_local + crédito fiscal si tiene factura).
+  origen: 'importado' | 'local';
+  precio_local?: number;    // Bs/unidad — solo aplica si origen='local'
+  tiene_factura?: boolean;  // solo aplica si origen='local' — habilita crédito fiscal IVA (13%)
+
   // Metadato
   fuente: 'manual' | 'ia';
 
@@ -246,7 +252,8 @@ export interface ProductoCalc {
 }
 
 export interface LicitacionResumen {
-  total_import: number;
+  // Totales generales de la licitación (combinan productos importados + locales)
+  total_import: number;        // costo_importados + costo_nacional — uso interno (costos totales)
   total_ofertado: number;
   precio_piso_total: number;   // Σ (precio_piso × cantidad) — oferta mínima total para no perder
   iva_pagar: number;
@@ -254,11 +261,19 @@ export interface LicitacionResumen {
   costos: number;
   ganancia: number;
   roi: number;
-  // Desglose de costos por tipo de gasto (todos los productos)
+
+  // ── Costo de productos IMPORTADOS ──────────────────────────────────────────
+  costo_importados: number;    // Σ (total_individual × cantidad) — solo origen='importado'
+  tiene_importados: boolean;   // true si hay ≥1 producto importado — para ocultar la sección si no aplica
   total_usd: number;           // Σ (precio_usd × cantidad) — en USD, no Bs
   total_precio_bs: number;     // Σ (precio_bs × cantidad) — costo de compra en Bs
   total_envio: number;         // Σ (envío × cantidad)
   total_ga: number;            // Σ (GA × cantidad)
-  total_iva_aduana: number;    // Σ (IVA aduana × cantidad) — crédito fiscal
+  total_iva_aduana: number;    // Σ (IVA aduana × cantidad) — crédito fiscal importación
   total_manipuleo: number;     // Σ (manipuleo × cantidad)
+
+  // ── Costo de mercadería comprada NACIONALMENTE ──────────────────────────────
+  costo_nacional: number;          // Σ (total_individual × cantidad) — solo origen='local'
+  tiene_nacionales: boolean;       // true si hay ≥1 producto de compra local — para ocultar la sección si no aplica
+  total_iva_credito_local: number; // Σ (crédito fiscal × cantidad) — solo productos locales con factura
 }

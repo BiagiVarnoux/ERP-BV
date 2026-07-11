@@ -235,6 +235,9 @@ export const LicitacionStorage = {
       pasaje:           p.pasaje,
       envio_local:      p.envio_local,
       otros_costos:     p.otros_costos,
+      origen:           p.origen,
+      precio_local:     p.precio_local ?? null,
+      tiene_factura:    p.tiene_factura ?? false,
       fuente:           p.fuente,
     }));
     const { error } = await supabase.from('licitacion_productos').upsert(rows);

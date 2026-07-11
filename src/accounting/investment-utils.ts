@@ -377,6 +377,95 @@ export function calcResumen(analysis: InvestmentAnalysis, calcs: ItemCalc[]): In
   };
 }
 
+/**
+ * Consolida varios análisis de inversión en un solo resumen "portafolio".
+ *
+ * A diferencia de sumar resúmenes ya calculados, aquí se recombinan los
+ * FLUJOS DE CAJA de todos los ítems de todos los análisis (igual que
+ * calcResumen ya hace dentro de un solo análisis) para obtener un VAN y una
+ * TIR realmente consolidados — no un promedio ni una suma naíf de tasas,
+ * que matemáticamente no tendría sentido.
+ */
+export function consolidarAnalisis(analyses: InvestmentAnalysis[]): InvestmentResumen {
+  let inversion = 0, ingreso = 0, costos = 0, ganancia = 0, van_ = 0;
+  let cicloPonderado = 0;
+  let gaTotal = 0, ivaAduanaTotal = 0, ivaPagar = 0, itPagar = 0;
+  let totalUsd = 0, totalPrecioBs = 0, totalEnvio = 0, totalManipuleo = 0;
+  let fucPonderadoSum = 0;
+  let maxLen = 1;
+  const todosLosFlujos: number[][] = [];
+
+  for (const a of analyses) {
+    const calcs = a.items.map(it =>
+      calcItem(it, a.plazo_importacion_meses, a.costo_capital_anual, a.fuc_pct, a.tc_oficial)
+    );
+
+    let inversionAnalisis = 0;
+    for (let i = 0; i < calcs.length; i++) {
+      const c = calcs[i];
+      const item = a.items[i];
+      const cantidad = item?.cantidad || 0;
+      inversion += c.costeo.inversion;
+      inversionAnalisis += c.costeo.inversion;
+      ingreso   += c.costeo.ingreso_total;
+      costos    += c.costeo.costos;
+      ganancia  += c.costeo.ganancia;
+      van_      += c.tiempo.van;
+      cicloPonderado += c.tiempo.ciclo_meses * c.costeo.inversion;
+      gaTotal        += c.costeo.ga * cantidad;
+      ivaAduanaTotal += c.costeo.iva_aduana * cantidad;
+      ivaPagar       += c.costeo.iva_pagar;
+      itPagar        += c.costeo.it_pagar;
+      totalUsd       += (item?.precio_usd || 0) * cantidad;
+      totalPrecioBs  += c.costeo.precio_bs * cantidad;
+      totalEnvio     += c.costeo.envio     * cantidad;
+      totalManipuleo += c.costeo.manipuleo * cantidad;
+      todosLosFlujos.push(c.tiempo.flujos);
+      maxLen = Math.max(maxLen, c.tiempo.flujos.length);
+    }
+    fucPonderadoSum += (a.fuc_pct ?? 100) * inversionAnalisis;
+  }
+
+  inversion = round2(inversion);
+  const roi   = inversion > 0 ? round2(ganancia / inversion) : 0;
+  const ciclo = inversion > 0 ? round2(cicloPonderado / inversion) : 0;
+  const roiAnualizado = ciclo > 0 ? Math.pow(1 + roi, 12 / ciclo) - 1 : 0;
+  const fucPonderado = inversion > 0 ? fucPonderadoSum / inversion : 100;
+  const fuc = Math.min(1, Math.max(0.01, fucPonderado / 100));
+  const roiAnualizadoRealista = ciclo > 0 ? Math.pow(1 + roi, (12 * fuc) / ciclo) - 1 : 0;
+
+  // TIR/VAN reales del portafolio: se combinan los flujos de TODOS los ítems
+  // de TODOS los análisis por mes (mismo criterio que calcResumen usa dentro
+  // de un solo análisis), no se promedian tasas.
+  const flujoAgregado = new Array(maxLen).fill(0);
+  for (const flujos of todosLosFlujos) {
+    flujos.forEach((f, t) => { flujoAgregado[t] += f; });
+  }
+  const tirM = tirMensual(flujoAgregado);
+  const tirAnual = tirM != null ? Math.pow(1 + tirM, 12) - 1 : 0;
+
+  return {
+    inversion,
+    ingreso_total: round2(ingreso),
+    costos:        round2(costos),
+    ganancia:      round2(ganancia),
+    roi,
+    total_usd:        round2(totalUsd),
+    total_precio_bs:  round2(totalPrecioBs),
+    total_envio:      round2(totalEnvio),
+    total_manipuleo:  round2(totalManipuleo),
+    ga_total:         round2(gaTotal),
+    iva_aduana_total: round2(ivaAduanaTotal),
+    iva_pagar:        round2(ivaPagar),
+    it_pagar:         round2(itPagar),
+    ciclo_meses:   ciclo,
+    roi_anualizado: roiAnualizado,
+    roi_anualizado_realista: roiAnualizadoRealista,
+    van:           round2(van_),
+    tir_anual:     tirAnual,
+  };
+}
+
 // ─── Factory: ítem vacío ────────────────────────────────────────────────────
 
 export function emptyItem(analysis_id: string, orden: number): InvestmentItem {

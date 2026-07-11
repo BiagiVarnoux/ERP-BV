@@ -349,6 +349,9 @@ function ProductoRow({ producto: p, calc, tcOficialDefault, expanded, onToggle, 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="font-medium text-sm truncate">{p.nombre || <span className="italic text-muted-foreground">Sin nombre</span>}</span>
+              {p.origen === 'local' && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0">Local</Badge>
+              )}
               {p.link_producto && /^https?:\/\//i.test(p.link_producto) && (
                 <a
                   href={p.link_producto}
@@ -369,7 +372,9 @@ function ProductoRow({ producto: p, calc, tcOficialDefault, expanded, onToggle, 
               )}
             </div>
             <div className="text-xs text-muted-foreground">
-              Q: {p.cantidad} · USD {fmt(p.precio_usd ?? 0)} · T/C {p.tc}
+              {p.origen === 'local'
+                ? <>Q: {p.cantidad} · Bs {fmt(p.precio_local ?? 0)}</>
+                : <>Q: {p.cantidad} · USD {fmt(p.precio_usd ?? 0)} · T/C {p.tc}</>}
             </div>
           </div>
 
@@ -485,9 +490,155 @@ function ProductoForm({ producto: p, calc, tcOficialDefault, onChange }: {
 
       <Separator />
 
-      {/* Sección IMPORTACIÓN */}
+      {/* Origen del producto: importado (default) o compra local en Bolivia */}
+      <div className="flex items-center gap-3">
+        <label className="text-xs text-muted-foreground">Origen del producto</label>
+        <div className="flex gap-1">
+          <Button
+            type="button"
+            size="sm"
+            variant={p.origen !== 'local' ? 'default' : 'outline'}
+            className="h-7 text-xs px-3"
+            onClick={() => onChange({ origen: 'importado' })}
+          >
+            Importado
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={p.origen === 'local' ? 'default' : 'outline'}
+            className="h-7 text-xs px-3"
+            onClick={() => onChange({ origen: 'local' })}
+          >
+            Compra local
+          </Button>
+        </div>
+      </div>
+
+      <Separator />
+
+      {p.origen === 'local' ? (
+        <CostoLocal producto={p} calc={calc} onChange={onChange} />
+      ) : (
+        <CostoImportacion producto={p} calc={calc} tcOficialDefault={tcOficialDefault} onChange={onChange} />
+      )}
+
+      <Separator />
+
+      {/* Sección LICITACIÓN */}
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Costo de importación</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Cotización licitación</p>
+
+        {/* Precio ofertado — campo principal */}
+        <div className="flex items-end gap-4 mb-4 flex-wrap">
+          <div className="space-y-1 w-44">
+            <label className="text-xs font-semibold">
+              Precio entidad (referencial)
+              <span className="ml-1 text-muted-foreground font-normal">— Bs/unidad</span>
+            </label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              className="h-9 font-mono text-base"
+              value={p.precio_entidad ?? ''}
+              placeholder="0.00"
+              onChange={e => onChange({ precio_entidad: e.target.value === '' ? undefined : (toDecimal(e.target.value) || 0) })}
+            />
+          </div>
+          <div className="space-y-1 w-44">
+            <label className="text-xs font-semibold">
+              Precio ofertado (Bs/unidad)
+              <span className="ml-1 text-muted-foreground font-normal">— editable</span>
+            </label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              className="h-9 font-mono font-semibold text-base"
+              value={p.precio_ofertado || ''}
+              placeholder="0.00"
+              onChange={e => onChange({ precio_ofertado: toDecimal(e.target.value) || 0 })}
+            />
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Precio piso</p>
+            <p className={`text-sm font-mono font-semibold ${p.precio_ofertado > 0 && p.precio_ofertado < calc.precio_piso ? 'text-amber-500' : 'text-muted-foreground'}`}>
+              Bs {fmt(calc.precio_piso)}
+            </p>
+          </div>
+          {p.precio_entidad != null && p.precio_entidad > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Vs. entidad</p>
+              <p className={`text-sm font-mono font-semibold ${p.precio_ofertado > p.precio_entidad ? 'text-amber-600' : 'text-green-600 dark:text-green-400'}`}>
+                {p.precio_ofertado > p.precio_entidad ? '+' : ''}{fmt(p.precio_ofertado - p.precio_entidad)}
+                <span className="ml-1 font-normal">({((p.precio_ofertado / p.precio_entidad - 1) * 100).toFixed(1)}%)</span>
+              </p>
+            </div>
+          )}
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Total ofertado</p>
+            <p className="text-sm font-mono">Bs {fmt(calc.total_ofertado)}</p>
+          </div>
+        </div>
+
+        {/* Costos adicionales */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Field label="Garantía (Bs total)">
+            <NumInput value={p.garantia || undefined} onChange={n('garantia')} min="0" placeholder="0" />
+          </Field>
+          <Field label="Pasaje (Bs)">
+            <NumInput value={p.pasaje || undefined} onChange={n('pasaje')} min="0" placeholder="0" />
+          </Field>
+          <Field label="Envío local (Bs)">
+            <NumInput value={p.envio_local || undefined} onChange={n('envio_local')} min="0" placeholder="0" />
+          </Field>
+          <Field label="Otros costos (Bs)">
+            <NumInput value={p.otros_costos || undefined} onChange={n('otros_costos')} min="0" placeholder="0" />
+          </Field>
+        </div>
+
+        {/* Resultados licitación */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mt-4">
+          <ResultCard label="IVA a pagar"  value={calc.iva_pagar}      hint="13% ofertado − crédito fiscal" />
+          <ResultCard label="IT a pagar"   value={calc.it_pagar}       hint="3% del total ofertado" />
+          <ResultCard label="Costos total" value={calc.costos}         hint="Costo del producto + IVA + IT + extras" bold />
+          <ResultCard
+            label="Ganancia"
+            value={calc.ganancia}
+            hint="Total ofertado − Costos"
+            bold
+            color={calc.ganancia < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'}
+          />
+          <ResultCard
+            label="ROI"
+            value={calc.roi}
+            isPct
+            hint="Ganancia / Costos"
+            color={calc.roi < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Costo de importación (sección del formulario, origen='importado') ───────
+
+function CostoImportacion({ producto: p, calc, tcOficialDefault, onChange }: {
+  producto: LicitacionProducto;
+  calc: ReturnType<typeof calcProducto>;
+  tcOficialDefault: number;
+  onChange: (c: Partial<LicitacionProducto>) => void;
+}) {
+  const n = (k: keyof LicitacionProducto) => (v: number | undefined) => onChange({ [k]: v });
+  const s = (k: keyof LicitacionProducto) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    onChange({ [k]: e.target.value });
+
+  return (
+    <div className="space-y-4">
+      <div>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Costo de importación</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-3">
           <Field label="Cantidad">
             <NumInput value={p.cantidad} onChange={n('cantidad')} min="1" step="1" />
@@ -683,102 +834,92 @@ function ProductoForm({ producto: p, calc, tcOficialDefault, onChange }: {
           </Tooltip>
         ))}
       </div>
+    </div>
+  );
+}
 
-      <Separator />
+// ─── Costo de compra local (sección del formulario, origen='local') ──────────
 
-      {/* Sección LICITACIÓN */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Cotización licitación</p>
+function CostoLocal({ producto: p, calc, onChange }: {
+  producto: LicitacionProducto;
+  calc: ReturnType<typeof calcProducto>;
+  onChange: (c: Partial<LicitacionProducto>) => void;
+}) {
+  const n = (k: keyof LicitacionProducto) => (v: number | undefined) => onChange({ [k]: v });
 
-        {/* Precio ofertado — campo principal */}
-        <div className="flex items-end gap-4 mb-4 flex-wrap">
-          <div className="space-y-1 w-44">
-            <label className="text-xs font-semibold">
-              Precio entidad (referencial)
-              <span className="ml-1 text-muted-foreground font-normal">— Bs/unidad</span>
-            </label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              className="h-9 font-mono text-base"
-              value={p.precio_entidad ?? ''}
-              placeholder="0.00"
-              onChange={e => onChange({ precio_entidad: e.target.value === '' ? undefined : (toDecimal(e.target.value) || 0) })}
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Compra local</p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-3">
+        <Field label="Cantidad">
+          <NumInput value={p.cantidad} onChange={n('cantidad')} min="1" step="1" />
+        </Field>
+        <Field label="Precio unitario (Bs)">
+          <NumInput value={p.precio_local} onChange={n('precio_local')} min="0" step="0.01" />
+        </Field>
+        <div className="space-y-1">
+          <label className="flex items-center gap-2 text-xs cursor-pointer h-7">
+            <input
+              type="checkbox"
+              checked={!!p.tiene_factura}
+              onChange={e => onChange({ tiene_factura: e.target.checked })}
+              className="rounded"
             />
-          </div>
-          <div className="space-y-1 w-44">
-            <label className="text-xs font-semibold">
-              Precio ofertado (Bs/unidad)
-              <span className="ml-1 text-muted-foreground font-normal">— editable</span>
-            </label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              className="h-9 font-mono font-semibold text-base"
-              value={p.precio_ofertado || ''}
-              placeholder="0.00"
-              onChange={e => onChange({ precio_ofertado: toDecimal(e.target.value) || 0 })}
-            />
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Precio piso</p>
-            <p className={`text-sm font-mono font-semibold ${p.precio_ofertado > 0 && p.precio_ofertado < calc.precio_piso ? 'text-amber-500' : 'text-muted-foreground'}`}>
-              Bs {fmt(calc.precio_piso)}
-            </p>
-          </div>
-          {p.precio_entidad != null && p.precio_entidad > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Vs. entidad</p>
-              <p className={`text-sm font-mono font-semibold ${p.precio_ofertado > p.precio_entidad ? 'text-amber-600' : 'text-green-600 dark:text-green-400'}`}>
-                {p.precio_ofertado > p.precio_entidad ? '+' : ''}{fmt(p.precio_ofertado - p.precio_entidad)}
-                <span className="ml-1 font-normal">({((p.precio_ofertado / p.precio_entidad - 1) * 100).toFixed(1)}%)</span>
-              </p>
+            ¿Con factura?
+          </label>
+          <p className="text-[10px] text-muted-foreground">
+            {p.tiene_factura ? 'Da derecho a crédito fiscal (13%)' : 'Sin crédito fiscal'}
+          </p>
+        </div>
+      </div>
+
+      {/* Batería */}
+      <div className="flex items-center gap-4 mt-3">
+        <label className="flex items-center gap-2 text-xs cursor-pointer">
+          <input
+            type="checkbox"
+            checked={p.tiene_bateria}
+            onChange={e => onChange({ tiene_bateria: e.target.checked })}
+            className="rounded"
+          />
+          Tiene batería
+        </label>
+        {p.tiene_bateria && (
+          <Field label="Costo batería (Bs)" className="w-36">
+            <NumInput value={p.costo_bateria} onChange={n('costo_bateria')} min="0" />
+          </Field>
+        )}
+      </div>
+
+      {/* Resultados compra local */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="bg-muted/60 rounded px-2.5 py-2 cursor-default">
+              <p className="text-[10px] text-muted-foreground">Precio local</p>
+              <p className="text-xs font-mono">Bs {fmt(p.precio_local || 0)}</p>
             </div>
-          )}
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Total ofertado</p>
-            <p className="text-sm font-mono">Bs {fmt(calc.total_ofertado)}</p>
-          </div>
-        </div>
-
-        {/* Costos adicionales */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Field label="Garantía (Bs total)">
-            <NumInput value={p.garantia || undefined} onChange={n('garantia')} min="0" placeholder="0" />
-          </Field>
-          <Field label="Pasaje (Bs)">
-            <NumInput value={p.pasaje || undefined} onChange={n('pasaje')} min="0" placeholder="0" />
-          </Field>
-          <Field label="Envío local (Bs)">
-            <NumInput value={p.envio_local || undefined} onChange={n('envio_local')} min="0" placeholder="0" />
-          </Field>
-          <Field label="Otros costos (Bs)">
-            <NumInput value={p.otros_costos || undefined} onChange={n('otros_costos')} min="0" placeholder="0" />
-          </Field>
-        </div>
-
-        {/* Resultados licitación */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mt-4">
-          <ResultCard label="IVA a pagar"  value={calc.iva_pagar}      hint="13% ofertado − crédito fiscal aduana" />
-          <ResultCard label="IT a pagar"   value={calc.it_pagar}       hint="3% del total ofertado" />
-          <ResultCard label="Costos total" value={calc.costos}         hint="Costo import + IVA + IT + extras" bold />
-          <ResultCard
-            label="Ganancia"
-            value={calc.ganancia}
-            hint="Total ofertado − Costos"
-            bold
-            color={calc.ganancia < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'}
-          />
-          <ResultCard
-            label="ROI"
-            value={calc.roi}
-            isPct
-            hint="Ganancia / Costos"
-            color={calc.roi < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'}
-          />
-        </div>
+          </TooltipTrigger>
+          <TooltipContent>Bs/unidad — precio de compra</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="bg-muted/60 rounded px-2.5 py-2 cursor-default">
+              <p className="text-[10px] text-muted-foreground">Crédito fiscal</p>
+              <p className="text-xs font-mono">Bs {fmt(calc.iva_aduana)}</p>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>Bs/unidad — 13% del precio local, solo si tiene factura</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="bg-muted/60 rounded px-2.5 py-2 cursor-default">
+              <p className="text-[10px] text-muted-foreground">Costo unit.</p>
+              <p className="text-xs font-mono font-semibold">Bs {fmt(calc.total_individual)}</p>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>Bs — costo de compra local por unidad</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );
@@ -794,7 +935,8 @@ function ResumenGlobal({ resumen: r, count }: { resumen: ReturnType<typeof calcR
           Resumen — {count} producto{count !== 1 ? 's' : ''}
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <SummaryItem label="Costo import." value={r.total_import} />
+          {r.tiene_importados && <SummaryItem label="Costo productos importados" value={r.costo_importados} />}
+          {r.tiene_nacionales && <SummaryItem label="Costo mercadería nacional" value={r.costo_nacional} />}
           <SummaryItem label="Precio piso total" value={r.precio_piso_total} />
           <SummaryItem label="Total ofertado" value={r.total_ofertado} />
           <SummaryItem label="IVA a pagar" value={r.iva_pagar} />
@@ -812,20 +954,35 @@ function ResumenGlobal({ resumen: r, count }: { resumen: ReturnType<typeof calcR
           />
         </div>
 
-        {/* Desglose de costos por tipo de gasto (todos los productos) */}
-        <div className="mt-3 pt-3 border-t">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-            Desglose de costos — todos los productos
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <SummaryItem label="Precio total (USD)" value={r.total_usd} unit="USD" />
-            <SummaryItem label="Compra (Bs)" value={r.total_precio_bs} />
-            <SummaryItem label="Envío" value={r.total_envio} />
-            <SummaryItem label="GA (gravamen)" value={r.total_ga} />
-            <SummaryItem label="IVA aduana" value={r.total_iva_aduana} />
-            <SummaryItem label="Manipuleo" value={r.total_manipuleo} />
+        {/* Desglose de costos — productos importados */}
+        {r.tiene_importados && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+              Desglose — productos importados
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <SummaryItem label="Precio total (USD)" value={r.total_usd} unit="USD" />
+              <SummaryItem label="Compra (Bs)" value={r.total_precio_bs} />
+              <SummaryItem label="Envío" value={r.total_envio} />
+              <SummaryItem label="GA (gravamen)" value={r.total_ga} />
+              <SummaryItem label="IVA aduana" value={r.total_iva_aduana} />
+              <SummaryItem label="Manipuleo" value={r.total_manipuleo} />
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Desglose de costos — mercadería comprada nacionalmente */}
+        {r.tiene_nacionales && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+              Desglose — mercadería comprada nacionalmente
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <SummaryItem label="Costo compra nacional" value={r.costo_nacional} />
+              <SummaryItem label="Crédito fiscal (facturas)" value={r.total_iva_credito_local} />
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 mt-3 pt-3 border-t">
           <span className="text-xs text-muted-foreground">ROI global:</span>

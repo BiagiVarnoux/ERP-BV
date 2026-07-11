@@ -9,10 +9,11 @@ import {
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Search, Trash2, ChevronRight, FileText, Clock, AlertTriangle, CalendarClock } from 'lucide-react';
+import { Plus, Search, Trash2, ChevronRight, FileText, Clock, AlertTriangle, CalendarClock, ListChecks, X, Layers } from 'lucide-react';
 import { Licitacion, LicitacionEstado, LICITACION_ESTADO_LABELS, LICITACION_ESTADO_COLORS, TIPO_PROCESO_LABELS } from '@/accounting/licitacion-types';
 import { fmt } from '@/accounting/utils';
 import { NuevaLicitacionModal } from './NuevaLicitacionModal';
+import { LicitacionesConsolidado } from './LicitacionesConsolidado';
 
 interface Props {
   licitaciones: Licitacion[];
@@ -30,6 +31,22 @@ export function LicitacionesLista({ licitaciones, loading, onCreated, onDelete, 
   const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
   const [showModal, setShowModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Licitacion | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showConsolidado, setShowConsolidado] = useState(false);
+
+  const toggleSelectMode = () => {
+    setSelectMode(prev => !prev);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => {
+      const s = new Set(prev);
+      if (s.has(id)) s.delete(id); else s.add(id);
+      return s;
+    });
+  };
 
   const filtered = licitaciones.filter(l => {
     const matchSearch = !search ||
@@ -53,10 +70,16 @@ export function LicitacionesLista({ licitaciones, loading, onCreated, onDelete, 
             {licitaciones.length} proceso{licitaciones.length !== 1 ? 's' : ''} registrado{licitaciones.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <Button onClick={() => setShowModal(true)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Nueva Licitación
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={toggleSelectMode} className="gap-2">
+            {selectMode ? <X className="h-4 w-4" /> : <ListChecks className="h-4 w-4" />}
+            {selectMode ? 'Cancelar selección' : 'Seleccionar'}
+          </Button>
+          <Button onClick={() => setShowModal(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Nueva Licitación
+          </Button>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -91,16 +114,40 @@ export function LicitacionesLista({ licitaciones, loading, onCreated, onDelete, 
         <div className="space-y-8">
           {/* Activas */}
           {activas.length > 0 && (
-            <Section titulo="Activas" items={activas} onOpen={onOpen} onDelete={setDeleteTarget} />
+            <Section
+              titulo="Activas" items={activas} onOpen={onOpen} onDelete={setDeleteTarget}
+              selectMode={selectMode} selectedIds={selectedIds} onToggleSelected={toggleSelected}
+            />
           )}
           {/* Cerradas */}
           {cerradas.length > 0 && (
-            <Section titulo="Historial" items={cerradas} onOpen={onOpen} onDelete={setDeleteTarget} dimmed />
+            <Section
+              titulo="Historial" items={cerradas} onOpen={onOpen} onDelete={setDeleteTarget} dimmed
+              selectMode={selectMode} selectedIds={selectedIds} onToggleSelected={toggleSelected}
+            />
           )}
           {filtered.length === 0 && (
             <p className="text-center text-muted-foreground py-8">Sin resultados para la búsqueda.</p>
           )}
         </div>
+      )}
+
+      {/* Barra flotante de selección */}
+      {selectMode && selectedIds.size >= 2 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-full border bg-background shadow-lg px-4 py-2.5">
+          <span className="text-sm font-medium">{selectedIds.size} seleccionadas</span>
+          <Button size="sm" className="gap-2" onClick={() => setShowConsolidado(true)}>
+            <Layers className="h-3.5 w-3.5" />
+            Ver consolidado
+          </Button>
+        </div>
+      )}
+
+      {showConsolidado && (
+        <LicitacionesConsolidado
+          ids={Array.from(selectedIds)}
+          onClose={() => setShowConsolidado(false)}
+        />
       )}
 
       <NuevaLicitacionModal
@@ -134,19 +181,25 @@ export function LicitacionesLista({ licitaciones, loading, onCreated, onDelete, 
 
 // ─── Sección agrupada ──────────────────────────────────────────────────────────
 
-function Section({ titulo, items, onOpen, onDelete, dimmed }: {
+function Section({ titulo, items, onOpen, onDelete, dimmed, selectMode, selectedIds, onToggleSelected }: {
   titulo: string;
   items: Licitacion[];
   onOpen: (id: string) => void;
   onDelete: (l: Licitacion) => void;
   dimmed?: boolean;
+  selectMode: boolean;
+  selectedIds: Set<string>;
+  onToggleSelected: (id: string) => void;
 }) {
   return (
     <div>
       <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">{titulo}</h2>
       <div className="rounded-lg border divide-y overflow-hidden">
         {items.map(l => (
-          <LicitacionRow key={l.id} licitacion={l} onOpen={onOpen} onDelete={onDelete} dimmed={dimmed} />
+          <LicitacionRow
+            key={l.id} licitacion={l} onOpen={onOpen} onDelete={onDelete} dimmed={dimmed}
+            selectMode={selectMode} selected={selectedIds.has(l.id)} onToggleSelected={onToggleSelected}
+          />
         ))}
       </div>
     </div>
@@ -155,17 +208,30 @@ function Section({ titulo, items, onOpen, onDelete, dimmed }: {
 
 // ─── Fila ──────────────────────────────────────────────────────────────────────
 
-function LicitacionRow({ licitacion: l, onOpen, onDelete, dimmed }: {
+function LicitacionRow({ licitacion: l, onOpen, onDelete, dimmed, selectMode, selected, onToggleSelected }: {
   licitacion: Licitacion;
   onOpen: (id: string) => void;
   onDelete: (l: Licitacion) => void;
   dimmed?: boolean;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelected: (id: string) => void;
 }) {
   return (
     <div
-      className={`flex items-center gap-4 px-4 py-3 hover:bg-muted/50 cursor-pointer transition-colors ${dimmed ? 'opacity-60' : ''}`}
-      onClick={() => onOpen(l.id)}
+      className={`flex items-center gap-4 px-4 py-3 hover:bg-muted/50 cursor-pointer transition-colors ${dimmed ? 'opacity-60' : ''} ${selected ? 'bg-primary/5' : ''}`}
+      onClick={() => selectMode ? onToggleSelected(l.id) : onOpen(l.id)}
     >
+      {selectMode && (
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelected(l.id)}
+          onClick={e => e.stopPropagation()}
+          className="shrink-0 h-4 w-4 rounded"
+        />
+      )}
+
       {/* Estado */}
       <Badge className={`shrink-0 text-xs ${LICITACION_ESTADO_COLORS[l.estado]}`}>
         {LICITACION_ESTADO_LABELS[l.estado]}

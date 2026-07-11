@@ -24,9 +24,62 @@ const GA_CIF_EXTRA    = 0.02;     // 2% adicional sobre PRECIO_BOB para base CIF
  *   puede sobreescribirlo con `p.tc_oficial`. Si ambos faltan, se usa TC_OFICIAL.
  */
 export function calcProducto(p: LicitacionProducto, tcOficialDefault?: number): ProductoCalc {
+  const cantidad = p.cantidad || 1;
+
+  // — Compra local (Bolivia): sin GA, sin IVA aduanero, sin flete internacional ni T/C —
+  if (p.origen === 'local') {
+    const precioLocal = p.precio_local || 0;
+    const bateria      = p.tiene_bateria ? round2(p.costo_bateria) : 0;
+    // Crédito fiscal: solo si la compra tiene factura (13% del precio de compra, igual que el IVA aduana funciona como crédito para los importados).
+    const iva_aduana   = p.tiene_factura ? round2(precioLocal * IVA_VENTA_RATE) : 0;
+
+    const total_individual = round2(precioLocal + bateria);
+    const total_import     = round2(total_individual * cantidad);
+    const total_ofertado   = round2(p.precio_ofertado * cantidad);
+
+    const iva_pagar = round2(total_ofertado * IVA_VENTA_RATE - iva_aduana * cantidad);
+    const it_pagar  = round2(total_ofertado * IT_RATE);
+
+    const extras = round2(
+      (p.garantia || 0) + (p.pasaje || 0) + (p.envio_local || 0) + (p.otros_costos || 0)
+    );
+
+    const costos   = round2(total_import + iva_pagar + it_pagar + extras);
+    const ganancia = round2(total_ofertado - costos);
+    const roi      = costos > 0 ? round2(ganancia / costos) : 0;
+
+    const denominador = cantidad * (1 - IVA_IT_TOTAL);
+    const precio_piso = denominador > 0
+      ? round2((total_import - iva_aduana * cantidad + extras) / denominador)
+      : 0;
+
+    return {
+      precio_bs: precioLocal,
+      precio_bob: 0,
+      peso_vol: 0,
+      peso: 0,
+      envio: 0,
+      ga_calculado: 0,
+      ga: 0,
+      iva_aduana_calculado: iva_aduana,
+      iva_aduana,
+      impuestos: iva_aduana,
+      manipuleo: 0,
+      bateria,
+      total_individual,
+      total_import,
+      total_ofertado,
+      iva_pagar,
+      it_pagar,
+      costos,
+      ganancia,
+      roi,
+      precio_piso,
+    };
+  }
+
   const tc       = p.tc || 0;
   const tcEnvio  = p.tc_envio ?? tc;
-  const cantidad = p.cantidad || 1;
 
   const precioUsd = p.precio_usd ?? 0;
 
@@ -139,45 +192,63 @@ export function calcResumen(
   productos: LicitacionProducto[],
   calcs: ProductoCalc[]
 ): LicitacionResumen {
-  let total_import   = 0;
-  let total_ofertado = 0;
+  let total_ofertado    = 0;
   let precio_piso_total = 0;
-  let iva_pagar      = 0;
-  let it_pagar       = 0;
-  let extras         = 0;
-  // Desglose por tipo de gasto (todos los productos)
-  let total_usd        = 0;
-  let total_precio_bs  = 0;
-  let total_envio      = 0;
-  let total_ga         = 0;
-  let total_iva_aduana = 0;
-  let total_manipuleo  = 0;
+  let iva_pagar         = 0;
+  let it_pagar          = 0;
+  let extras            = 0;
+
+  // Costo de productos importados
+  let costo_importados  = 0;
+  let tiene_importados  = false;
+  let total_usd         = 0;
+  let total_precio_bs   = 0;
+  let total_envio       = 0;
+  let total_ga          = 0;
+  let total_iva_aduana  = 0;
+  let total_manipuleo   = 0;
+
+  // Costo de mercadería comprada nacionalmente
+  let costo_nacional           = 0;
+  let tiene_nacionales         = false;
+  let total_iva_credito_local  = 0;
 
   for (let i = 0; i < productos.length; i++) {
     const c = calcs[i];
     const p = productos[i];
     const cantidad = p.cantidad || 1;
-    total_import      += c.total_import;
+    const esLocal = p.origen === 'local';
+
+    if (esLocal) {
+      tiene_nacionales        = true;
+      costo_nacional          += c.total_import;
+      total_iva_credito_local += c.iva_aduana * cantidad;
+    } else {
+      tiene_importados = true;
+      costo_importados += c.total_import;
+      // Desglose: los valores del calc son unitarios → se multiplican por cantidad.
+      total_usd        += (p.precio_usd || 0) * cantidad;
+      total_precio_bs  += c.precio_bs  * cantidad;
+      total_envio      += c.envio      * cantidad;
+      total_ga         += c.ga         * cantidad;
+      total_iva_aduana += c.iva_aduana * cantidad;
+      total_manipuleo  += c.manipuleo  * cantidad;
+    }
+
     total_ofertado    += c.total_ofertado;
     precio_piso_total += c.precio_piso * cantidad;
     iva_pagar         += c.iva_pagar;
     it_pagar          += c.it_pagar;
     extras            += (p.garantia || 0) + (p.pasaje || 0) + (p.envio_local || 0) + (p.otros_costos || 0);
-    // Desglose: los valores del calc son unitarios → se multiplican por cantidad.
-    total_usd        += (p.precio_usd || 0) * cantidad;
-    total_precio_bs  += c.precio_bs  * cantidad;
-    total_envio      += c.envio      * cantidad;
-    total_ga         += c.ga         * cantidad;
-    total_iva_aduana += c.iva_aduana * cantidad;
-    total_manipuleo  += c.manipuleo  * cantidad;
   }
 
+  const total_import = round2(costo_importados + costo_nacional);
   const costos   = round2(total_import + iva_pagar + it_pagar + extras);
   const ganancia = round2(total_ofertado - costos);
   const roi      = costos > 0 ? round2(ganancia / costos) : 0;
 
   return {
-    total_import:      round2(total_import),
+    total_import,
     total_ofertado:    round2(total_ofertado),
     precio_piso_total: round2(precio_piso_total),
     iva_pagar:         round2(iva_pagar),
@@ -185,12 +256,83 @@ export function calcResumen(
     costos,
     ganancia,
     roi,
+
+    costo_importados: round2(costo_importados),
+    tiene_importados,
     total_usd:         round2(total_usd),
     total_precio_bs:   round2(total_precio_bs),
     total_envio:       round2(total_envio),
     total_ga:          round2(total_ga),
     total_iva_aduana:  round2(total_iva_aduana),
     total_manipuleo:   round2(total_manipuleo),
+
+    costo_nacional: round2(costo_nacional),
+    tiene_nacionales,
+    total_iva_credito_local: round2(total_iva_credito_local),
+  };
+}
+
+/**
+ * Consolida los resúmenes de varias licitaciones (ya calculados) en uno solo,
+ * para la vista de "seleccionar N licitaciones → ver combinado". El ROI se
+ * recalcula sobre los totales combinados (no se promedian los ROI individuales).
+ */
+export function sumarResumenes(resumenes: LicitacionResumen[]): LicitacionResumen {
+  const acc = {
+    total_import: 0, total_ofertado: 0, precio_piso_total: 0, iva_pagar: 0, it_pagar: 0,
+    costos: 0, ganancia: 0,
+    costo_importados: 0, tiene_importados: false,
+    total_usd: 0, total_precio_bs: 0, total_envio: 0, total_ga: 0, total_iva_aduana: 0, total_manipuleo: 0,
+    costo_nacional: 0, tiene_nacionales: false, total_iva_credito_local: 0,
+  };
+
+  for (const r of resumenes) {
+    acc.total_import        += r.total_import;
+    acc.total_ofertado       += r.total_ofertado;
+    acc.precio_piso_total    += r.precio_piso_total;
+    acc.iva_pagar            += r.iva_pagar;
+    acc.it_pagar             += r.it_pagar;
+    acc.costos               += r.costos;
+    acc.ganancia             += r.ganancia;
+    acc.costo_importados     += r.costo_importados;
+    acc.tiene_importados      = acc.tiene_importados || r.tiene_importados;
+    acc.total_usd            += r.total_usd;
+    acc.total_precio_bs      += r.total_precio_bs;
+    acc.total_envio          += r.total_envio;
+    acc.total_ga             += r.total_ga;
+    acc.total_iva_aduana     += r.total_iva_aduana;
+    acc.total_manipuleo      += r.total_manipuleo;
+    acc.costo_nacional       += r.costo_nacional;
+    acc.tiene_nacionales      = acc.tiene_nacionales || r.tiene_nacionales;
+    acc.total_iva_credito_local += r.total_iva_credito_local;
+  }
+
+  // costos/ganancia se suman directo de cada resumen (ya incluyen los "extras"
+  // — garantía/pasaje/envío/otros — que no viajan en LicitacionResumen).
+  const costos   = round2(acc.costos);
+  const ganancia = round2(acc.ganancia);
+  const roi      = costos > 0 ? round2(ganancia / costos) : 0;
+
+  return {
+    total_import:      round2(acc.total_import),
+    total_ofertado:    round2(acc.total_ofertado),
+    precio_piso_total: round2(acc.precio_piso_total),
+    iva_pagar:         round2(acc.iva_pagar),
+    it_pagar:          round2(acc.it_pagar),
+    costos,
+    ganancia,
+    roi,
+    costo_importados: round2(acc.costo_importados),
+    tiene_importados: acc.tiene_importados,
+    total_usd:         round2(acc.total_usd),
+    total_precio_bs:   round2(acc.total_precio_bs),
+    total_envio:       round2(acc.total_envio),
+    total_ga:          round2(acc.total_ga),
+    total_iva_aduana:  round2(acc.total_iva_aduana),
+    total_manipuleo:   round2(acc.total_manipuleo),
+    costo_nacional: round2(acc.costo_nacional),
+    tiene_nacionales: acc.tiene_nacionales,
+    total_iva_credito_local: round2(acc.total_iva_credito_local),
   };
 }
 
@@ -229,6 +371,9 @@ export function emptyProducto(licitacion_id: string, orden: number): LicitacionP
     pasaje:          0,
     envio_local:     0,
     otros_costos:    0,
+    origen:          'importado',
+    precio_local:    undefined,
+    tiene_factura:   false,
     fuente:          'manual',
   };
 }
