@@ -1,6 +1,7 @@
 // src/accounting/data-adapter.ts
 import { Account, JournalEntry, AuxiliaryLedgerEntry, AuxiliaryLedgerDefinition, AuxiliaryMovementDetail, KardexDefinition, seedAccounts } from './types';
 import { cmpEntryOrder, round2 } from './utils';
+import { calculateCPP } from './kardex-utils';
 import { supabase } from '@/integrations/supabase/client';
 import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 
@@ -96,9 +97,12 @@ export const LocalAdapter: IDataAdapter = {
     list.sort(cmpEntryOrder);
     localStorage.setItem(LS_ENTRIES, JSON.stringify(list));
   },
-  async deleteEntry(id){ 
-    const list = await this.loadEntries(); 
-    localStorage.setItem(LS_ENTRIES, JSON.stringify(list.filter(e=>e.id!==id))); 
+  async deleteEntry(id){
+    const list = await this.loadEntries();
+    localStorage.setItem(LS_ENTRIES, JSON.stringify(list.filter(e=>e.id!==id)));
+    const movRaw = localStorage.getItem(LS_AUX_MOVEMENTS);
+    const movements: AuxiliaryMovementDetail[] = movRaw ? JSON.parse(movRaw) : [];
+    localStorage.setItem(LS_AUX_MOVEMENTS, JSON.stringify(movements.filter(m => m.journal_entry_id !== id)));
   },
   async loadAuxiliaryDefinitions(){ 
     const raw = localStorage.getItem(LS_AUX_DEFINITIONS); 
@@ -330,6 +334,56 @@ export function createSupaAdapter(companyId: string): IDataAdapter {
     },
     async deleteEntry(id){
       const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteEntry(id);
+      const { error: eAux } = await supa.from("auxiliary_movement_details").delete().eq("journal_entry_id", id).eq("company_id", companyId);
+      if (eAux) throw eAux;
+
+      // Kardex: borrar movimientos ligados a este asiento y recalcular el CPP
+      // de los movimientos restantes de cada kardex afectado (saldo/costo_unitario/
+      // saldo_valorado quedan grabados por fila, no se recalculan al leer).
+      const { data: affectedMovs, error: selKardexErr } = await supa
+        .from("kardex_movements")
+        .select("id, kardex_id")
+        .eq("journal_entry_id", id)
+        .eq("company_id", companyId);
+      if (selKardexErr) throw selKardexErr;
+
+      if (affectedMovs && affectedMovs.length > 0) {
+        const kardexIds = Array.from(new Set(affectedMovs.map((m) => m.kardex_id)));
+
+        const { error: delKardexErr } = await supa
+          .from("kardex_movements")
+          .delete()
+          .eq("journal_entry_id", id)
+          .eq("company_id", companyId);
+        if (delKardexErr) throw delKardexErr;
+
+        for (const kardexId of kardexIds) {
+          const { data: remaining, error: remErr } = await supa
+            .from("kardex_movements")
+            .select("id, entrada, salidas, costo_total")
+            .eq("kardex_id", kardexId)
+            .eq("company_id", companyId)
+            .order("fecha", { ascending: true })
+            .order("created_at", { ascending: true });
+          if (remErr) throw remErr;
+          if (!remaining || remaining.length === 0) continue;
+
+          const recalculated = calculateCPP(remaining);
+          for (const mov of recalculated) {
+            const { error: updErr } = await supa
+              .from("kardex_movements")
+              .update({
+                saldo: mov.saldo,
+                costo_unitario: mov.costo_unitario,
+                costo_total: mov.costo_total,
+                saldo_valorado: mov.saldo_valorado,
+              })
+              .eq("id", mov.id);
+            if (updErr) throw updErr;
+          }
+        }
+      }
+
       const { error: e1 } = await supa.from("journal_lines").delete().eq("entry_id", id);
       if (e1) throw e1;
       const { error: e2 } = await supa.from("journal_entries").delete().eq("id", id).eq("company_id", companyId);
