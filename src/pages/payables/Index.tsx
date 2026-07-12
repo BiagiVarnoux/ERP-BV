@@ -14,6 +14,8 @@ import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext'
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { fmt, round2, todayISO, nowInAppTZ } from '@/accounting/utils';
 import { getMonthEndDate } from '@/accounting/period-utils';
+import { useAccounting } from '@/accounting/AccountingProvider';
+import { AccountCombobox } from '@/components/journal/AccountCombobox';
 import {
   listPayables,
   createPayable,
@@ -46,17 +48,6 @@ function pendienteCellClass(row: PayableRow): string {
   return 'text-right font-medium';
 }
 
-const TIPO_PAGO_OPTIONS = [
-  'Caja MN',
-  'Banco MN',
-  'Banco ME',
-  'Facebank',
-  'Facebank 2',
-  'Facebank 3',
-  'USDT',
-  'USDT 2',
-] as const;
-
 type EstadoFilter = 'all' | 'open' | 'vencidos' | 'paid';
 
 function estadoFilterLabel(f: EstadoFilter): string {
@@ -75,6 +66,8 @@ export default function PayablesPage() {
   const canCreate = can('payables', 'create');
   const canEdit   = can('payables', 'edit');
   const activeCompanyId = useActiveCompanyId();
+  const { accounts } = useAccounting();
+  const cuentasPasivo = useMemo(() => accounts.filter(a => a.type === 'PASIVO'), [accounts]);
   const [rows, setRows]       = useState<PayableRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -89,7 +82,7 @@ export default function PayablesPage() {
   const [payTarget, setPayTarget] = useState<PayableRow | null>(null);
   const [payFecha, setPayFecha]   = useState(today());
   const [payMonto, setPayMonto]   = useState('');
-  const [payTipo, setPayTipo]     = useState<string>(TIPO_PAGO_OPTIONS[0]);
+  const [payCuentaPago, setPayCuentaPago] = useState('');
   const [payNotas, setPayNotas]   = useState('');
   const [paying, setPaying]       = useState(false);
 
@@ -103,6 +96,8 @@ export default function PayablesPage() {
   const [createMonto, setCreateMonto]               = useState('');
   const [createMoneda, setCreateMoneda]             = useState<Moneda>('BOB');
   const [createNotas, setCreateNotas]               = useState('');
+  const [createCuentaGasto, setCreateCuentaGasto]   = useState('');
+  const [createCuentaPasivo, setCreateCuentaPasivo] = useState('');
   const [creating, setCreating]                     = useState(false);
 
   useEffect(() => { load(); loadPagadoMes(); }, []);
@@ -169,7 +164,7 @@ export default function PayablesPage() {
     setPayTarget(row);
     setPayFecha(today());
     setPayMonto(String(row.monto_pendiente));
-    setPayTipo(TIPO_PAGO_OPTIONS[0]);
+    setPayCuentaPago('');
     setPayNotas('');
   }
 
@@ -184,16 +179,26 @@ export default function PayablesPage() {
       toast.error(`El monto no puede superar el pendiente (${fmt(payTarget.monto_pendiente)})`);
       return;
     }
+    if (!payCuentaPago) {
+      toast.error('Selecciona la cuenta de banco/caja con la que pagas');
+      return;
+    }
+    if (!payTarget.cuenta_pasivo_id) {
+      toast.error('Esta CxP fue creada antes de vincularse al libro diario y no puede generar el asiento de pago automáticamente.');
+      return;
+    }
+    const cuentaPago = accounts.find(a => a.id === payCuentaPago);
     setPaying(true);
     try {
       await registerPayablePayment({
-        payable_id: payTarget.id,
-        fecha:      payFecha,
+        payable_id:     payTarget.id,
+        fecha:          payFecha,
         monto,
-        tipo_pago:  payTipo,
-        notas:      payNotas || null,
+        tipo_pago:      cuentaPago?.name ?? payCuentaPago,
+        cuenta_pago_id: payCuentaPago,
+        notas:          payNotas || null,
       });
-      toast.success('Pago registrado correctamente');
+      toast.success('Pago registrado y asiento generado correctamente');
       setPayTarget(null);
       await Promise.all([load(), loadPagadoMes()]);
     } catch (e: unknown) {
@@ -214,6 +219,8 @@ export default function PayablesPage() {
     setCreateMonto('');
     setCreateMoneda('BOB');
     setCreateNotas('');
+    setCreateCuentaGasto('');
+    setCreateCuentaPasivo('');
     setShowCreate(true);
   }
 
@@ -222,6 +229,8 @@ export default function PayablesPage() {
     if (!createNumero.trim())    { toast.error('Nº Documento requerido'); return; }
     const monto = parseFloat(createMonto);
     if (isNaN(monto) || monto <= 0) { toast.error('Monto inválido'); return; }
+    if (!createCuentaGasto)  { toast.error('Selecciona la cuenta de gasto/activo (débito)'); return; }
+    if (!createCuentaPasivo) { toast.error('Selecciona la cuenta por pagar (crédito)'); return; }
 
     setCreating(true);
     try {
@@ -234,8 +243,10 @@ export default function PayablesPage() {
         monto_original:    monto,
         moneda:            createMoneda,
         notas:             createNotas || null,
+        cuenta_gasto_id:   createCuentaGasto,
+        cuenta_pasivo_id:  createCuentaPasivo,
       });
-      toast.success('CxP creada correctamente');
+      toast.success('CxP creada y asiento generado correctamente');
       setShowCreate(false);
       load();
     } catch (e: unknown) {
@@ -453,17 +464,8 @@ export default function PayablesPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="pay-tipo">Tipo de pago</Label>
-                <Select value={payTipo} onValueChange={setPayTipo}>
-                  <SelectTrigger id="pay-tipo">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TIPO_PAGO_OPTIONS.map(t => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Cuenta de pago (banco/caja) <span className="text-destructive">*</span></Label>
+                <AccountCombobox value={payCuentaPago} onChange={setPayCuentaPago} accounts={accounts} />
               </div>
 
               <div className="space-y-2">
@@ -574,6 +576,17 @@ export default function PayablesPage() {
                     <SelectItem value="USDT">USDT</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Cuenta de gasto/activo (Débito) <span className="text-destructive">*</span></Label>
+                <AccountCombobox value={createCuentaGasto} onChange={setCreateCuentaGasto} accounts={accounts} />
+              </div>
+              <div className="space-y-2">
+                <Label>Cuenta por pagar (Crédito) <span className="text-destructive">*</span></Label>
+                <AccountCombobox value={createCuentaPasivo} onChange={setCreateCuentaPasivo} accounts={cuentasPasivo} />
               </div>
             </div>
 

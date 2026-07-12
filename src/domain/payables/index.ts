@@ -1,6 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
 import { resolveUserCompanyId } from '@/lib/resolveCompanyId';
-import { round2 } from '@/accounting/utils';
 import { logAuditEntry } from '@/services/auditService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -25,6 +24,9 @@ export interface PayableRow {
   moneda: Moneda;
   estado: PayableEstado;
   notas: string | null;
+  journal_entry_id: string | null;
+  cuenta_gasto_id: string | null;
+  cuenta_pasivo_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -38,6 +40,8 @@ export interface CreatePayableInput {
   monto_original: number;
   moneda: Moneda;
   notas?: string | null;
+  cuenta_gasto_id: string;
+  cuenta_pasivo_id: string;
 }
 
 export interface RegisterPayablePaymentInput {
@@ -45,6 +49,7 @@ export interface RegisterPayablePaymentInput {
   fecha: string;
   monto: number;
   tipo_pago: string;
+  cuenta_pago_id: string;
   notas?: string | null;
 }
 
@@ -67,20 +72,21 @@ export async function createPayable(input: CreatePayableInput): Promise<void> {
   if (!user) throw new Error('No autenticado');
   const companyId = await resolveUserCompanyId();
 
-  const { error } = await (supabase.from('payables' as any).insert({
-    company_id:       companyId,
-    user_id:          user.id,
-    proveedor_nombre: input.proveedor_nombre,
-    proveedor_nit:    input.proveedor_nit ?? null,
-    numero_documento: input.numero_documento,
-    fecha_emision:    input.fecha_emision,
-    fecha_vencimiento: input.fecha_vencimiento ?? null,
-    monto_original:   input.monto_original,
-    monto_pendiente:  input.monto_original,
-    moneda:           input.moneda,
-    estado:           'open',
-    notas:            input.notas ?? null,
-  } as any) as any);
+  const { data, error } = await (supabase.rpc('create_payable_with_journal' as any, {
+    payload: {
+      company_id:        companyId,
+      proveedor_nombre:  input.proveedor_nombre,
+      proveedor_nit:     input.proveedor_nit ?? null,
+      numero_documento:  input.numero_documento,
+      fecha_emision:     input.fecha_emision,
+      fecha_vencimiento: input.fecha_vencimiento ?? null,
+      monto_original:    input.monto_original,
+      moneda:            input.moneda,
+      notas:             input.notas ?? null,
+      cuenta_gasto_id:   input.cuenta_gasto_id,
+      cuenta_pasivo_id:  input.cuenta_pasivo_id,
+    },
+  }) as any);
 
   if (error) throw new Error(error.message);
 
@@ -91,56 +97,34 @@ export async function createPayable(input: CreatePayableInput): Promise<void> {
     monto_original: input.monto_original,
     moneda: input.moneda,
     fecha_emision: input.fecha_emision,
+    journal_entry_id: (data as { entry_id?: string } | null)?.entry_id ?? null,
   });
 }
 
 export async function registerPayablePayment(input: RegisterPayablePaymentInput): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No autenticado');
-
-  // 1. Fetch current payable
-  const { data: rec, error: fetchErr } = await (supabase
-    .from('payables' as any)
-    .select('monto_pendiente')
-    .eq('id', input.payable_id)
-    .single() as any);
-  if (fetchErr || !rec) throw new Error(fetchErr?.message ?? 'Documento no encontrado');
-
-  const currentPendiente = (rec as { monto_pendiente: number }).monto_pendiente;
-
-  // 2. Insert payment record
   const companyId = await resolveUserCompanyId();
-  const { error: payErr } = await (supabase.from('debt_payments' as any).insert({
-    company_id:    companyId,
-    user_id:       user.id,
-    receivable_id: null,
-    payable_id:    input.payable_id,
-    fecha:         input.fecha,
-    monto:         input.monto,
-    tipo_pago:     input.tipo_pago,
-    notas:         input.notas ?? null,
-  } as any) as any);
-  if (payErr) throw new Error(payErr.message);
 
-  // 3. Recalculate pending balance and new estado
-  const newPendiente = round2(currentPendiente - input.monto);
-  const newEstado: PayableEstado = newPendiente <= 0 ? 'paid' : 'partial';
+  const { data, error } = await (supabase.rpc('register_payable_payment_with_journal' as any, {
+    payload: {
+      company_id:     companyId,
+      payable_id:     input.payable_id,
+      fecha:          input.fecha,
+      monto:          input.monto,
+      tipo_pago:      input.tipo_pago,
+      cuenta_pago_id: input.cuenta_pago_id,
+      notas:          input.notas ?? null,
+    },
+  }) as any);
+  if (error) throw new Error(error.message);
 
-  // 4. Update payable
-  const { error: updErr } = await (supabase
-    .from('payables' as any)
-    .update({
-      monto_pendiente: Math.max(0, newPendiente),
-      estado:          newEstado,
-      updated_at:      new Date().toISOString(),
-    } as any)
-    .eq('id', input.payable_id) as any);
-  if (updErr) throw new Error(updErr.message);
+  const result = data as { monto_pendiente?: number; estado?: PayableEstado; entry_id?: string } | null;
 
   // Audit trail
   await logAuditEntry('payables', input.payable_id, 'UPDATE',
-    { monto_pendiente: currentPendiente, estado: 'open' },
-    { monto_pendiente: Math.max(0, newPendiente), estado: newEstado, pago_monto: input.monto }
+    { estado: 'open' },
+    { monto_pendiente: result?.monto_pendiente ?? null, estado: result?.estado ?? null, pago_monto: input.monto, journal_entry_id: result?.entry_id ?? null }
   );
 }
 
