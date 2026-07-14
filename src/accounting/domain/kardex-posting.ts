@@ -50,6 +50,17 @@ export async function postKardexMovement(opts: PostKardexMovementOpts): Promise<
     kardexId = created.id;
   }
 
+  // Borrar el movimiento previo ligado a este mismo asiento (si existe) antes de
+  // recalcular e insertar el nuevo. Sin esto, reabrir el popup de kárdex al
+  // editar un asiento ya guardado duplica el movimiento (mismo journal_entry_id).
+  const { error: delErr } = await supabase
+    .from('kardex_movements')
+    .delete()
+    .eq('kardex_id', kardexId)
+    .eq('company_id', companyId)
+    .eq('journal_entry_id', journalEntryId);
+  if (delErr) throw delErr;
+
   // Estado CPP actual a partir de todos los movimientos previos
   const { data: allMovements } = await supabase
     .from('kardex_movements')

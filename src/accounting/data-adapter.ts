@@ -165,19 +165,24 @@ export const LocalAdapter: IDataAdapter = {
   },
   async upsertAuxiliaryMovementDetails(details: AuxiliaryMovementDetail[]): Promise<void> {
     const raw = localStorage.getItem(LS_AUX_MOVEMENTS);
-    const allMovements: AuxiliaryMovementDetail[] = raw ? JSON.parse(raw) : [];
-    
+    let allMovements: AuxiliaryMovementDetail[] = raw ? JSON.parse(raw) : [];
+
+    // Quitar los movimientos previos ligados a estos mismos asientos antes de
+    // insertar los nuevos (evita duplicar al editar y volver a guardar un
+    // asiento que ya tenía un movimiento auxiliar vinculado).
+    const journalEntryIds = new Set(details.map(d => d.journal_entry_id).filter(Boolean));
+    if (journalEntryIds.size > 0) {
+      allMovements = allMovements.filter(m => !journalEntryIds.has(m.journal_entry_id));
+    }
+
     for (const detail of details) {
       // Generate UUID if creating new movement
       if (!detail.id) {
         detail.id = crypto.randomUUID();
       }
-      
-      const i = allMovements.findIndex(m => m.id === detail.id);
-      if (i >= 0) allMovements[i] = detail;
-      else allMovements.push(detail);
+      allMovements.push(detail);
     }
-    
+
     localStorage.setItem(LS_AUX_MOVEMENTS, JSON.stringify(allMovements));
     
     // Automatic reopening: Check if any affected clients are closed and reopen them
@@ -517,6 +522,19 @@ export function createSupaAdapter(companyId: string): IDataAdapter {
       const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryMovementDetails(details);
       const { data: { user } } = await supa.auth.getUser();
       if (!user) throw new Error("Usuario no autenticado");
+
+      // Borrar los movimientos previos ligados a estos mismos asientos antes de
+      // insertar los nuevos. Sin esto, editar y volver a guardar un asiento que
+      // ya tenía un movimiento auxiliar lo duplica (mismo journal_entry_id).
+      const journalEntryIds = Array.from(new Set(details.map(d => d.journal_entry_id).filter(Boolean)));
+      if (journalEntryIds.length > 0) {
+        const { error: delErr } = await supa
+          .from("auxiliary_movement_details")
+          .delete()
+          .in("journal_entry_id", journalEntryIds)
+          .eq("company_id", companyId);
+        if (delErr) throw delErr;
+      }
 
       const payload = details.map(d => {
         const detailCopy = { ...d, user_id: user.id, company_id: companyId };
