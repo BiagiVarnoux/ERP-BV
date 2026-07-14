@@ -33,7 +33,9 @@ export function LicitacionesConsolidado({ ids, onClose }: Props) {
         const licitaciones = await Promise.all(ids.map(id => LicitacionStorage.loadOne(id)));
         const built = licitaciones.map(lit => {
           const calcs = lit.productos.map(p => calcProducto(p, lit.tc_oficial));
-          return { licitacion: lit, resumen: calcResumen(lit.productos, calcs) };
+          const costosLic = (lit.garantia_licitacion || 0) + (lit.pasaje_licitacion || 0)
+            + (lit.envio_licitacion || 0) + (lit.otros_costos_licitacion || 0);
+          return { licitacion: lit, resumen: calcResumen(lit.productos, calcs, costosLic) };
         });
         if (active) setItems(built);
       } catch {
@@ -72,6 +74,7 @@ export function LicitacionesConsolidado({ ids, onClose }: Props) {
                 <Item label="Total ofertado" value={total.total_ofertado} />
                 <Item label="IVA a pagar" value={total.iva_pagar} />
                 <Item label="IT a pagar" value={total.it_pagar} />
+                {total.costos_licitacion > 0 && <Item label="Costos de licitación" value={total.costos_licitacion} />}
                 <Item label="Costos totales" value={total.costos} bold />
                 <Item
                   label="Ganancia"

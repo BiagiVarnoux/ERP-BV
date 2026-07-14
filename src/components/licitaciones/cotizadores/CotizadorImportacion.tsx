@@ -70,6 +70,11 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   // T/C de compra y envío a nivel de licitación: se aplican en bloque a todos los productos.
   const [headerTcCompra, setHeaderTcCompra] = useState<number>(licitacion.productos[0]?.tc ?? 9.97);
   const [headerTcEnvio, setHeaderTcEnvio]   = useState<number | undefined>(licitacion.productos[0]?.tc_envio);
+  // Costos de TODA la licitación (no por producto), ej. boleta de garantía.
+  const [garantiaLic, setGarantiaLic] = useState<number>(licitacion.garantia_licitacion || 0);
+  const [pasajeLic, setPasajeLic]     = useState<number>(licitacion.pasaje_licitacion || 0);
+  const [envioLic, setEnvioLic]       = useState<number>(licitacion.envio_licitacion || 0);
+  const [otrosLic, setOtrosLic]       = useState<number>(licitacion.otros_costos_licitacion || 0);
   const [saving, setSaving] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -90,7 +95,11 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
 
   // Recalcular todo cada vez que cambia productos o el T/C aduanero por defecto
   const calcs = useMemo(() => productos.map(p => calcProducto(p, tcOficial)), [productos, tcOficial]);
-  const resumen = useMemo(() => calcResumen(productos, calcs), [productos, calcs]);
+  const costosLicitacionTotal = round2(garantiaLic + pasajeLic + envioLic + otrosLic);
+  const resumen = useMemo(
+    () => calcResumen(productos, calcs, costosLicitacionTotal),
+    [productos, calcs, costosLicitacionTotal]
+  );
 
   // ── Edición ────────────────────────────────────────────────────────────────
 
@@ -121,12 +130,24 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
 
   // ── Guardar ────────────────────────────────────────────────────────────────
 
+  const costosLicitacionDirty =
+    garantiaLic !== (licitacion.garantia_licitacion || 0) ||
+    pasajeLic   !== (licitacion.pasaje_licitacion || 0) ||
+    envioLic    !== (licitacion.envio_licitacion || 0) ||
+    otrosLic    !== (licitacion.otros_costos_licitacion || 0);
+
   const handleSave = async () => {
     try {
       setSaving(true);
-      // Persistir el T/C aduanero por defecto de la cotización si cambió
-      if (tcOficial !== (licitacion.tc_oficial ?? TC_OFICIAL)) {
-        await LicitacionStorage.update(licitacion.id, { tc_oficial: tcOficial });
+      // Persistir el T/C aduanero por defecto y los costos de la licitación si cambiaron
+      if (tcOficial !== (licitacion.tc_oficial ?? TC_OFICIAL) || costosLicitacionDirty) {
+        await LicitacionStorage.update(licitacion.id, {
+          tc_oficial: tcOficial,
+          garantia_licitacion: garantiaLic,
+          pasaje_licitacion: pasajeLic,
+          envio_licitacion: envioLic,
+          otros_costos_licitacion: otrosLic,
+        });
       }
       // Upsert todos los productos actuales
       await LicitacionStorage.upsertProductos(productos);
@@ -135,7 +156,15 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
       for (const p of licitacion.productos) {
         if (!idsActuales.has(p.id)) await LicitacionStorage.deleteProducto(p.id, p.licitacion_id);
       }
-      onUpdated({ ...licitacion, productos, tc_oficial: tcOficial });
+      onUpdated({
+        ...licitacion,
+        productos,
+        tc_oficial: tcOficial,
+        garantia_licitacion: garantiaLic,
+        pasaje_licitacion: pasajeLic,
+        envio_licitacion: envioLic,
+        otros_costos_licitacion: otrosLic,
+      });
       toast.success('Cotización guardada');
     } catch {
       toast.error('Error al guardar');
@@ -146,7 +175,8 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
 
   const isDirty =
     JSON.stringify(productos) !== JSON.stringify(licitacion.productos) ||
-    tcOficial !== (licitacion.tc_oficial ?? TC_OFICIAL);
+    tcOficial !== (licitacion.tc_oficial ?? TC_OFICIAL) ||
+    costosLicitacionDirty;
 
   // ── Exportar PDF ───────────────────────────────────────────────────────────
 
@@ -251,6 +281,34 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
           </div>
         </div>
 
+        {/* Costos de TODA la licitación (no por producto) */}
+        <div className="rounded-lg border bg-muted/30 px-4 py-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold">Costos de la licitación</span>
+            <span className="text-[11px] text-muted-foreground hidden sm:block">
+              Se suman una sola vez al total, no se reparten entre productos
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-3">
+            <Field label="Garantía (Bs)">
+              <NumInput value={garantiaLic || undefined} onChange={v => setGarantiaLic(v ?? 0)} min="0" className="w-28" />
+            </Field>
+            <Field label="Pasaje (Bs)">
+              <NumInput value={pasajeLic || undefined} onChange={v => setPasajeLic(v ?? 0)} min="0" className="w-28" />
+            </Field>
+            <Field label="Envío (Bs)">
+              <NumInput value={envioLic || undefined} onChange={v => setEnvioLic(v ?? 0)} min="0" className="w-28" />
+            </Field>
+            <Field label="Otros costos (Bs)">
+              <NumInput value={otrosLic || undefined} onChange={v => setOtrosLic(v ?? 0)} min="0" className="w-28" />
+            </Field>
+            <div className="flex flex-col justify-end">
+              <span className="text-[11px] text-muted-foreground">Total</span>
+              <span className="text-sm font-mono font-semibold">Bs {fmt(costosLicitacionTotal)}</span>
+            </div>
+          </div>
+        </div>
+
         {/* Tabla de productos */}
         <div className="space-y-3">
           {productos.length === 0 ? (
@@ -307,6 +365,10 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
                 setTcOficial(licitacion.tc_oficial ?? TC_OFICIAL);
                 setHeaderTcCompra(licitacion.productos[0]?.tc ?? 9.97);
                 setHeaderTcEnvio(licitacion.productos[0]?.tc_envio);
+                setGarantiaLic(licitacion.garantia_licitacion || 0);
+                setPasajeLic(licitacion.pasaje_licitacion || 0);
+                setEnvioLic(licitacion.envio_licitacion || 0);
+                setOtrosLic(licitacion.otros_costos_licitacion || 0);
               }}>
                 Descartar cambios
               </Button>
@@ -372,10 +434,36 @@ function ProductoRow({ producto: p, calc, tcOficialDefault, expanded, onToggle, 
               )}
             </div>
             <div className="text-xs text-muted-foreground">
-              {p.origen === 'local'
-                ? <>Q: {p.cantidad} · Bs {fmt(p.precio_local ?? 0)}</>
-                : <>Q: {p.cantidad} · USD {fmt(p.precio_usd ?? 0)} · T/C {p.tc}</>}
+              {p.origen === 'local' ? <>Q: {p.cantidad}</> : <>Q: {p.cantidad} · T/C {p.tc}</>}
             </div>
+          </div>
+
+          {/* Precio de compra — editable inline */}
+          <div
+            className="hidden md:flex flex-col items-end shrink-0"
+            onClick={e => e.stopPropagation()}
+            onPointerDown={e => e.stopPropagation()}
+          >
+            <span className="text-[10px] text-muted-foreground">Compra ({p.origen === 'local' ? 'Bs' : 'USD'})</span>
+            {p.origen === 'local' ? (
+              <NumInput
+                value={p.precio_local}
+                onChange={v => onChange({ precio_local: v })}
+                min="0"
+                step="0.01"
+                placeholder="0"
+                className="w-24"
+              />
+            ) : (
+              <NumInput
+                value={p.precio_usd}
+                onChange={v => onChange({ precio_usd: v ?? 0 })}
+                min="0"
+                step="0.001"
+                placeholder="0"
+                className="w-24"
+              />
+            )}
           </div>
 
           {/* Precio piso */}
@@ -941,6 +1029,9 @@ function ResumenGlobal({ resumen: r, count }: { resumen: ReturnType<typeof calcR
           <SummaryItem label="Total ofertado" value={r.total_ofertado} />
           <SummaryItem label="IVA a pagar" value={r.iva_pagar} />
           <SummaryItem label="IT a pagar" value={r.it_pagar} />
+          {r.costos_licitacion > 0 && (
+            <SummaryItem label="Costos de la licitación" value={r.costos_licitacion} />
+          )}
           <SummaryItem
             label="Costos totales"
             value={r.costos}

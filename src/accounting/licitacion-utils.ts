@@ -190,7 +190,8 @@ export function calcProducto(p: LicitacionProducto, tcOficialDefault?: number): 
  */
 export function calcResumen(
   productos: LicitacionProducto[],
-  calcs: ProductoCalc[]
+  calcs: ProductoCalc[],
+  costosLicitacion: number = 0
 ): LicitacionResumen {
   let total_ofertado    = 0;
   let precio_piso_total = 0;
@@ -243,7 +244,8 @@ export function calcResumen(
   }
 
   const total_import = round2(costo_importados + costo_nacional);
-  const costos   = round2(total_import + iva_pagar + it_pagar + extras);
+  const costosLicitacionRound = round2(costosLicitacion || 0);
+  const costos   = round2(total_import + iva_pagar + it_pagar + extras + costosLicitacionRound);
   const ganancia = round2(total_ofertado - costos);
   const roi      = costos > 0 ? round2(ganancia / costos) : 0;
 
@@ -253,6 +255,7 @@ export function calcResumen(
     precio_piso_total: round2(precio_piso_total),
     iva_pagar:         round2(iva_pagar),
     it_pagar:          round2(it_pagar),
+    costos_licitacion: costosLicitacionRound,
     costos,
     ganancia,
     roi,
@@ -280,7 +283,7 @@ export function calcResumen(
 export function sumarResumenes(resumenes: LicitacionResumen[]): LicitacionResumen {
   const acc = {
     total_import: 0, total_ofertado: 0, precio_piso_total: 0, iva_pagar: 0, it_pagar: 0,
-    costos: 0, ganancia: 0,
+    costos_licitacion: 0, costos: 0, ganancia: 0,
     costo_importados: 0, tiene_importados: false,
     total_usd: 0, total_precio_bs: 0, total_envio: 0, total_ga: 0, total_iva_aduana: 0, total_manipuleo: 0,
     costo_nacional: 0, tiene_nacionales: false, total_iva_credito_local: 0,
@@ -292,6 +295,7 @@ export function sumarResumenes(resumenes: LicitacionResumen[]): LicitacionResume
     acc.precio_piso_total    += r.precio_piso_total;
     acc.iva_pagar            += r.iva_pagar;
     acc.it_pagar             += r.it_pagar;
+    acc.costos_licitacion    += r.costos_licitacion;
     acc.costos               += r.costos;
     acc.ganancia             += r.ganancia;
     acc.costo_importados     += r.costo_importados;
@@ -319,6 +323,7 @@ export function sumarResumenes(resumenes: LicitacionResumen[]): LicitacionResume
     precio_piso_total: round2(acc.precio_piso_total),
     iva_pagar:         round2(acc.iva_pagar),
     it_pagar:          round2(acc.it_pagar),
+    costos_licitacion: round2(acc.costos_licitacion),
     costos,
     ganancia,
     roi,

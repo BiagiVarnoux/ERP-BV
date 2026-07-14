@@ -204,6 +204,14 @@ export interface Licitacion {
   // Vínculo opcional a embarque
   embarque_id?: string;
 
+  // Costos de TODA la licitación (no por producto), ej. boleta de garantía de
+  // seriedad de propuesta — se suman una sola vez al total, sin repartirse
+  // entre los productos cotizados.
+  garantia_licitacion: number;
+  pasaje_licitacion: number;
+  envio_licitacion: number;
+  otros_costos_licitacion: number;
+
   // Notas libres
   notas?: string;
 
@@ -258,6 +266,7 @@ export interface LicitacionResumen {
   precio_piso_total: number;   // Σ (precio_piso × cantidad) — oferta mínima total para no perder
   iva_pagar: number;
   it_pagar: number;
+  costos_licitacion: number;   // garantía + pasaje + envío + otros de TODA la licitación (una sola vez, no por producto)
   costos: number;
   ganancia: number;
   roi: number;
