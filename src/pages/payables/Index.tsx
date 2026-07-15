@@ -20,6 +20,7 @@ import {
   listPayables,
   createPayable,
   registerPayablePayment,
+  editPayableAmount,
   type PayableRow,
   type Moneda,
 } from '@/domain/payables';
@@ -85,6 +86,11 @@ export default function PayablesPage() {
   const [payCuentaPago, setPayCuentaPago] = useState('');
   const [payNotas, setPayNotas]   = useState('');
   const [paying, setPaying]       = useState(false);
+
+  // Edit amount modal
+  const [editTarget, setEditTarget] = useState<PayableRow | null>(null);
+  const [editMonto, setEditMonto]   = useState('');
+  const [editing, setEditing]       = useState(false);
 
   // Create modal
   const [showCreate, setShowCreate]                 = useState(false);
@@ -205,6 +211,33 @@ export default function PayablesPage() {
       toast.error(e instanceof Error ? e.message : 'Error registrando pago');
     } finally {
       setPaying(false);
+    }
+  }
+
+  // ── Edit amount modal ───────────────────────────────────────────────────────────
+
+  function openEditModal(row: PayableRow) {
+    setEditTarget(row);
+    setEditMonto(String(row.monto_original));
+  }
+
+  async function submitEdit() {
+    if (!editTarget) return;
+    const monto = parseFloat(editMonto);
+    if (isNaN(monto) || monto <= 0) {
+      toast.error('El monto debe ser mayor a 0');
+      return;
+    }
+    setEditing(true);
+    try {
+      await editPayableAmount({ id: editTarget.id, monto_original: monto });
+      toast.success('Monto corregido correctamente');
+      setEditTarget(null);
+      await load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Error corrigiendo el monto');
+    } finally {
+      setEditing(false);
     }
   }
 
@@ -394,15 +427,26 @@ export default function PayablesPage() {
                       {estadoBadge(row)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!canPay}
-                        onClick={() => openPayModal(row)}
-                        className="h-7 text-xs"
-                      >
-                        Registrar pago
-                      </Button>
+                      <div className="flex justify-end gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={!canPay}
+                          onClick={() => openEditModal(row)}
+                          className="h-7 text-xs"
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!canPay}
+                          onClick={() => openPayModal(row)}
+                          className="h-7 text-xs"
+                        >
+                          Registrar pago
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -487,6 +531,48 @@ export default function PayablesPage() {
             </Button>
             <Button onClick={submitPayment} disabled={paying}>
               {paying ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Guardando...</> : 'Registrar pago'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit amount modal ──────────────────────────────────────────────── */}
+      <Dialog open={!!editTarget} onOpenChange={o => !o && setEditTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Corregir monto</DialogTitle>
+          </DialogHeader>
+
+          {editTarget && (
+            <div className="space-y-4">
+              <div className="rounded-md bg-muted/50 border p-3 text-sm space-y-1">
+                <div className="font-mono text-xs text-muted-foreground">{editTarget.numero_documento}</div>
+                <div className="font-medium">{editTarget.proveedor_nombre}</div>
+                <div className="text-xs text-muted-foreground">
+                  Este cambio solo actualiza el módulo de Cuentas por Pagar — no modifica el Libro Diario.
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-monto">Monto original ({editTarget.moneda})</Label>
+                <Input
+                  id="edit-monto"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={editMonto}
+                  onChange={e => setEditMonto(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTarget(null)} disabled={editing}>
+              Cancelar
+            </Button>
+            <Button onClick={submitEdit} disabled={editing}>
+              {editing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Guardando...</> : 'Guardar'}
             </Button>
           </DialogFooter>
         </DialogContent>

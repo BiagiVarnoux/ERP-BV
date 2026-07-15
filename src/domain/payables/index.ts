@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { resolveUserCompanyId } from '@/lib/resolveCompanyId';
 import { logAuditEntry } from '@/services/auditService';
+import { round2 } from '@/accounting/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,11 @@ export interface RegisterPayablePaymentInput {
   tipo_pago: string;
   cuenta_pago_id: string;
   notas?: string | null;
+}
+
+export interface EditPayableAmountInput {
+  id: string;
+  monto_original: number;
 }
 
 // ─── Service functions ────────────────────────────────────────────────────────
@@ -125,6 +131,56 @@ export async function registerPayablePayment(input: RegisterPayablePaymentInput)
   await logAuditEntry('payables', input.payable_id, 'UPDATE',
     { estado: 'open' },
     { monto_pendiente: result?.monto_pendiente ?? null, estado: result?.estado ?? null, pago_monto: input.monto, journal_entry_id: result?.entry_id ?? null }
+  );
+}
+
+// Corrige el monto original de una CxP a mano (p. ej. tras arreglar el asiento
+// directamente en el Libro Diario). No toca journal_entries/journal_lines —
+// solo mantiene lo ya pagado y ajusta el pendiente.
+export async function editPayableAmount(input: EditPayableAmountInput): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('No autenticado');
+  const companyId = await resolveUserCompanyId();
+
+  if (!(input.monto_original > 0)) {
+    throw new Error('El monto debe ser mayor a 0');
+  }
+
+  const { data: current, error: fetchError } = await (supabase
+    .from('payables' as any)
+    .select('monto_original, monto_pendiente, estado')
+    .eq('id', input.id)
+    .eq('company_id', companyId)
+    .single() as any);
+  if (fetchError) throw new Error(fetchError.message);
+
+  const row = current as { monto_original: number; monto_pendiente: number; estado: PayableEstado };
+  if (row.estado !== 'open' && row.estado !== 'partial') {
+    throw new Error('Solo se puede editar el monto de una CxP abierta o parcial');
+  }
+
+  const pagado = round2(row.monto_original - row.monto_pendiente);
+  const nuevoPendiente = round2(input.monto_original - pagado);
+  if (nuevoPendiente < 0) {
+    throw new Error(`El monto no puede ser menor a lo ya pagado (${pagado})`);
+  }
+
+  const { error } = await (supabase
+    .from('payables' as any)
+    .update({
+      monto_original: round2(input.monto_original),
+      monto_pendiente: nuevoPendiente,
+      estado: nuevoPendiente === 0 ? 'paid' : row.estado,
+      updated_at: new Date().toISOString(),
+    } as any)
+    .eq('id', input.id)
+    .eq('company_id', companyId) as any);
+  if (error) throw new Error(error.message);
+
+  // Audit trail
+  await logAuditEntry('payables', input.id, 'UPDATE',
+    { monto_original: row.monto_original, monto_pendiente: row.monto_pendiente },
+    { monto_original: round2(input.monto_original), monto_pendiente: nuevoPendiente }
   );
 }
 
