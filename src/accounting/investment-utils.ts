@@ -12,6 +12,8 @@ import { round2 } from './utils';
 import {
   InvestmentItem, InvestmentAnalysis, ItemCosteo, ItemTiempo, ItemCalc, InvestmentResumen,
 } from './investment-types';
+import type { ShipmentProduct } from './shipment-types';
+import type { ShipmentRealizedDetailRow } from './investment-storage';
 
 // ─── Costeo: reutiliza el motor de licitaciones ─────────────────────────────
 
@@ -463,6 +465,226 @@ export function consolidarAnalisis(analyses: InvestmentAnalysis[]): InvestmentRe
     roi_anualizado_realista: roiAnualizadoRealista,
     van:           round2(van_),
     tir_anual:     tirAnual,
+  };
+}
+
+// ─── Conciliación con embarque real: costo/venta REAL vs cotizado ───────────
+//
+// A diferencia de calcCosteo/calcTiempo (que simulan todo desde cero), aquí se
+// parte del costo real ya capitalizado por el embarque (ShipmentProduct.costo_
+// total_unitario) y de las ventas realmente atribuidas (RPC de embarques). Las
+// unidades que aún no se vendieron se proyectan al precio y velocidad
+// COTIZADOS — así se aísla el efecto de un costo real distinto sin mezclar
+// supuestos de venta nuevos.
+
+/** Meses calendario completos entre dos fechas YYYY-MM-DD (puede ser negativo). */
+function mesesEntreFechas(desde: string, hasta: string): number {
+  const a = new Date(desde + 'T00:00:00');
+  const b = new Date(hasta + 'T00:00:00');
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+}
+
+/**
+ * Flujo de caja REAL de un ítem: mes 0 = −inversión real (fecha de compra).
+ * Las ventas ya realizadas se ubican en su mes calendario exacto; las unidades
+ * restantes se proyectan al precio/velocidad cotizados, a partir del último
+ * mes con venta real (o del mes 0 si aún no se vendió nada).
+ */
+export function buildFlujosReales(
+  it: InvestmentItem,
+  inversionReal: number,
+  fechaCompra: string,
+  ventasReales: ShipmentRealizedDetailRow[],
+  cantidadReal: number,
+  ingresoNetoUnitPlaneado: number,
+): { flujos: number[]; mesesVenta: number; unidadesRestantes: number } {
+  const unidadesVendidas = round2(ventasReales.reduce((s, v) => s + v.unidades, 0));
+  const unidadesRestantes = Math.max(0, round2(cantidadReal - unidadesVendidas));
+
+  const mesesVentasReales = ventasReales.map(v => Math.max(0, mesesEntreFechas(fechaCompra, v.fecha)));
+  const ultimoMesReal = mesesVentasReales.length > 0 ? Math.max(...mesesVentasReales) : 0;
+
+  const udsPorMes = it.velocidad_venta && it.velocidad_venta > 0 ? it.velocidad_venta : unidadesRestantes;
+  const mesesProyeccion = unidadesRestantes > 0.0001
+    ? Math.max(1, Math.ceil(unidadesRestantes / (udsPorMes || unidadesRestantes)))
+    : 0;
+
+  const totalMeses = ultimoMesReal + mesesProyeccion;
+  const flujos = new Array(totalMeses + 1).fill(0);
+  flujos[0] = -inversionReal;
+
+  ventasReales.forEach((v, i) => {
+    const mes = mesesVentasReales[i];
+    flujos[mes] = round2((flujos[mes] || 0) + v.ingreso_neto);
+  });
+
+  if (unidadesRestantes > 0.0001) {
+    let restante = unidadesRestantes;
+    let mes = ultimoMesReal + 1;
+    while (restante > 0.0001 && mes < flujos.length) {
+      const uds = Math.min(udsPorMes, restante);
+      flujos[mes] = round2((flujos[mes] || 0) + uds * ingresoNetoUnitPlaneado);
+      restante -= uds;
+      mes++;
+    }
+    if (restante > 0.0001) {
+      flujos[flujos.length - 1] = round2((flujos[flujos.length - 1] || 0) + restante * ingresoNetoUnitPlaneado);
+    }
+  }
+
+  return { flujos, mesesVenta: totalMeses, unidadesRestantes };
+}
+
+export interface ItemResultadoReal {
+  cantidadReal: number;
+  costoUnitarioReal: number;
+  inversionReal: number;
+  unidadesVendidas: number;
+  ingresoRealVentas: number;
+  unidadesRestantes: number;
+  ingresoProyectadoRestante: number;
+  ingresoTotalProyectado: number;
+  costos: number;
+  ganancia: number;
+  roi: number;
+  ciclo_meses: number;
+  van: number;
+  tir_anual: number;
+  flujos: number[];
+}
+
+/**
+ * Resultado real de un ítem ya mapeado a un embarque cerrado. Devuelve `null`
+ * si el embarque aún no cerró (sin costo real todavía) o si el ítem no tiene
+ * ninguna fila mapeada.
+ */
+export function calcResultadoReal(
+  it: InvestmentItem,
+  costeoCotizado: ItemCosteo,
+  mappedProducts: ShipmentProduct[],
+  ventasRealesDetalle: ShipmentRealizedDetailRow[],
+  costoCapitalAnual: number,
+): ItemResultadoReal | null {
+  if (mappedProducts.length === 0) return null;
+  if (!mappedProducts.every(p => p.costo_total_unitario != null)) return null;
+
+  const cantidadReal = mappedProducts.reduce((s, p) => s + (p.cantidad || 0), 0);
+  const costoTotalReal = mappedProducts.reduce(
+    (s, p) => s + (p.costo_total_unitario || 0) * (p.cantidad || 0), 0
+  );
+  const costoUnitarioReal = cantidadReal > 0 ? round2(costoTotalReal / cantidadReal) : 0;
+  const inversionReal = round2(costoTotalReal + costeoCotizado.extras);
+
+  const unidadesVendidas = round2(ventasRealesDetalle.reduce((s, v) => s + v.unidades, 0));
+  const ingresoRealVentas = round2(ventasRealesDetalle.reduce((s, v) => s + v.ingreso_neto, 0));
+  const unidadesRestantes = Math.max(0, round2(cantidadReal - unidadesVendidas));
+
+  // Precio neto planeado por unidad (después de IVA/IT), para proyectar lo aún no vendido.
+  const ingresoNetoUnitPlaneado = it.cantidad > 0
+    ? (costeoCotizado.ingreso_total - costeoCotizado.iva_pagar - costeoCotizado.it_pagar) / it.cantidad
+    : 0;
+  const ingresoProyectadoRestante = round2(unidadesRestantes * ingresoNetoUnitPlaneado);
+  const ingresoTotalProyectado = round2(ingresoRealVentas + ingresoProyectadoRestante);
+
+  // ingreso_neto (real) y el ingreso proyectado ya vienen netos de IVA/IT de venta.
+  const costos = inversionReal;
+  const ganancia = round2(ingresoTotalProyectado - costos);
+  const roi = inversionReal > 0 ? round2(ganancia / inversionReal) : 0;
+
+  const fechaCompra = mappedProducts.find(p => p.fecha_compra)?.fecha_compra;
+  const { flujos, mesesVenta } = fechaCompra
+    ? buildFlujosReales(it, inversionReal, fechaCompra, ventasRealesDetalle, cantidadReal, ingresoNetoUnitPlaneado)
+    : { flujos: [-inversionReal, ingresoTotalProyectado], mesesVenta: 1 };
+
+  const tasaMes = tasaMensual(costoCapitalAnual);
+  const vanVal = round2(van(flujos, tasaMes));
+  const tirM = tirMensual(flujos);
+  const tirAnual = tirM != null ? Math.pow(1 + tirM, 12) - 1 : 0;
+
+  return {
+    cantidadReal, costoUnitarioReal, inversionReal,
+    unidadesVendidas, ingresoRealVentas, unidadesRestantes, ingresoProyectadoRestante, ingresoTotalProyectado,
+    costos, ganancia, roi, ciclo_meses: round2(mesesVenta), van: vanVal, tir_anual: tirAnual, flujos,
+  };
+}
+
+export interface ResumenReal {
+  itemsConCostoReal: number;
+  itemsTotal: number;
+  inversionEstimada: number;
+  inversionReal: number;
+  gananciaEstimada: number;
+  gananciaReal: number;
+  roiEstimado: number;
+  roiReal: number;
+  vanEstimado: number;
+  vanReal: number;
+  tirEstimadoAnual: number;
+  tirRealAnual: number;
+}
+
+/**
+ * Agrega los resultados reales por ítem en un resumen "análisis completo",
+ * comparable 1:1 contra calcResumen() (cotizado). Los ítems sin dato real
+ * (embarque no cerrado, o sin mapear) aportan su valor COTIZADO al total real,
+ * para no distorsionar la comparación con ceros.
+ */
+export function calcResumenReal(
+  costoCapitalAnual: number,
+  calcs: ItemCalc[],
+  resultadosReales: (ItemResultadoReal | null)[],
+): ResumenReal {
+  let inversionEstimada = 0, gananciaEstimada = 0;
+  let inversionReal = 0, gananciaReal = 0;
+  let itemsConCostoReal = 0;
+  let maxLen = 1;
+  const flujosParaVanReal: number[][] = [];
+
+  for (let i = 0; i < calcs.length; i++) {
+    inversionEstimada += calcs[i].costeo.inversion;
+    gananciaEstimada  += calcs[i].costeo.ganancia;
+
+    const real = resultadosReales[i];
+    if (real) {
+      itemsConCostoReal++;
+      inversionReal += real.inversionReal;
+      gananciaReal  += real.ganancia;
+      flujosParaVanReal.push(real.flujos);
+    } else {
+      // Sin dato real todavía: usar el cotizado para no distorsionar el total.
+      inversionReal += calcs[i].costeo.inversion;
+      gananciaReal  += calcs[i].costeo.ganancia;
+      flujosParaVanReal.push(calcs[i].tiempo.flujos);
+    }
+    maxLen = Math.max(maxLen, flujosParaVanReal[i].length);
+  }
+
+  inversionEstimada = round2(inversionEstimada);
+  inversionReal     = round2(inversionReal);
+  gananciaEstimada  = round2(gananciaEstimada);
+  gananciaReal      = round2(gananciaReal);
+
+  const roiEstimado = inversionEstimada > 0 ? round2(gananciaEstimada / inversionEstimada) : 0;
+  const roiReal     = inversionReal > 0 ? round2(gananciaReal / inversionReal) : 0;
+
+  const flujoAgregadoReal = new Array(maxLen).fill(0);
+  for (const f of flujosParaVanReal) f.forEach((v, t) => { flujoAgregadoReal[t] += v; });
+  const tasaMes = tasaMensual(costoCapitalAnual);
+  const vanReal = round2(van(flujoAgregadoReal, tasaMes));
+  const tirMReal = tirMensual(flujoAgregadoReal);
+  const tirRealAnual = tirMReal != null ? Math.pow(1 + tirMReal, 12) - 1 : 0;
+
+  const vanEstimado = round2(calcs.reduce((s, c) => s + c.tiempo.van, 0));
+  const maxLenEst = Math.max(1, ...calcs.map(c => c.tiempo.flujos.length));
+  const flujoAgregadoEst = new Array(maxLenEst).fill(0);
+  calcs.forEach(c => c.tiempo.flujos.forEach((v, t) => { flujoAgregadoEst[t] += v; }));
+  const tirMEst = tirMensual(flujoAgregadoEst);
+  const tirEstimadoAnual = tirMEst != null ? Math.pow(1 + tirMEst, 12) - 1 : 0;
+
+  return {
+    itemsConCostoReal, itemsTotal: calcs.length,
+    inversionEstimada, inversionReal, gananciaEstimada, gananciaReal,
+    roiEstimado, roiReal, vanEstimado, vanReal, tirEstimadoAnual, tirRealAnual,
   };
 }
 

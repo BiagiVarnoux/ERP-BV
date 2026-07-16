@@ -25,6 +25,17 @@ export interface ShipmentRealizedRow {
   ultima_venta: string | null;    // fecha de la última venta
 }
 
+/** Una fila por (producto del embarque, fecha) — detalle para el flujo de caja real. */
+export interface ShipmentRealizedDetailRow {
+  shipment_product_id: string;
+  fecha: string;
+  unidades: number;
+  ingreso_neto: number;
+  costo: number;
+  con_factura: number;
+  sin_factura: number;
+}
+
 async function getUser() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No hay sesión activa');
@@ -251,6 +262,31 @@ export const InvestmentStorage = {
       .from('investment_analysis_items')
       .upsert(safe.map(itemToRow));
     if (error) throw error;
+  },
+
+  // ─── Detalle de ventas reales por fecha (para el flujo de caja real) ──────
+  // Una fila por (producto del embarque, fecha de venta) — a diferencia de
+  // fetchShipmentRealized que agrega todo en un solo total. Se usa para
+  // construir el flujo de caja mensual real (VAN/TIR reales), con la misma
+  // granularidad que el flujo cotizado.
+  async fetchShipmentRealizedDetail(
+    companyId: string, shipmentId: string,
+  ): Promise<ShipmentRealizedDetailRow[]> {
+    const { data, error } = await (supabase.rpc('get_shipment_realized_sales_detail' as any, {
+      p_company_id: companyId,
+      p_shipment_id: shipmentId,
+    }) as any);
+    if (error) throw error;
+
+    return ((data ?? []) as Array<Record<string, unknown>>).map(r => ({
+      shipment_product_id: r.shipment_product_id as string,
+      fecha:        r.fecha as string,
+      unidades:     Number(r.unidades) || 0,
+      ingreso_neto: Number(r.ingreso_neto) || 0,
+      costo:        Number(r.costo) || 0,
+      con_factura:  Number(r.con_factura) || 0,
+      sin_factura:  Number(r.sin_factura) || 0,
+    }));
   },
 
   async deleteItem(id: string, analysisId: string): Promise<void> {

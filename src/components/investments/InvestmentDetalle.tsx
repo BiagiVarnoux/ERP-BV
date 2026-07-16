@@ -265,6 +265,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
             items={items}
             calcs={calcs}
             companyId={companyId}
+            costoCapitalAnual={costoCapital}
             embarqueId={embarqueId}
             onEmbarqueId={setEmbarqueId}
             onUpdateItem={updateItem}

@@ -9,10 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Ship, Link2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { InvestmentItem, ItemCalc } from '@/accounting/investment-types';
+import { InvestmentItem, ItemCalc, InvestmentAnalysis } from '@/accounting/investment-types';
 import { ShipmentStorage } from '@/accounting/shipment-storage';
-import { InvestmentStorage, ShipmentRealizedRow } from '@/accounting/investment-storage';
+import { InvestmentStorage, ShipmentRealizedRow, ShipmentRealizedDetailRow } from '@/accounting/investment-storage';
 import { Shipment, ShipmentProduct, SHIPMENT_STATUS_LABELS } from '@/accounting/shipment-types';
+import { calcResultadoReal, calcResumenReal, ItemResultadoReal } from '@/accounting/investment-utils';
 import { fmt, round2 } from '@/accounting/utils';
 import { StatCard, Pct } from './ui-helpers';
 
@@ -26,6 +27,7 @@ interface Props {
   items: InvestmentItem[];
   calcs: ItemCalc[];
   companyId?: string;
+  costoCapitalAnual: number;
   embarqueId?: string;
   onEmbarqueId: (id: string | undefined) => void;
   onUpdateItem: (id: string, changes: Partial<InvestmentItem>) => void;
@@ -36,11 +38,13 @@ function prodLabel(p: ShipmentProduct): string {
   return `${p.nombre.trim()}${extra ? ` — ${extra}` : ''}`;
 }
 
-export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId, onUpdateItem }: Props) {
+export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarqueId, onEmbarqueId, onUpdateItem }: Props) {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
   // Ventas reales atribuidas a este embarque, indexadas por shipment_product_id.
   const [realized, setRealized] = useState<Record<string, ShipmentRealizedRow>>({});
+  // Detalle por fecha de esas mismas ventas, para el flujo de caja real (VAN/TIR).
+  const [realizedDetail, setRealizedDetail] = useState<ShipmentRealizedDetailRow[]>([]);
 
   useEffect(() => {
     setLoading(true);
@@ -51,10 +55,13 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
   }, []);
 
   useEffect(() => {
-    if (!companyId || !embarqueId) { setRealized({}); return; }
+    if (!companyId || !embarqueId) { setRealized({}); setRealizedDetail([]); return; }
     InvestmentStorage.fetchShipmentRealized(companyId, embarqueId)
       .then(setRealized)
       .catch(e => { console.error('Error cargando ventas reales', e); setRealized({}); });
+    InvestmentStorage.fetchShipmentRealizedDetail(companyId, embarqueId)
+      .then(setRealizedDetail)
+      .catch(e => { console.error('Error cargando detalle de ventas reales', e); setRealizedDetail([]); });
   }, [companyId, embarqueId]);
 
   const shipment = useMemo(
@@ -114,6 +121,26 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
   }, [items, shipment, realized, isCerrado]);
 
   const hayVentas = Object.values(realizedByItem).some(r => r.unidades > 0);
+
+  // ── Resultado real completo por ítem (costo real + venta real/proyectada) ──
+  // A diferencia de realizedByItem (solo ROI de lo ya vendido), esto también
+  // calcula ganancia/ROI/VAN/TIR reales proyectando lo aún no vendido al
+  // precio y velocidad cotizados — para aislar el efecto del costo real.
+  const resultadosReales = useMemo((): (ItemResultadoReal | null)[] => {
+    if (!shipment || !isCerrado) return items.map(() => null);
+    return items.map((it, i) => {
+      const mapped = (it.mapped_shipment_product_ids ?? [])
+        .map(id => prodById.get(id))
+        .filter((p): p is ShipmentProduct => !!p);
+      const detalle = realizedDetail.filter(d => mapped.some(p => p.id === d.shipment_product_id));
+      return calcResultadoReal(it, calcs[i].costeo, mapped, detalle, costoCapitalAnual);
+    });
+  }, [items, calcs, shipment, isCerrado, prodById, realizedDetail, costoCapitalAnual]);
+
+  const resumenReal = useMemo(
+    () => calcResumenReal(costoCapitalAnual, calcs, resultadosReales),
+    [costoCapitalAnual, calcs, resultadosReales],
+  );
 
   return (
     <TooltipProvider>
@@ -293,6 +320,63 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
               </CardContent>
             </Card>
 
+            {/* Resumen real vs cotizado — impacto total en ganancia, ROI, VAN y TIR */}
+            {isCerrado && resumenReal.itemsConCostoReal > 0 && (
+              <Card>
+                <CardContent className="p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                    Resumen real vs cotizado
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mb-3">
+                    {resumenReal.itemsConCostoReal} de {resumenReal.itemsTotal} producto{resumenReal.itemsTotal !== 1 ? 's' : ''} con costo real disponible.
+                    Lo aún no vendido se proyecta al precio y velocidad cotizados, para aislar el efecto del costo real.
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="text-sm w-full">
+                      <thead>
+                        <tr className="text-muted-foreground border-b text-xs">
+                          <th className="text-left py-2 pr-3 font-medium">Métrica</th>
+                          <th className="text-right px-2 font-medium">Cotizado</th>
+                          <th className="text-right px-2 font-medium">Real</th>
+                          <th className="text-right px-2 font-medium">Δ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <ResumenRealRow
+                          label="Inversión"
+                          est={resumenReal.inversionEstimada}
+                          real={resumenReal.inversionReal}
+                          invertColor
+                        />
+                        <ResumenRealRow
+                          label="Ganancia"
+                          est={resumenReal.gananciaEstimada}
+                          real={resumenReal.gananciaReal}
+                        />
+                        <ResumenRealRow
+                          label="ROI"
+                          est={resumenReal.roiEstimado}
+                          real={resumenReal.roiReal}
+                          isPct
+                        />
+                        <ResumenRealRow
+                          label="VAN"
+                          est={resumenReal.vanEstimado}
+                          real={resumenReal.vanReal}
+                        />
+                        <ResumenRealRow
+                          label="TIR anual"
+                          est={resumenReal.tirEstimadoAnual}
+                          real={resumenReal.tirRealAnual}
+                          isPct
+                        />
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Resultado real (ventas) — Fase 2 */}
             <Card>
               <CardContent className="p-4">
@@ -372,5 +456,27 @@ export function TabEmbarque({ items, calcs, companyId, embarqueId, onEmbarqueId,
         )}
       </div>
     </TooltipProvider>
+  );
+}
+
+// ─── Fila del resumen real vs cotizado ─────────────────────────────────────
+
+function ResumenRealRow({ label, est, real, isPct, invertColor }: {
+  label: string; est: number; real: number; isPct?: boolean; invertColor?: boolean;
+}) {
+  const delta = est !== 0 ? (real - est) / Math.abs(est) : (real !== 0 ? (real > 0 ? 1 : -1) : 0);
+  const mejora = invertColor ? real <= est : real >= est;
+  const deltaColor = real === est ? '' : mejora ? 'text-green-600 dark:text-green-400' : 'text-red-500';
+  const fmtVal = (v: number) => isPct ? <Pct v={v} /> : `Bs ${fmt(v)}`;
+
+  return (
+    <tr className="border-b last:border-0">
+      <td className="py-2 pr-3 font-medium">{label}</td>
+      <td className="text-right px-2 font-mono">{fmtVal(est)}</td>
+      <td className="text-right px-2 font-mono font-semibold">{fmtVal(real)}</td>
+      <td className={`text-right px-2 font-mono font-semibold ${deltaColor}`}>
+        {`${delta > 0 ? '+' : ''}${(delta * 100).toFixed(1)}%`}
+      </td>
+    </tr>
   );
 }
