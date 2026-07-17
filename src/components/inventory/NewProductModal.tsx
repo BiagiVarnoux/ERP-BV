@@ -11,12 +11,8 @@ import { useAccounting } from '@/accounting/AccountingProvider';
 import { toast } from 'sonner';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { Archive, RefreshCw } from 'lucide-react';
-import {
-  CONDICION_OPTIONS,
-  TIPO_INVENTARIO_OPTIONS,
-  condicionCode,
-  tipoInventarioCode,
-} from '@/accounting/product-condicion';
+import { CONDICION_OPTIONS, condicionCode, tipoInventarioCode } from '@/accounting/product-condicion';
+import { useProductTipos } from '@/hooks/useProductTipos';
 
 export interface ProductCategory {
   id: string;
@@ -54,21 +50,39 @@ interface NewProductModalProps {
   editProduct?: ProductData | null;
 }
 
-export async function fetchNextSkuSequence(companyId: string): Promise<number> {
-  const { count } = await supabase
-    .from('products')
-    .select('id', { count: 'exact', head: true })
-    .eq('company_id', companyId);
-  return (count ?? 0) + 1;
+/** Prefijo del SKU sin el secuencial final (ej. "ELE-CEL-NVO"). */
+export function buildSkuPrefix(tipoCode: string, categoryCode: string, condCode: string): string {
+  return `${tipoCode}-${categoryCode.toUpperCase()}-${condCode}`;
 }
 
-export function buildSku(tipoInv: string, categoryCode: string, cond: string, seq: number): string {
-  return `${tipoInventarioCode(tipoInv)}-${categoryCode.toUpperCase()}-${condicionCode(cond)}-${String(seq).padStart(4, '0')}`;
+/**
+ * Siguiente secuencial disponible para un prefijo de SKU dado, buscando el
+ * máximo entre los productos YA GUARDADOS con ese mismo prefijo (no un
+ * conteo global de la empresa — cada prefijo tiene su propia numeración).
+ */
+export async function fetchNextSkuSequence(companyId: string, prefix: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('products')
+    .select('codigo')
+    .eq('company_id', companyId)
+    .like('codigo', `${prefix}-%`);
+  if (error) throw error;
+  let max = 0;
+  for (const row of data ?? []) {
+    const m = /-(\d+)$/.exec(row.codigo ?? '');
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return max + 1;
+}
+
+export function buildSku(tipoCode: string, categoryCode: string, condCode: string, seq: number): string {
+  return `${buildSkuPrefix(tipoCode, categoryCode, condCode)}-${String(seq).padStart(4, '0')}`;
 }
 
 export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewProductModalProps) {
   const { accounts } = useAccounting();
   const activeCompanyId = useActiveCompanyId();
+  const { tipos } = useProductTipos();
   const [nombre, setNombre] = useState('');
   const [codigo, setCodigo] = useState('');
   const [especificacion, setEspecificacion] = useState('');
@@ -125,8 +139,11 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
     if (!cat) { toast.error('Selecciona una categoría primero'); return; }
     setSkuGenerating(true);
     try {
-      const seq = await fetchNextSkuSequence(activeCompanyId);
-      setCodigo(buildSku(tipoInventario, cat.codigo, condicion, seq));
+      const tipoCode = tipoInventarioCode(tipoInventario, tipos);
+      const condCode = condicionCode(condicion);
+      const prefix = buildSkuPrefix(tipoCode, cat.codigo, condCode);
+      const seq = await fetchNextSkuSequence(activeCompanyId, prefix);
+      setCodigo(buildSku(tipoCode, cat.codigo, condCode, seq));
     } finally {
       setSkuGenerating(false);
     }
@@ -183,7 +200,7 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
   const isArchivedOrDiscontinued = isEditing && editProduct && editProduct.status !== 'activo';
   const selectedCat = categories.find(c => c.id === categoryId);
   const skuPreview = selectedCat
-    ? buildSku(tipoInventario, selectedCat.codigo, condicion, 0).replace('-0000', '-NNNN')
+    ? buildSku(tipoInventarioCode(tipoInventario, tipos), selectedCat.codigo, condicionCode(condicion), 0).replace('-0000', '-NNNN')
     : null;
 
   return (
@@ -228,14 +245,20 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
           {/* Tipo de inventario */}
           <div className="space-y-2">
             <Label>Tipo de inventario</Label>
-            <Select value={tipoInventario} onValueChange={setTipoInventario}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {TIPO_INVENTARIO_OPTIONS.map(o => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {tipos.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-1">
+                No hay tipos de inventario creados. Ve a <strong>Ajustes → Categorías</strong> para crear los tuyos.
+              </p>
+            ) : (
+              <Select value={tipoInventario} onValueChange={setTipoInventario}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {tipos.map(t => (
+                    <SelectItem key={t.id} value={t.valor}>{t.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           {/* Categoría de inventario */}

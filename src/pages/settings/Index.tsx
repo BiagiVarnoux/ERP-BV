@@ -456,8 +456,9 @@ export default function SettingsPage() {
         </TabsContent>{/* cierre TabsContent general */}
 
         {/* ── Tab: Categorías de Inventario ── */}
-        <TabsContent value="categories">
+        <TabsContent value="categories" className="space-y-6">
           <ProductCategoriesTab />
+          <ProductTiposTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -666,5 +667,222 @@ function ProductCategoriesTab() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// ─── Pestaña de tipos de inventario (prefijo del SKU) ─────────────────────────
+
+interface ProductTipoRow {
+  id: string;
+  valor: string;
+  nombre: string;
+  codigo: string;
+}
+
+function slugifyTipoValor(nombre: string): string {
+  return nombre
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 40);
+}
+
+function ProductTiposTab() {
+  const { isOwner } = useUserAccess();
+  const companyId = useActiveCompanyId();
+  const [tiposList, setTiposList] = useState<ProductTipoRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newNombre, setNewNombre] = useState('');
+  const [newCodigo, setNewCodigo] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editNombre, setEditNombre] = useState('');
+  const [editCodigo, setEditCodigo] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { toast: showToast } = useToast();
+
+  async function load() {
+    setLoading(true);
+    const { data } = await supabase
+      .from('product_tipos_inventario')
+      .select('id, valor, nombre, codigo')
+      .eq('company_id', companyId)
+      .order('nombre');
+    setTiposList((data ?? []) as ProductTipoRow[]);
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, [companyId]);
+
+  async function handleAdd() {
+    if (!newNombre.trim() || newCodigo.trim().length !== 3) {
+      showToast({ title: 'El nombre es requerido y el código debe tener exactamente 3 letras', variant: 'destructive' });
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase.from('product_tipos_inventario').insert({
+      company_id: companyId,
+      valor: slugifyTipoValor(newNombre) || newCodigo.trim().toLowerCase(),
+      nombre: newNombre.trim(),
+      codigo: newCodigo.trim().toUpperCase(),
+    });
+    setSaving(false);
+    if (error) { showToast({ title: error.message, variant: 'destructive' }); return; }
+    setNewNombre(''); setNewCodigo('');
+    load();
+  }
+
+  async function handleUpdate(id: string) {
+    if (!editNombre.trim() || editCodigo.trim().length !== 3) {
+      showToast({ title: 'Nombre requerido y código de 3 letras', variant: 'destructive' });
+      return;
+    }
+    // El "valor" (slug guardado en products.tipo_inventario) no se toca al editar,
+    // para no desvincular los productos que ya usan ese tipo.
+    const { error } = await supabase.from('product_tipos_inventario')
+      .update({ nombre: editNombre.trim(), codigo: editCodigo.trim().toUpperCase() })
+      .eq('id', id).eq('company_id', companyId);
+    if (error) { showToast({ title: error.message, variant: 'destructive' }); return; }
+    setEditId(null);
+    load();
+  }
+
+  async function handleDelete(id: string) {
+    setDeletingId(id);
+    const { error } = await supabase.from('product_tipos_inventario')
+      .delete().eq('id', id).eq('company_id', companyId);
+    setDeletingId(null);
+    if (error) { showToast({ title: error.message, variant: 'destructive' }); return; }
+    load();
+  }
+
+  if (!isOwner) {
+    return <p className="text-sm text-muted-foreground">Solo el dueño puede gestionar los tipos de inventario.</p>;
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Tag className="h-4 w-4" />
+          Tipos de Inventario
+        </CardTitle>
+        <CardDescription>
+          Define los tipos de inventario (Electrónica, A Pedido, Licitaciones, Medicamentos, etc.)
+          que aparecen al asignar productos de un embarque o crear uno nuevo. Cada código debe ser
+          exactamente 3 letras (ej: MED) y forma parte del SKU.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Add row */}
+        <div className="flex gap-2 items-end">
+          <div className="space-y-1 flex-1">
+            <Label className="text-xs">Nombre</Label>
+            <Input
+              placeholder="Medicamentos"
+              value={newNombre}
+              onChange={e => setNewNombre(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
+            />
+          </div>
+          <div className="space-y-1 w-24">
+            <Label className="text-xs">Código (3)</Label>
+            <Input
+              placeholder="MED"
+              maxLength={3}
+              value={newCodigo}
+              onChange={e => setNewCodigo(e.target.value.toUpperCase())}
+              className="font-mono uppercase"
+              onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
+            />
+          </div>
+          <Button onClick={handleAdd} disabled={saving} className="shrink-0">
+            <Plus className="h-4 w-4 mr-1" />
+            Agregar
+          </Button>
+        </div>
+
+        {/* List */}
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Cargando...</p>
+        ) : tiposList.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">
+            No hay tipos de inventario. Agrega el primero arriba.
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Código</TableHead>
+                <TableHead>Nombre</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tiposList.map(t => (
+                <TableRow key={t.id}>
+                  {editId === t.id ? (
+                    <>
+                      <TableCell>
+                        <Input
+                          className="h-7 w-16 font-mono uppercase"
+                          maxLength={3}
+                          value={editCodigo}
+                          onChange={e => setEditCodigo(e.target.value.toUpperCase())}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          className="h-7"
+                          value={editNombre}
+                          onChange={e => setEditNombre(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleUpdate(t.id); }}
+                        />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleUpdate(t.id)}>
+                            <Check className="h-3.5 w-3.5 text-green-600" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditId(null)}>
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </>
+                  ) : (
+                    <>
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono">{t.codigo}</Badge>
+                      </TableCell>
+                      <TableCell>{t.nombre}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
+                            setEditId(t.id); setEditNombre(t.nombre); setEditCodigo(t.codigo);
+                          }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            disabled={deletingId === t.id}
+                            onClick={() => handleDelete(t.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
   );
 }

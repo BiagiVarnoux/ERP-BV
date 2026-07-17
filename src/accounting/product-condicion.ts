@@ -21,19 +21,28 @@ export function condicionCode(value: string | null | undefined): string {
 }
 
 // ─── Tipo de inventario ───────────────────────────────────────────────────────
+// Las opciones ya NO están fijas acá — se gestionan por empresa en Ajustes →
+// Categorías (tabla product_tipos_inventario, ver src/hooks/useProductTipos.ts).
+// Estas funciones son solo un fallback para cuando no se tiene la lista cargada.
 
-export const TIPO_INVENTARIO_OPTIONS = [
-  { value: 'electronica',   label: 'Electrónica',       code: 'ELE' },
-  { value: 'pedido',        label: 'A Pedido',          code: 'PED' },
-  { value: 'licitaciones',  label: 'Licitaciones',      code: 'LIC' },
-] as const;
-
-export type TipoInventarioValue = typeof TIPO_INVENTARIO_OPTIONS[number]['value'];
-
-export function tipoInventarioCode(value: string | null | undefined): string {
-  return TIPO_INVENTARIO_OPTIONS.find(o => o.value === value)?.code ?? 'ELE';
+interface TipoInventarioLike {
+  valor: string;
+  nombre: string;
+  codigo: string;
 }
 
-export function tipoInventarioLabel(value: string | null | undefined): string {
-  return TIPO_INVENTARIO_OPTIONS.find(o => o.value === value)?.label ?? value ?? '—';
+const TIPO_INVENTARIO_FALLBACK: TipoInventarioLike[] = [
+  { valor: 'electronica',  nombre: 'Electrónica', codigo: 'ELE' },
+  { valor: 'pedido',       nombre: 'A Pedido',     codigo: 'PED' },
+  { valor: 'licitaciones', nombre: 'Licitaciones', codigo: 'LIC' },
+];
+
+export function tipoInventarioCode(value: string | null | undefined, tipos?: TipoInventarioLike[]): string {
+  const list = tipos && tipos.length > 0 ? tipos : TIPO_INVENTARIO_FALLBACK;
+  return list.find(o => o.valor === value)?.codigo ?? list[0]?.codigo ?? 'ELE';
+}
+
+export function tipoInventarioLabel(value: string | null | undefined, tipos?: TipoInventarioLike[]): string {
+  const list = tipos && tipos.length > 0 ? tipos : TIPO_INVENTARIO_FALLBACK;
+  return list.find(o => o.valor === value)?.nombre ?? value ?? '—';
 }

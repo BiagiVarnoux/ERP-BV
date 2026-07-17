@@ -18,11 +18,9 @@ import type { Shipment, ShipmentProduct } from '@/accounting/shipment-types';
 import type { CostoDetalle } from '@/accounting/shipment-utils';
 import { getAllCategories } from '@/accounting/shipment-utils';
 import { RefreshCw } from 'lucide-react';
-import {
-  CONDICION_OPTIONS,
-  TIPO_INVENTARIO_OPTIONS,
-} from '@/accounting/product-condicion';
-import { type ProductCategory, fetchNextSkuSequence, buildSku } from '@/components/inventory/NewProductModal';
+import { CONDICION_OPTIONS, condicionCode, tipoInventarioCode } from '@/accounting/product-condicion';
+import { type ProductCategory, fetchNextSkuSequence, buildSku, buildSkuPrefix } from '@/components/inventory/NewProductModal';
+import { useProductTipos } from '@/hooks/useProductTipos';
 
 export interface ProductLink {
   shipmentProductId: string;
@@ -62,6 +60,7 @@ interface SupaProduct {
 export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCancel }: Props) {
   const { accounts } = useAccounting();
   const activeCompanyId = useActiveCompanyId();
+  const { tipos } = useProductTipos();
   const [tab, setTab] = useState<'link' | 'preview'>('link');
   const [links, setLinks] = useState<ProductLink[]>([]);
   const [supaProducts, setSupaProducts] = useState<SupaProduct[]>([]);
@@ -159,9 +158,22 @@ export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCanc
     if (!cat) return;
     setGeneratingSku(spId);
     try {
-      const seq = await fetchNextSkuSequence(activeCompanyId);
+      const tipoCode = tipoInventarioCode(tipo_inventario ?? 'electronica', tipos);
+      const condCode = condicionCode(condicion ?? 'nuevo');
+      const prefix = buildSkuPrefix(tipoCode, cat.codigo, condCode);
+      const dbSeq = await fetchNextSkuSequence(activeCompanyId, prefix);
+      // Considerar también los SKU ya generados (aún sin guardar) para otros
+      // productos de este mismo cierre, para no repetir el correlativo mientras
+      // el embarque sigue abierto (todavía no se insertó nada en `products`).
+      const sessionMax = links.reduce((max, l) => {
+        const c = l.newProductData?.codigo;
+        if (!c || !c.startsWith(`${prefix}-`)) return max;
+        const m = /-(\d+)$/.exec(c);
+        return m ? Math.max(max, parseInt(m[1], 10)) : max;
+      }, 0);
+      const seq = Math.max(dbSeq, sessionMax + 1);
       updateLink(spId, {
-        newProductData: { ...link.newProductData, codigo: buildSku(tipo_inventario ?? 'electronica', cat.codigo, condicion ?? 'nuevo', seq) },
+        newProductData: { ...link.newProductData, codigo: buildSku(tipoCode, cat.codigo, condCode, seq) },
       });
     } finally {
       setGeneratingSku(null);
@@ -380,7 +392,7 @@ export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCanc
                                 >
                                   <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
                                   <SelectContent>
-                                    {TIPO_INVENTARIO_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                                    {tipos.map(t => <SelectItem key={t.id} value={t.valor}>{t.nombre}</SelectItem>)}
                                   </SelectContent>
                                 </Select>
                               </div>
