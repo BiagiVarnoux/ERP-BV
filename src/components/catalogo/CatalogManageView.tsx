@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Images } from 'lucide-react';
+import { Images, EyeOff, Eye } from 'lucide-react';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt } from '@/accounting/utils';
@@ -21,11 +21,13 @@ import { PhotoSessionUploader } from '@/components/catalogo/PhotoSessionUploader
 interface ProductRow {
   id: string;
   nombre: string;
+  especificacion: string | null;
   precio_lista: number | null;
   precio_minimo_negociacion: number | null;
   comision_bs: number | null;
   descripcion_catalogo: string | null;
   mostrar_en_catalogo: boolean;
+  oculto_en_gestion: boolean;
 }
 
 interface Draft {
@@ -54,6 +56,8 @@ export function CatalogManageView() {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [fotosProductId, setFotosProductId] = useState<string | null>(null);
+  const [mostrarOcultos, setMostrarOcultos] = useState(false);
+  const [ocultando, setOcultando] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (companyId) load();
@@ -66,7 +70,7 @@ export function CatalogManageView() {
       const [{ data: prods, error: prodErr }, { data: stockRows, error: stockErr }] = await Promise.all([
         supabase
           .from('products')
-          .select('id, nombre, precio_lista, precio_minimo_negociacion, comision_bs, descripcion_catalogo, mostrar_en_catalogo')
+          .select('id, nombre, especificacion, precio_lista, precio_minimo_negociacion, comision_bs, descripcion_catalogo, mostrar_en_catalogo, oculto_en_gestion')
           .eq('company_id', companyId)
           .eq('status', 'activo')
           .order('nombre'),
@@ -119,11 +123,45 @@ export function CatalogManageView() {
     }
   }
 
+  async function toggleOcultar(p: ProductRow) {
+    setOcultando(prev => ({ ...prev, [p.id]: true }));
+    try {
+      const { error } = await supabase
+        .from('products')
+        .update({ oculto_en_gestion: !p.oculto_en_gestion })
+        .eq('id', p.id)
+        .eq('company_id', companyId);
+      if (error) throw error;
+      await load();
+    } catch (e: any) {
+      toast.error(e.message || 'Error al ocultar el producto');
+    } finally {
+      setOcultando(prev => ({ ...prev, [p.id]: false }));
+    }
+  }
+
   if (loading) return <p className="text-sm text-muted-foreground">Cargando...</p>;
+
+  const visibles = products.filter(p => {
+    if (mostrarOcultos) return true;
+    const stockDisponible = stock[p.id] ?? 0;
+    return !p.oculto_en_gestion && stockDisponible > 0;
+  });
+  const ocultosCount = products.length - visibles.length;
 
   return (
     <div className="space-y-3">
-      {products.map(p => {
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          {visibles.length} producto(s) {mostrarOcultos ? '' : `— ${ocultosCount} sin stock u ocultos no se muestran`}
+        </p>
+        <Button variant="ghost" size="sm" onClick={() => setMostrarOcultos(v => !v)}>
+          {mostrarOcultos ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
+          {mostrarOcultos ? 'Ocultar sin stock/ocultos' : `Mostrar todos (${ocultosCount} ocultos)`}
+        </Button>
+      </div>
+
+      {visibles.map(p => {
         const d = drafts[p.id];
         if (!d) return null;
         const stockDisponible = stock[p.id] ?? 0;
@@ -133,6 +171,9 @@ export function CatalogManageView() {
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                   <p className="font-medium">{p.nombre}</p>
+                  {p.especificacion && (
+                    <p className="text-xs text-muted-foreground">{p.especificacion}</p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     Stock disponible: {fmt(stockDisponible)}
                     {stockDisponible <= 0 && ' — agotado, no aparece en el catálogo del vendedor'}
@@ -182,9 +223,15 @@ export function CatalogManageView() {
               </div>
 
               <div className="flex justify-between items-center">
-                <Button variant="outline" size="sm" onClick={() => setFotosProductId(p.id)}>
-                  <Images className="h-4 w-4 mr-2" /> Fotos
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setFotosProductId(p.id)}>
+                    <Images className="h-4 w-4 mr-2" /> Fotos
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => toggleOcultar(p)} disabled={ocultando[p.id]}>
+                    {p.oculto_en_gestion ? <Eye className="h-4 w-4 mr-2" /> : <EyeOff className="h-4 w-4 mr-2" />}
+                    {p.oculto_en_gestion ? 'Mostrar' : 'Ocultar'}
+                  </Button>
+                </div>
                 <Button size="sm" onClick={() => guardar(p.id)} disabled={saving[p.id]}>
                   {saving[p.id] ? 'Guardando...' : 'Guardar'}
                 </Button>

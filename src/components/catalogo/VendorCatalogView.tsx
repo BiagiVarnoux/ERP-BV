@@ -15,6 +15,7 @@ import { ProductFotoStorage, FotoSesion } from '@/accounting/product-foto-storag
 interface CatalogItem {
   id: string;
   nombre: string;
+  especificacion: string | null;
   descripcion_catalogo: string | null;
   precio_lista: number | null;
   precio_minimo_negociacion: number | null;
@@ -37,7 +38,7 @@ export function VendorCatalogView() {
       const [{ data: products, error: prodErr }, { data: stockRows, error: stockErr }] = await Promise.all([
         supabase
           .from('products')
-          .select('id, nombre, descripcion_catalogo, precio_lista, precio_minimo_negociacion, comision_bs')
+          .select('id, nombre, especificacion, descripcion_catalogo, precio_lista, precio_minimo_negociacion, comision_bs')
           .eq('company_id', companyId)
           .eq('mostrar_en_catalogo', true)
           .eq('status', 'activo'),
@@ -154,6 +155,7 @@ function CatalogCard({ item }: { item: CatalogItem }) {
 
         <div>
           <p className="font-semibold">{item.nombre}</p>
+          {item.especificacion && <p className="text-xs text-muted-foreground">{item.especificacion}</p>}
           {item.descripcion_catalogo && <p className="text-sm text-muted-foreground">{item.descripcion_catalogo}</p>}
         </div>
 
