@@ -28,6 +28,7 @@ import { JournalEntriesTable } from '@/components/journal/JournalEntriesTable';
 import { JournalFiltersComponent, JournalFilters, defaultFilters } from '@/components/journal/JournalFilters';
 import { InlineKardexPopup, KardexData } from '@/components/kardex/InlineKardexPopup';
 import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLedgerModal';
+import { CxpCxcModal, CxpCxcLineToProcess } from '@/components/journal/CxpCxcModal';
 import { InventoryExitModal } from '@/components/inventory/InventoryExitModal';
 import { FifoExitModal } from '@/components/inventory/FifoExitModal';
 import { InventoryLot } from '@/components/inventory/fifo-utils';
@@ -85,6 +86,11 @@ export default function JournalPage() {
     linesToProcess: [],
     originalEntry: null
   });
+  const [cxpCxcModalState, setCxpCxcModalState] = useState<{
+    isOpen: boolean;
+    linesToProcess: CxpCxcLineToProcess[];
+    journalEntry: JournalEntry | null;
+  }>({ isOpen: false, linesToProcess: [], journalEntry: null });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
   
@@ -200,6 +206,20 @@ export default function JournalPage() {
     return auxiliaryLines;
   }
 
+  function detectCxpCxcLines(je: JournalEntry): CxpCxcLineToProcess[] {
+    const lines: CxpCxcLineToProcess[] = [];
+    je.lines.forEach((line, index) => {
+      const account = accounts.find(a => a.id === line.account_id);
+      const modulo = account?.modulo_vinculado;
+      if (modulo !== 'cxp' && modulo !== 'cxc') return;
+      const lineAmount = line.debit || line.credit;
+      if (lineAmount <= 0) return;
+      const isIncrease = account.normal_side === 'DEBE' ? line.debit > 0 : line.credit > 0;
+      lines.push({ lineIndex: index, accountId: line.account_id, accountName: account.name, lineAmount, isIncrease, modulo });
+    });
+    return lines;
+  }
+
   async function saveEntry() {
     const je = form.validateAndBuildEntry();
     if (!je) return;
@@ -269,6 +289,13 @@ export default function JournalPage() {
           journalDate: je.date,
           costLines,
         });
+      }
+
+      // Detect lines touching accounts vinculadas a CxP/CxC — el asiento ya
+      // está guardado (je.id confirmado), así que el modal solo vincula.
+      const cxpCxcLines = detectCxpCxcLines(je);
+      if (cxpCxcLines.length > 0) {
+        setCxpCxcModalState({ isOpen: true, linesToProcess: cxpCxcLines, journalEntry: je });
       }
     } catch (e: any) {
       toast.error(e.message || 'Error guardando asiento');
@@ -453,6 +480,16 @@ export default function JournalPage() {
         originalEntry={auxiliaryModalState.originalEntry}
         onSave={handleAuxiliarySave}
       />
+
+      {cxpCxcModalState.isOpen && cxpCxcModalState.journalEntry && (
+        <CxpCxcModal
+          isOpen={cxpCxcModalState.isOpen}
+          linesToProcess={cxpCxcModalState.linesToProcess}
+          journalEntry={cxpCxcModalState.journalEntry}
+          companyId={activeCompanyId}
+          onDone={() => setCxpCxcModalState({ isOpen: false, linesToProcess: [], journalEntry: null })}
+        />
+      )}
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>

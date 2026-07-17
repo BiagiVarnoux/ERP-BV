@@ -57,6 +57,7 @@ function getDefaultDraft(): Partial<Account> {
     es_financiera: false,
     es_extraordinaria: false,
     afecta_ebitda: true,
+    modulo_vinculado: null,
   };
 }
 
@@ -234,6 +235,8 @@ export default function AccountsPage() {
                       clasificacion_resultado: null,
                       subclasificacion_resultado: null,
                       clasificacion_flujo: (v === 'INGRESO' || v === 'GASTO') ? 'no_aplica' : (p.clasificacion_flujo ?? 'no_aplica'),
+                      modulo_vinculado: (v === 'PASIVO' && p.modulo_vinculado === 'cxp') || (v === 'ACTIVO' && p.modulo_vinculado === 'cxc')
+                        ? p.modulo_vinculado : null,
                     }))}
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
@@ -342,6 +345,27 @@ export default function AccountsPage() {
                         <Banknote className="h-3 w-3" />Es efectivo o equivalente
                       </Label>
                     </div>
+                  </div>
+                )}
+
+                {/* Vínculo con Cuentas por Pagar/Cobrar */}
+                {(accDraft.type === 'PASIVO' || accDraft.type === 'ACTIVO') && (
+                  <div>
+                    <Label>Vínculo con módulo</Label>
+                    <Select
+                      value={accDraft.modulo_vinculado ?? '_none'}
+                      onValueChange={(v) => setAccDraft(p => ({...p, modulo_vinculado: v === '_none' ? null : v as 'cxp' | 'cxc'}))}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_none">Ninguno</SelectItem>
+                        {accDraft.type === 'PASIVO' && <SelectItem value="cxp">Cuentas por Pagar</SelectItem>}
+                        {accDraft.type === 'ACTIVO' && <SelectItem value="cxc">Cuentas por Cobrar</SelectItem>}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Si un asiento del Libro Diario toca esta cuenta, se ofrecerá registrar/vincular el CxP o CxC.
+                    </p>
                   </div>
                 )}
               </div>

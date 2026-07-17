@@ -14,6 +14,10 @@ import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext'
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { fmt, round2, todayISO, nowInAppTZ } from '@/accounting/utils';
 import { getMonthEndDate } from '@/accounting/period-utils';
+import { useAccounting } from '@/accounting/AccountingProvider';
+import { AccountCombobox } from '@/components/journal/AccountCombobox';
+import { listCustomers } from '@/domain/customers';
+import type { CustomerRow } from '@/domain/customers';
 import {
   listReceivables,
   createReceivable,
@@ -47,17 +51,6 @@ function pendienteCellClass(row: ReceivableRow): string {
   if (row.estado === 'partial') return 'text-right font-medium text-amber-600';
   return 'text-right font-medium';
 }
-
-const TIPO_PAGO_OPTIONS = [
-  'Caja MN',
-  'Banco MN',
-  'Banco ME',
-  'Facebank',
-  'Facebank 2',
-  'Facebank 3',
-  'USDT',
-  'USDT 2',
-] as const;
 
 type EstadoFilter = 'all' | 'open' | 'vencidos' | 'paid';
 
@@ -99,8 +92,12 @@ export default function ReceivablesPage() {
   const canCreate = can('receivables', 'create');
   const canEdit   = can('receivables', 'edit');
   const activeCompanyId = useActiveCompanyId();
+  const { accounts } = useAccounting();
+  const cuentasActivo  = useMemo(() => accounts.filter(a => a.type === 'ACTIVO'), [accounts]);
+  const cuentasIngreso = useMemo(() => accounts.filter(a => a.type === 'INGRESO'), [accounts]);
   const [rows, setRows]       = useState<ReceivableRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [customers, setCustomers] = useState<CustomerRow[]>([]);
 
   // Filters
   const [canalFilter, setCanalFilter]   = useState<CanalFilter>('all');
@@ -114,7 +111,7 @@ export default function ReceivablesPage() {
   const [payTarget, setPayTarget]   = useState<ReceivableRow | null>(null);
   const [payFecha, setPayFecha]     = useState(today());
   const [payMonto, setPayMonto]     = useState('');
-  const [payTipo, setPayTipo]       = useState<string>(TIPO_PAGO_OPTIONS[0]);
+  const [payCuentaPago, setPayCuentaPago] = useState('');
   const [payNotas, setPayNotas]     = useState('');
   const [paying, setPaying]         = useState(false);
 
@@ -125,11 +122,13 @@ export default function ReceivablesPage() {
   const [createFechaVenc, setCreateFechaVenc]   = useState('');
   const [createMonto, setCreateMonto]           = useState('');
   const [createMoneda, setCreateMoneda]         = useState<Moneda>('BOB');
-  const [createCliente, setCreateCliente]       = useState('');
+  const [createCustomerId, setCreateCustomerId] = useState('');
   const [createNotas, setCreateNotas]           = useState('');
+  const [createCuentaActivo, setCreateCuentaActivo]   = useState('');
+  const [createCuentaIngreso, setCreateCuentaIngreso] = useState('');
   const [creating, setCreating]                 = useState(false);
 
-  useEffect(() => { load(); loadCobradoMes(); }, []);
+  useEffect(() => { load(); loadCobradoMes(); listCustomers().then(setCustomers).catch(() => setCustomers([])); }, []);
 
   async function load() {
     setLoading(true);
@@ -216,7 +215,7 @@ export default function ReceivablesPage() {
     setPayTarget(row);
     setPayFecha(today());
     setPayMonto(String(row.monto_pendiente));
-    setPayTipo(TIPO_PAGO_OPTIONS[0]);
+    setPayCuentaPago('');
     setPayNotas('');
   }
 
@@ -231,16 +230,26 @@ export default function ReceivablesPage() {
       toast.error(`El monto no puede superar el pendiente (${fmt(payTarget.monto_pendiente)})`);
       return;
     }
+    if (!payCuentaPago) {
+      toast.error('Selecciona la cuenta de banco/caja donde cobras');
+      return;
+    }
+    if (!payTarget.cuenta_activo_id) {
+      toast.error('Esta CxC fue creada antes de vincularse al libro diario y no puede generar el asiento de cobro automáticamente.');
+      return;
+    }
+    const cuentaPago = accounts.find(a => a.id === payCuentaPago);
     setPaying(true);
     try {
       await registerPayment({
-        receivable_id: payTarget.id,
-        fecha:         payFecha,
+        receivable_id:  payTarget.id,
+        fecha:          payFecha,
         monto,
-        tipo_pago:     payTipo,
-        notas:         payNotas || null,
+        tipo_pago:      cuentaPago?.name ?? payCuentaPago,
+        cuenta_pago_id: payCuentaPago,
+        notas:          payNotas || null,
       });
-      toast.success('Cobro registrado correctamente');
+      toast.success('Cobro registrado y asiento generado correctamente');
       setPayTarget(null);
       await Promise.all([load(), loadCobradoMes()]);
     } catch (e: unknown) {
@@ -258,8 +267,10 @@ export default function ReceivablesPage() {
     setCreateFechaVenc('');
     setCreateMonto('');
     setCreateMoneda('BOB');
-    setCreateCliente('');
+    setCreateCustomerId('');
     setCreateNotas('');
+    setCreateCuentaActivo('');
+    setCreateCuentaIngreso('');
     setShowCreate(true);
   }
 
@@ -267,18 +278,23 @@ export default function ReceivablesPage() {
     if (!createNumero.trim()) { toast.error('Nº Documento requerido'); return; }
     const monto = parseFloat(createMonto);
     if (isNaN(monto) || monto <= 0) { toast.error('Monto inválido'); return; }
+    if (!createCuentaActivo)  { toast.error('Selecciona la cuenta por cobrar (débito)'); return; }
+    if (!createCuentaIngreso) { toast.error('Selecciona la cuenta de ingreso (crédito)'); return; }
 
     setCreating(true);
     try {
       await createReceivable({
+        customer_id:       createCustomerId || null,
         numero_documento:  createNumero.trim(),
         fecha_emision:     createFechaEmision,
         fecha_vencimiento: createFechaVenc || null,
         monto_original:    monto,
         moneda:            createMoneda,
         notas:             createNotas || null,
+        cuenta_activo_id:  createCuentaActivo,
+        cuenta_ingreso_id: createCuentaIngreso,
       });
-      toast.success('CxC creada correctamente');
+      toast.success('CxC creada y asiento generado correctamente');
       setShowCreate(false);
       load();
     } catch (e: unknown) {
@@ -535,17 +551,8 @@ export default function ReceivablesPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="pay-tipo">Tipo de pago</Label>
-                <Select value={payTipo} onValueChange={setPayTipo}>
-                  <SelectTrigger id="pay-tipo">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TIPO_PAGO_OPTIONS.map(t => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Cuenta de cobro (banco/caja) <span className="text-destructive">*</span></Label>
+                <AccountCombobox value={payCuentaPago} onChange={setPayCuentaPago} accounts={accounts} />
               </div>
 
               <div className="space-y-2">
@@ -582,12 +589,15 @@ export default function ReceivablesPage() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="c-cliente">Cliente (opcional)</Label>
-              <Input
-                id="c-cliente"
-                placeholder="Nombre o razón social..."
-                value={createCliente}
-                onChange={e => setCreateCliente(e.target.value)}
-              />
+              <Select value={createCustomerId || '__none__'} onValueChange={v => setCreateCustomerId(v === '__none__' ? '' : v)}>
+                <SelectTrigger id="c-cliente"><SelectValue placeholder="Sin cliente asociado" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sin cliente asociado</SelectItem>
+                  {customers.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.razon_social}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -646,6 +656,17 @@ export default function ReceivablesPage() {
                     <SelectItem value="USDT">USDT</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Cuenta por cobrar (Débito) <span className="text-destructive">*</span></Label>
+                <AccountCombobox value={createCuentaActivo} onChange={setCreateCuentaActivo} accounts={cuentasActivo} />
+              </div>
+              <div className="space-y-2">
+                <Label>Cuenta de ingreso (Crédito) <span className="text-destructive">*</span></Label>
+                <AccountCombobox value={createCuentaIngreso} onChange={setCreateCuentaIngreso} accounts={cuentasIngreso} />
               </div>
             </div>
 

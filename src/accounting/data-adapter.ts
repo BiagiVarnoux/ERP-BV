@@ -265,7 +265,7 @@ export function createSupaAdapter(companyId: string): IDataAdapter {
       const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAccounts();
       const data = await fetchAllPaginated<Account>((from, to) =>
         supa.from("accounts")
-          .select("id,name,type,normal_side,is_active,expense_category,is_cash_equivalent,is_current,clasificacion_resultado,subclasificacion_resultado,clasificacion_flujo,es_partida_no_monetaria,es_capital_trabajo,es_financiera,es_extraordinaria,afecta_ebitda")
+          .select("id,name,type,normal_side,is_active,expense_category,is_cash_equivalent,is_current,clasificacion_resultado,subclasificacion_resultado,clasificacion_flujo,es_partida_no_monetaria,es_capital_trabajo,es_financiera,es_extraordinaria,afecta_ebitda,modulo_vinculado")
           .eq("company_id", companyId)
           .order("id")
           .range(from, to)
@@ -291,6 +291,7 @@ export function createSupaAdapter(companyId: string): IDataAdapter {
         es_financiera: a.es_financiera ?? false,
         es_extraordinaria: a.es_extraordinaria ?? false,
         afecta_ebitda: a.afecta_ebitda ?? true,
+        modulo_vinculado: a.modulo_vinculado ?? null,
       };
       const { error } = await supa.from("accounts").upsert(accountWithUser);
       if (error) throw error;

@@ -48,6 +48,9 @@ export interface Account {
   es_financiera?: boolean;
   es_extraordinaria?: boolean;
   afecta_ebitda?: boolean;
+  // Vínculo con Cuentas por Pagar/Cobrar: si un asiento del Libro Diario toca
+  // esta cuenta, se ofrece registrar/vincular el CxP o CxC correspondiente.
+  modulo_vinculado?: 'cxp' | 'cxc' | null;
 }
 
 export interface JournalLine { 
