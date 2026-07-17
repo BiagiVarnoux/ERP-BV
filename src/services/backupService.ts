@@ -139,6 +139,19 @@ async function fetchAllLicitacionDocumentos(companyId: string): Promise<any[]> {
   return rows.map(({ licitaciones, ...row }: any) => row);
 }
 
+/** Paginated product_fotos via inner join on products.company_id. Los archivos
+ *  binarios en el bucket `product-photos` NO se incluyen en este backup JSON
+ *  (misma limitación documentada para shipment-docs/licitacion-files). */
+async function fetchAllProductFotos(companyId: string): Promise<any[]> {
+  const rows = await fetchAllPaginated<any>((from, to) =>
+    supabase.from('product_fotos')
+      .select('*, products!inner(company_id)')
+      .eq('products.company_id', companyId)
+      .range(from, to)
+  );
+  return rows.map(({ products, ...row }: any) => row);
+}
+
 /** Paginated investment_analysis_items via inner join on investment_analyses.company_id. */
 async function fetchAllInvestmentItems(companyId: string): Promise<any[]> {
   const rows = await fetchAllPaginated<any>((from, to) =>
@@ -197,6 +210,8 @@ export interface BackupData {
   investment_analysis_items?: any[];
   // v3.3 fields — configuración de cuentas de venta
   company_sale_account_config?: any[];
+  // v3.4 fields — Catálogo de Ventas (fotos de producto; los binarios en Storage no se respaldan)
+  product_fotos?: any[];
 }
 
 export async function createFullBackup(activeCompanyId?: string): Promise<BackupData> {
@@ -240,6 +255,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     investment_analyses,
     investment_analysis_items,
     company_sale_account_config,
+    product_fotos,
   ] = await Promise.all([
     fetchAllCompanyRows('accounts', companyId),
     fetchAllCompanyRows('journal_entries', companyId),
@@ -289,6 +305,8 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     fetchAllInvestmentItems(companyId),
     // v3.3: configuración de cuentas de venta
     fetchAllCompanyRows('company_sale_account_config', companyId),
+    // v3.4: fotos del Catálogo de Ventas
+    fetchAllProductFotos(companyId),
   ]);
 
   return {
@@ -328,6 +346,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     investment_analyses,
     investment_analysis_items,
     company_sale_account_config,
+    product_fotos,
   };
 }
 
@@ -523,6 +542,13 @@ async function _performRestoreInternal(
   // v2.0 tables
   if (backup.products?.length) {
     await chunkedInsert('products', backup.products.map(p => ({ ...p, user_id: userId })));
+  }
+  // product_fotos: solo filas cuyo product_id vino en este mismo backup (evita
+  // huérfanos); los archivos en el bucket product-photos no se restauran.
+  if (backup.product_fotos?.length) {
+    const validProductIds = new Set((backup.products ?? []).map((p: any) => p.id));
+    const safe = backup.product_fotos.filter((r: any) => validProductIds.has(r.product_id));
+    if (safe.length > 0) await chunkedInsert('product_fotos', safe);
   }
   if (backup.import_lots?.length) {
     await chunkedInsert('import_lots', backup.import_lots.map(l => ({ ...l, user_id: userId })));
@@ -807,6 +833,7 @@ export function validateBackupFile(data: any): { valid: boolean; error?: string 
     'product_categories',
     'investment_analyses', 'investment_analysis_items',
     'company_sale_account_config',
+    'product_fotos',
   ];
 
   for (const key of optionalArrays) {

@@ -31,6 +31,7 @@ import UsersPage from "./pages/users/Index";
 import HoldingPage from "./pages/holding/Index";
 import LicitacionesPage from "./pages/licitaciones/Index";
 import InvestmentsPage from "./pages/investments/Index";
+import CatalogoPage from "./pages/catalogo/Index";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -72,6 +73,7 @@ function AppRoutes() {
     if (canView('reports'))          return "/reports";
     if (canView('licitaciones'))     return "/licitaciones";
     if (canView('investments'))      return "/investments";
+    if (canView('catalogo_ventas'))  return "/catalogo";
     if (canView('holding'))          return "/holding";
     return "/viewer-dashboard";      // fallback: sin permisos → pantalla de código
   })();
@@ -110,6 +112,9 @@ function AppRoutes() {
 
         {/* Análisis de Inversión */}
         {canView('investments') && <Route path="investments/*" element={<InvestmentsPage />} />}
+
+        {/* Catálogo de Ventas */}
+        {canView('catalogo_ventas') && <Route path="catalogo/*" element={<CatalogoPage />} />}
 
         {/* Holding */}
         {canView('holding')    && <Route path="holding"    element={<HoldingPage />} />}

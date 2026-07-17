@@ -30,6 +30,13 @@ import { fetchProductsStockBatch, fetchLastPricesByCanal } from '@/domain/sales/
 import { condicionLabel } from '@/accounting/product-condicion';
 import { CustomerSearchCombobox } from '@/components/customers/CustomerSearchCombobox';
 
+interface VendedorOption {
+  member_id: string;
+  display_name: string;
+  email: string;
+  role: string;
+}
+
 interface ProductOption {
   id: string;
   codigo: string;
@@ -69,6 +76,8 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [glosa, setGlosa] = useState('');
+  const [vendedorId, setVendedorId] = useState<string>('');
+  const [vendedores, setVendedores] = useState<VendedorOption[]>([]);
 
   // Items
   const [items, setItems] = useState<SaleItemEnriched[]>([]);
@@ -84,6 +93,9 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     loadProductsAndStock();
     if (activeCompanyId) {
       loadPaymentMethods(activeCompanyId).then(setPaymentMethods).catch(() => {});
+      supabase.rpc('get_company_members_detail', { p_company_id: activeCompanyId })
+        .then(({ data }) => setVendedores(((data ?? []) as VendedorOption[]).filter(m => m.role === 'custom')))
+        .catch(() => setVendedores([]));
     }
   }, [isOpen]);
 
@@ -124,6 +136,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     setCustomerId(null);
     setCustomerName('');
     setGlosa('');
+    setVendedorId('');
     setItems([]);
     setSearchQuery('');
     setSearchOpen(false);
@@ -287,6 +300,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
           tipo_pago: tipoPago,
           cliente_nombre: customerName || null,
           glosa: glosa || null,
+          vendedor_member_id: vendedorId || null,
         },
         cleanItems,
         activeCompanyId,
@@ -656,6 +670,22 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
                     placeholder="Descripción adicional..."
                   />
                 </div>
+
+                {vendedores.length > 0 && (
+                  <div>
+                    <Label>Vendedor (interno, opcional)</Label>
+                    <Select value={vendedorId || '__ninguno__'} onValueChange={v => setVendedorId(v === '__ninguno__' ? '' : v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__ninguno__">Ninguno</SelectItem>
+                        {vendedores.map(v => (
+                          <SelectItem key={v.member_id} value={v.member_id}>{v.display_name || v.email}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">Para calcular a quién pagarle comisión. No es visible en el Catálogo.</p>
+                  </div>
+                )}
               </div>
 
               {/* Cuadro de totales */}

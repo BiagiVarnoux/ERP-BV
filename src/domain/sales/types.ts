@@ -36,6 +36,8 @@ export interface SaleHeaderInput {
   cliente_nombre?: string | null;
   glosa?: string | null;
   aux_entry_id?: string | null;
+  /** Vendedor a comisión que cerró la venta (interno, no visible en el Catálogo). null = ninguno. */
+  vendedor_member_id?: string | null;
 }
 
 export interface SaleTotals {
@@ -73,6 +75,7 @@ export interface SaleRow {
   estado: 'confirmed' | 'voided';
   void_reason: string | null;
   void_journal_entry_id: string | null;
+  vendedor_member_id: string | null;
   created_at: string;
 }
 

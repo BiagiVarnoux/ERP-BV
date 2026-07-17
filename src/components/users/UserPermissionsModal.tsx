@@ -50,6 +50,7 @@ const MODULE_LABELS: Record<string, string> = {
   shipments:         'Embarques / Importación',
   licitaciones:      'Licitaciones',
   investments:       'Análisis de Inversión',
+  catalogo_ventas:   'Catálogo de Ventas',
   settings:          'Configuración',
   holding:           'Holding (Consolidado)',
 };
