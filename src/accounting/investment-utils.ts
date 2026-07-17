@@ -537,16 +537,18 @@ export function buildFlujosReales(
 
 export interface ItemResultadoReal {
   cantidadReal: number;
-  costoUnitarioReal: number;
-  inversionReal: number;
+  costoUnitarioReal: number;       // sin IVA aduana (costo contable/COGS, igual convención que costo_unitario_sin_iva)
+  costoSinIvaReal: number;         // = costoUnitarioReal × cantidadReal
+  ivaAduanaReal: number;           // IVA aduana real total (p.iva_monto), informativo
+  inversionReal: number;           // costoSinIvaReal + ivaAduanaReal + extras — capital REAL desembolsado (con IVA)
   unidadesVendidas: number;
   ingresoRealVentas: number;
   unidadesRestantes: number;
   ingresoProyectadoRestante: number;
   ingresoTotalProyectado: number;
-  costos: number;
+  costos: number;                  // costo económico: sin IVA + la parte de IVA NO recuperable (ventas sin factura)
   ganancia: number;
-  roi: number;
+  roi: number;                     // ganancia / inversionReal (capital con IVA realmente comprometido)
   ciclo_meses: number;
   van: number;
   tir_anual: number;
@@ -557,6 +559,19 @@ export interface ItemResultadoReal {
  * Resultado real de un ítem ya mapeado a un embarque cerrado. Devuelve `null`
  * si el embarque aún no cerró (sin costo real todavía) o si el ítem no tiene
  * ninguna fila mapeada.
+ *
+ * IMPORTANTE — con IVA vs sin IVA: ShipmentProduct.costo_total_unitario es el
+ * costo CONTABLE del embarque (sin IVA aduana, porque es crédito fiscal, no
+ * costo — ver shipment-utils.ts calcCostoFinalPorProducto). El costeo cotizado
+ * (ItemCosteo.inversion), en cambio, SÍ incluye el IVA aduana dentro del costo
+ * unitario. Comparar "inversión cotizada" contra "costo_total_unitario real"
+ * directamente mezcla bases distintas (esa era la causa del desfase reportado:
+ * 71k cotizado vs "64k real" que en realidad no traía el IVA). Aquí se
+ * reconstruye el real "con IVA" sumando p.iva_monto, para que ambos lados de
+ * la comparación de INVERSIÓN estén en la misma base (capital efectivamente
+ * desembolsado). Para GANANCIA, el IVA aduana se recupera como crédito fiscal
+ * solo en las ventas con factura (igual que ya hace calcCosteo cotizado); en
+ * las ventas sin factura queda como costo real no recuperable.
  */
 export function calcResultadoReal(
   it: InvestmentItem,
@@ -569,25 +584,34 @@ export function calcResultadoReal(
   if (!mappedProducts.every(p => p.costo_total_unitario != null)) return null;
 
   const cantidadReal = mappedProducts.reduce((s, p) => s + (p.cantidad || 0), 0);
-  const costoTotalReal = mappedProducts.reduce(
+  const costoSinIvaReal = mappedProducts.reduce(
     (s, p) => s + (p.costo_total_unitario || 0) * (p.cantidad || 0), 0
   );
-  const costoUnitarioReal = cantidadReal > 0 ? round2(costoTotalReal / cantidadReal) : 0;
-  const inversionReal = round2(costoTotalReal + costeoCotizado.extras);
+  const ivaAduanaReal = mappedProducts.reduce((s, p) => s + (p.iva_monto || 0), 0);
+  const costoUnitarioReal = cantidadReal > 0 ? round2(costoSinIvaReal / cantidadReal) : 0;
+  const ivaPorUnidadReal = cantidadReal > 0 ? ivaAduanaReal / cantidadReal : 0;
+  const inversionReal = round2(costoSinIvaReal + ivaAduanaReal + costeoCotizado.extras);
 
   const unidadesVendidas = round2(ventasRealesDetalle.reduce((s, v) => s + v.unidades, 0));
   const ingresoRealVentas = round2(ventasRealesDetalle.reduce((s, v) => s + v.ingreso_neto, 0));
   const unidadesRestantes = Math.max(0, round2(cantidadReal - unidadesVendidas));
 
-  // Precio neto planeado por unidad (después de IVA/IT), para proyectar lo aún no vendido.
+  // Precio neto planeado por unidad (después de IVA/IT de venta), para proyectar lo aún no vendido.
   const ingresoNetoUnitPlaneado = it.cantidad > 0
     ? (costeoCotizado.ingreso_total - costeoCotizado.iva_pagar - costeoCotizado.it_pagar) / it.cantidad
     : 0;
   const ingresoProyectadoRestante = round2(unidadesRestantes * ingresoNetoUnitPlaneado);
   const ingresoTotalProyectado = round2(ingresoRealVentas + ingresoProyectadoRestante);
 
-  // ingreso_neto (real) y el ingreso proyectado ya vienen netos de IVA/IT de venta.
-  const costos = inversionReal;
+  // El IVA aduana se recupera (crédito fiscal) solo en las unidades vendidas CON
+  // factura — igual criterio que calcCosteo() cotizado. Lo proyectado (aún sin
+  // vender) hereda la modalidad de venta cotizada del ítem.
+  const unidadesConFacturaReales = round2(ventasRealesDetalle.reduce((s, v) => s + v.con_factura, 0));
+  const unidadesConFacturaProyectadas = it.modalidad_venta === 'sin_factura' ? 0 : unidadesRestantes;
+  const unidadesConFacturaTotal = unidadesConFacturaReales + unidadesConFacturaProyectadas;
+  const ivaNoRecuperable = round2(Math.max(0, cantidadReal - unidadesConFacturaTotal) * ivaPorUnidadReal);
+
+  const costos = round2(costoSinIvaReal + ivaNoRecuperable + costeoCotizado.extras);
   const ganancia = round2(ingresoTotalProyectado - costos);
   const roi = inversionReal > 0 ? round2(ganancia / inversionReal) : 0;
 
@@ -602,7 +626,7 @@ export function calcResultadoReal(
   const tirAnual = tirM != null ? Math.pow(1 + tirM, 12) - 1 : 0;
 
   return {
-    cantidadReal, costoUnitarioReal, inversionReal,
+    cantidadReal, costoUnitarioReal, costoSinIvaReal: round2(costoSinIvaReal), ivaAduanaReal: round2(ivaAduanaReal), inversionReal,
     unidadesVendidas, ingresoRealVentas, unidadesRestantes, ingresoProyectadoRestante, ingresoTotalProyectado,
     costos, ganancia, roi, ciclo_meses: round2(mesesVenta), van: vanVal, tir_anual: tirAnual, flujos,
   };
@@ -611,8 +635,10 @@ export function calcResultadoReal(
 export interface ResumenReal {
   itemsConCostoReal: number;
   itemsTotal: number;
-  inversionEstimada: number;
-  inversionReal: number;
+  inversionEstimada: number;       // con IVA aduana (capital comprometido)
+  inversionReal: number;           // con IVA aduana real — misma base que inversionEstimada
+  costoSinIvaEstimado: number;     // costo contable/COGS cotizado (sin IVA aduana)
+  costoSinIvaReal: number;         // costo contable/COGS real (sin IVA aduana) — comparable 1:1
   gananciaEstimada: number;
   gananciaReal: number;
   roiEstimado: number;
@@ -631,38 +657,47 @@ export interface ResumenReal {
  */
 export function calcResumenReal(
   costoCapitalAnual: number,
+  items: InvestmentItem[],
   calcs: ItemCalc[],
   resultadosReales: (ItemResultadoReal | null)[],
 ): ResumenReal {
   let inversionEstimada = 0, gananciaEstimada = 0;
   let inversionReal = 0, gananciaReal = 0;
+  let costoSinIvaEstimado = 0, costoSinIvaReal = 0;
   let itemsConCostoReal = 0;
   let maxLen = 1;
   const flujosParaVanReal: number[][] = [];
 
   for (let i = 0; i < calcs.length; i++) {
-    inversionEstimada += calcs[i].costeo.inversion;
-    gananciaEstimada  += calcs[i].costeo.ganancia;
+    const item = calcs[i];
+    const cantidad = items[i]?.cantidad || 0;
+    inversionEstimada   += item.costeo.inversion;
+    gananciaEstimada    += item.costeo.ganancia;
+    costoSinIvaEstimado += item.costeo.costo_unitario_sin_iva * cantidad;
 
     const real = resultadosReales[i];
     if (real) {
       itemsConCostoReal++;
-      inversionReal += real.inversionReal;
-      gananciaReal  += real.ganancia;
+      inversionReal   += real.inversionReal;
+      gananciaReal    += real.ganancia;
+      costoSinIvaReal += real.costoSinIvaReal;
       flujosParaVanReal.push(real.flujos);
     } else {
       // Sin dato real todavía: usar el cotizado para no distorsionar el total.
-      inversionReal += calcs[i].costeo.inversion;
-      gananciaReal  += calcs[i].costeo.ganancia;
-      flujosParaVanReal.push(calcs[i].tiempo.flujos);
+      inversionReal   += item.costeo.inversion;
+      gananciaReal    += item.costeo.ganancia;
+      costoSinIvaReal += item.costeo.costo_unitario_sin_iva * cantidad;
+      flujosParaVanReal.push(item.tiempo.flujos);
     }
     maxLen = Math.max(maxLen, flujosParaVanReal[i].length);
   }
 
-  inversionEstimada = round2(inversionEstimada);
-  inversionReal     = round2(inversionReal);
-  gananciaEstimada  = round2(gananciaEstimada);
-  gananciaReal      = round2(gananciaReal);
+  inversionEstimada   = round2(inversionEstimada);
+  inversionReal       = round2(inversionReal);
+  gananciaEstimada    = round2(gananciaEstimada);
+  gananciaReal        = round2(gananciaReal);
+  costoSinIvaEstimado = round2(costoSinIvaEstimado);
+  costoSinIvaReal     = round2(costoSinIvaReal);
 
   const roiEstimado = inversionEstimada > 0 ? round2(gananciaEstimada / inversionEstimada) : 0;
   const roiReal     = inversionReal > 0 ? round2(gananciaReal / inversionReal) : 0;
@@ -683,7 +718,9 @@ export function calcResumenReal(
 
   return {
     itemsConCostoReal, itemsTotal: calcs.length,
-    inversionEstimada, inversionReal, gananciaEstimada, gananciaReal,
+    inversionEstimada, inversionReal,
+    costoSinIvaEstimado, costoSinIvaReal,
+    gananciaEstimada, gananciaReal,
     roiEstimado, roiReal, vanEstimado, vanReal, tirEstimadoAnual, tirRealAnual,
   };
 }

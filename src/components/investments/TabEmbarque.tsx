@@ -138,8 +138,8 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
   }, [items, calcs, shipment, isCerrado, prodById, realizedDetail, costoCapitalAnual]);
 
   const resumenReal = useMemo(
-    () => calcResumenReal(costoCapitalAnual, calcs, resultadosReales),
-    [costoCapitalAnual, calcs, resultadosReales],
+    () => calcResumenReal(costoCapitalAnual, items, calcs, resultadosReales),
+    [costoCapitalAnual, items, calcs, resultadosReales],
   );
 
   return (
@@ -330,6 +330,8 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
                   <p className="text-[11px] text-muted-foreground mb-3">
                     {resumenReal.itemsConCostoReal} de {resumenReal.itemsTotal} producto{resumenReal.itemsTotal !== 1 ? 's' : ''} con costo real disponible.
                     Lo aún no vendido se proyecta al precio y velocidad cotizados, para aislar el efecto del costo real.
+                    "Inversión" incluye el IVA aduana (capital realmente desembolsado); "Costo importación" lo excluye
+                    (costo contable — el IVA aduana es crédito fiscal, se recupera al vender con factura).
                   </p>
                   <div className="overflow-x-auto">
                     <table className="text-sm w-full">
@@ -343,9 +345,15 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
                       </thead>
                       <tbody>
                         <ResumenRealRow
-                          label="Inversión"
+                          label="Inversión (con IVA aduana)"
                           est={resumenReal.inversionEstimada}
                           real={resumenReal.inversionReal}
+                          invertColor
+                        />
+                        <ResumenRealRow
+                          label="Costo importación (sin IVA aduana)"
+                          est={resumenReal.costoSinIvaEstimado}
+                          real={resumenReal.costoSinIvaReal}
                           invertColor
                         />
                         <ResumenRealRow
