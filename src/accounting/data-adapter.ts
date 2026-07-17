@@ -390,6 +390,73 @@ export function createSupaAdapter(companyId: string): IDataAdapter {
         }
       }
 
+      // CxP/CxC: si este asiento generó una CxP/CxC nueva, eliminarla (solo si
+      // no tiene pagos aplicados); si el asiento registró un pago sobre una
+      // CxP/CxC existente, revertir ese pago (devolver el monto a monto_pendiente).
+      for (const [table, idCol, label] of [
+        ["payables", "payable_id", "Cuenta por Pagar"],
+        ["receivables", "receivable_id", "Cuenta por Cobrar"],
+      ] as const) {
+        const { data: payments, error: selPayErr } = await supa
+          .from("debt_payments")
+          .select(`id, monto, ${idCol}`)
+          .eq("journal_entry_id", id)
+          .eq("company_id", companyId)
+          .not(idCol, "is", null);
+        if (selPayErr) throw selPayErr;
+
+        for (const p of (payments ?? []) as Array<Record<string, unknown>>) {
+          const docId = p[idCol] as string;
+          const monto = p.monto as number;
+          const { data: doc, error: docErr } = await supa
+            .from(table)
+            .select("id, monto_original, monto_pendiente")
+            .eq("id", docId)
+            .eq("company_id", companyId)
+            .maybeSingle();
+          if (docErr) throw docErr;
+          if (!doc) continue;
+          const nuevoPendiente = Math.min(doc.monto_original, round2(doc.monto_pendiente + monto));
+          const nuevoEstado = nuevoPendiente >= doc.monto_original ? "open" : "partial";
+          const { error: updErr } = await supa
+            .from(table)
+            .update({ monto_pendiente: nuevoPendiente, estado: nuevoEstado, updated_at: new Date().toISOString() })
+            .eq("id", docId);
+          if (updErr) throw updErr;
+        }
+        if (payments && payments.length > 0) {
+          const { error: delPayErr } = await supa
+            .from("debt_payments")
+            .delete()
+            .eq("journal_entry_id", id)
+            .eq("company_id", companyId);
+          if (delPayErr) throw delPayErr;
+        }
+
+        const { data: created, error: selDocErr } = await supa
+          .from(table)
+          .select("id, monto_original, monto_pendiente, numero_documento")
+          .eq("journal_entry_id", id)
+          .eq("company_id", companyId);
+        if (selDocErr) throw selDocErr;
+
+        for (const doc of created ?? []) {
+          if (round2(doc.monto_pendiente) !== round2(doc.monto_original)) {
+            throw new Error(
+              `No se puede eliminar: la ${label} "${doc.numero_documento}" generada por este asiento ya tiene pagos registrados. Elimina primero esos pagos.`
+            );
+          }
+        }
+        if (created && created.length > 0) {
+          const { error: delDocErr } = await supa
+            .from(table)
+            .delete()
+            .eq("journal_entry_id", id)
+            .eq("company_id", companyId);
+          if (delDocErr) throw delDocErr;
+        }
+      }
+
       const { error: e1 } = await supa.from("journal_lines").delete().eq("entry_id", id);
       if (e1) throw e1;
       const { error: e2 } = await supa.from("journal_entries").delete().eq("id", id).eq("company_id", companyId);

@@ -497,7 +497,8 @@ export default function JournalPage() {
             <AlertDialogTitle>¿Eliminar asiento?</AlertDialogTitle>
             <AlertDialogDescription>
               Esta acción no se puede deshacer. El asiento será eliminado permanentemente.
-              Si este asiento tiene movimientos auxiliares o de kardex asociados, también serán eliminados.
+              Si este asiento tiene movimientos auxiliares, de kardex, o una CxP/CxC vinculada sin pagos, también serán eliminados.
+              Si la CxP/CxC vinculada ya tiene pagos registrados, la eliminación se bloqueará.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

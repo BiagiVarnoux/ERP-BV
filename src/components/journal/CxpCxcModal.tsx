@@ -18,9 +18,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { JournalEntry } from '@/accounting/types';
-import { fmt } from '@/accounting/utils';
-import { listCustomers } from '@/domain/customers';
+import { fmt, round2 } from '@/accounting/utils';
+import { listCustomers, createCustomer } from '@/domain/customers';
 import type { CustomerRow } from '@/domain/customers';
+import { Plus } from 'lucide-react';
 
 export interface CxpCxcLineToProcess {
   lineIndex: number;
@@ -65,6 +66,13 @@ export function CxpCxcModal({ isOpen, linesToProcess, journalEntry, companyId, o
   // "Pago de existente" — docId -> monto (string, input controlado)
   const [allocations, setAllocations] = useState<Record<string, string>>({});
 
+  // Crear cliente nuevo inline (una CxC no siempre viene de un cliente ya
+  // registrado en Ventas)
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [newCustomerNombre, setNewCustomerNombre] = useState('');
+  const [newCustomerNit, setNewCustomerNit] = useState('');
+  const [savingCustomer, setSavingCustomer] = useState(false);
+
   const line = linesToProcess[lineIdx];
 
   useEffect(() => {
@@ -80,6 +88,7 @@ export function CxpCxcModal({ isOpen, linesToProcess, journalEntry, companyId, o
     setNumeroDocumento(''); setFechaVencimiento(''); setMoneda('BOB');
     setAllocations({});
     setOpenDocs([]);
+    setCreatingCustomer(false); setNewCustomerNombre(''); setNewCustomerNit('');
 
     if (!line.isIncrease) {
       setLoadingDocs(true);
@@ -100,7 +109,7 @@ export function CxpCxcModal({ isOpen, linesToProcess, journalEntry, companyId, o
             toast.error('Error cargando documentos abiertos');
             setOpenDocs([]);
           } else {
-            setOpenDocs(((data ?? []) as unknown as Record<string, unknown>[]).map(r => ({
+            const docs = ((data ?? []) as unknown as Record<string, unknown>[]).map(r => ({
               id: r.id as string,
               numero_documento: r.numero_documento as string,
               nombre: line.modulo === 'cxp'
@@ -108,7 +117,13 @@ export function CxpCxcModal({ isOpen, linesToProcess, journalEntry, companyId, o
                 : ((r.customers as { razon_social?: string } | null)?.razon_social ?? 'Sin cliente asociado'),
               monto_pendiente: Number(r.monto_pendiente),
               moneda: r.moneda as string,
-            })));
+            }));
+            setOpenDocs(docs);
+            // Si hay un solo documento abierto, precargar el monto sugerido
+            // (evita que el usuario tenga que adivinar que debe escribir en el campo).
+            if (docs.length === 1) {
+              setAllocations({ [docs[0].id]: String(round2(Math.min(line.lineAmount, docs[0].monto_pendiente))) });
+            }
           }
           setLoadingDocs(false);
         });
@@ -122,6 +137,26 @@ export function CxpCxcModal({ isOpen, linesToProcess, journalEntry, companyId, o
       setLineIdx(lineIdx + 1);
     } else {
       onDone();
+    }
+  }
+
+  async function handleCreateCustomer() {
+    if (!newCustomerNombre.trim()) { toast.error('Nombre del cliente requerido'); return; }
+    setSavingCustomer(true);
+    try {
+      const created = await createCustomer({
+        razon_social: newCustomerNombre.trim(),
+        nit: newCustomerNit.trim() || undefined,
+      });
+      setCustomers(prev => [...prev, created].sort((a, b) => a.razon_social.localeCompare(b.razon_social)));
+      setCustomerId(created.id);
+      setCreatingCustomer(false);
+      setNewCustomerNombre(''); setNewCustomerNit('');
+      toast.success('Cliente creado');
+    } catch (e: any) {
+      toast.error(e.message || 'Error al crear el cliente');
+    } finally {
+      setSavingCustomer(false);
     }
   }
 
@@ -244,13 +279,41 @@ export function CxpCxcModal({ isOpen, linesToProcess, journalEntry, companyId, o
               ) : (
                 <div className="space-y-1">
                   <Label className="text-xs">Cliente (opcional)</Label>
-                  <Select value={customerId || '__none__'} onValueChange={v => setCustomerId(v === '__none__' ? '' : v)}>
-                    <SelectTrigger><SelectValue placeholder="Sin cliente asociado" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Sin cliente asociado</SelectItem>
-                      {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.razon_social}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  {!creatingCustomer ? (
+                    <div className="flex gap-2">
+                      <Select value={customerId || '__none__'} onValueChange={v => setCustomerId(v === '__none__' ? '' : v)}>
+                        <SelectTrigger className="flex-1"><SelectValue placeholder="Sin cliente asociado" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Sin cliente asociado</SelectItem>
+                          {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.razon_social}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <Button type="button" variant="outline" size="icon" onClick={() => setCreatingCustomer(true)} title="Crear nuevo cliente">
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 border rounded-md p-2">
+                      <Input
+                        value={newCustomerNombre}
+                        onChange={e => setNewCustomerNombre(e.target.value)}
+                        placeholder="Razón social del cliente nuevo"
+                      />
+                      <Input
+                        value={newCustomerNit}
+                        onChange={e => setNewCustomerNit(e.target.value)}
+                        placeholder="NIT (opcional)"
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setCreatingCustomer(false)} disabled={savingCustomer}>
+                          Cancelar
+                        </Button>
+                        <Button type="button" size="sm" onClick={handleCreateCustomer} disabled={savingCustomer}>
+                          {savingCustomer ? 'Guardando...' : 'Guardar cliente'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="space-y-1">
@@ -287,25 +350,42 @@ export function CxpCxcModal({ isOpen, linesToProcess, journalEntry, companyId, o
                 <p className="text-sm text-muted-foreground">No hay documentos abiertos en esta cuenta.</p>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {openDocs.map(doc => (
-                    <div key={doc.id} className="flex items-center gap-2 border rounded p-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{doc.nombre}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {doc.numero_documento} · pendiente {doc.moneda} {fmt(doc.monto_pendiente)}
-                        </p>
+                  {openDocs.map(doc => {
+                    const currentSum = Object.entries(allocations)
+                      .filter(([docId]) => docId !== doc.id)
+                      .reduce((s, [, v]) => s + (parseFloat(v) || 0), 0);
+                    const suggested = round2(Math.max(0, Math.min(line.lineAmount - currentSum, doc.monto_pendiente)));
+                    return (
+                      <div key={doc.id} className="flex items-center gap-2 border rounded p-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{doc.nombre}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {doc.numero_documento} · pendiente {doc.moneda} {fmt(doc.monto_pendiente)}
+                          </p>
+                        </div>
+                        {!allocations[doc.id] && suggested > 0 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs"
+                            onClick={() => setAllocations(prev => ({ ...prev, [doc.id]: String(suggested) }))}
+                          >
+                            Usar {fmt(suggested)}
+                          </Button>
+                        )}
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="w-28 h-8"
+                          placeholder="0.00"
+                          value={allocations[doc.id] ?? ''}
+                          onChange={e => setAllocations(prev => ({ ...prev, [doc.id]: e.target.value }))}
+                        />
                       </div>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="w-28 h-8"
-                        placeholder="0.00"
-                        value={allocations[doc.id] ?? ''}
-                        onChange={e => setAllocations(prev => ({ ...prev, [doc.id]: e.target.value }))}
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
