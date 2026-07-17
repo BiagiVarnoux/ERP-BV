@@ -73,8 +73,9 @@ export function VendorCatalogView() {
 function CatalogCard({ item }: { item: CatalogItem }) {
   const [sesiones, setSesiones] = useState<FotoSesion[]>([]);
   const [sesionIdx, setSesionIdx] = useState(0);
-  const [fotoIdx, setFotoIdx] = useState(0);
+  const [fotoFiles, setFotoFiles] = useState<File[]>([]);
   const [fotoUrls, setFotoUrls] = useState<string[]>([]);
+  const [preparando, setPreparando] = useState(false);
   const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
@@ -83,24 +84,38 @@ function CatalogCard({ item }: { item: CatalogItem }) {
 
   const sesionActual = sesiones[sesionIdx];
 
+  // Precarga los blobs de la sesión ANTES de que el vendedor toque "Compartir".
+  // iOS Safari exige que navigator.share() se llame sin demoras async después
+  // del gesto del usuario — si esperamos a descargar las fotos recién al
+  // hacer clic, el "user activation" ya expiró y share() falla en silencio
+  // (por eso salía "no se pudo compartir las fotos").
   useEffect(() => {
-    if (!sesionActual) { setFotoUrls([]); return; }
-    Promise.all(sesionActual.fotos.map(f => ProductFotoStorage.getFotoUrl(f.path))).then(setFotoUrls);
-    setFotoIdx(0);
+    let cancelado = false;
+    setFotoFiles([]);
+    setFotoUrls([]);
+    if (!sesionActual) return;
+    setPreparando(true);
+    (async () => {
+      const urls = await Promise.all(sesionActual.fotos.map(f => ProductFotoStorage.getFotoUrl(f.path)));
+      if (cancelado) return;
+      setFotoUrls(urls);
+      const files = await Promise.all(
+        sesionActual.fotos.map(async (f, i) => {
+          const res = await fetch(urls[i]);
+          const blob = await res.blob();
+          return new File([blob], f.nombre, { type: blob.type || 'image/jpeg' });
+        })
+      );
+      if (!cancelado) setFotoFiles(files);
+    })().finally(() => { if (!cancelado) setPreparando(false); });
+    return () => { cancelado = true; };
   }, [sesionActual]);
 
   async function compartir() {
-    if (!sesionActual || fotoUrls.length === 0) return;
+    if (!sesionActual || fotoFiles.length === 0) return;
     setSharing(true);
     try {
-      const files = await Promise.all(
-        sesionActual.fotos.map(async (f, i) => {
-          const res = await fetch(fotoUrls[i]);
-          const blob = await res.blob();
-          return new File([blob], f.nombre, { type: blob.type });
-        })
-      );
-      const shareData = { files, title: `${item.nombre} — ${sesionActual.sesion_nombre || 'Fotos'}` };
+      const shareData = { files: fotoFiles, title: `${item.nombre} — ${sesionActual.sesion_nombre || 'Fotos'}` };
       if (navigator.canShare && navigator.canShare(shareData)) {
         await navigator.share(shareData);
       } else {
@@ -108,7 +123,10 @@ function CatalogCard({ item }: { item: CatalogItem }) {
         fotoUrls.forEach(url => window.open(url, '_blank'));
       }
     } catch (e: any) {
-      if (e?.name !== 'AbortError') toast.error('No se pudo compartir las fotos');
+      if (e?.name !== 'AbortError') {
+        console.error('[compartir]', e);
+        toast.error(e?.message ? `No se pudo compartir: ${e.message}` : 'No se pudo compartir las fotos');
+      }
     } finally {
       setSharing(false);
     }
@@ -117,27 +135,6 @@ function CatalogCard({ item }: { item: CatalogItem }) {
   return (
     <Card>
       <CardContent className="p-4 space-y-3">
-        <div className="aspect-square bg-muted rounded-md overflow-hidden flex items-center justify-center">
-          {fotoUrls[fotoIdx] ? (
-            <img src={fotoUrls[fotoIdx]} alt={item.nombre} className="w-full h-full object-cover" />
-          ) : (
-            <span className="text-xs text-muted-foreground">Sin foto</span>
-          )}
-        </div>
-
-        {fotoUrls.length > 1 && (
-          <div className="flex gap-1 justify-center flex-wrap">
-            {fotoUrls.map((_, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setFotoIdx(i)}
-                className={`w-2 h-2 rounded-full ${i === fotoIdx ? 'bg-primary' : 'bg-muted-foreground/30'}`}
-              />
-            ))}
-          </div>
-        )}
-
         {sesiones.length > 1 && (
           <div className="flex gap-1 flex-wrap">
             {sesiones.map((s, i) => (
@@ -179,8 +176,8 @@ function CatalogCard({ item }: { item: CatalogItem }) {
         </div>
 
         {sesionActual && sesionActual.fotos.length > 0 && (
-          <Button className="w-full" size="sm" onClick={compartir} disabled={sharing}>
-            {sharing ? 'Preparando...' : 'Compartir fotos de esta sesión'}
+          <Button className="w-full" size="sm" onClick={compartir} disabled={sharing || preparando}>
+            {sharing ? 'Compartiendo...' : preparando ? 'Preparando fotos...' : 'Compartir fotos de esta sesión'}
           </Button>
         )}
       </CardContent>
