@@ -1,8 +1,11 @@
 // src/components/catalogo/VentasPorVendedorView.tsx
 // Reporte interno (owner/edit únicamente, nunca visible para el rol
 // vendedor): qué ventas cerró cada vendedor y cuánta comisión corresponde.
-// La comisión se calcula EN VIVO uniendo sale_items.product_id →
-// products.comision_bs — no es una copia histórica (ver nota en el plan).
+// Solo incluye ventas con vendedor_member_id asignado — sin vendedor no hay
+// comisión que pagar. La comisión se calcula EN VIVO uniendo
+// sale_items.product_id → products.comision_bs — no es una copia histórica
+// (si cambias la comisión de un producto, el reporte usa el valor actual,
+// no el vigente al momento de la venta).
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
@@ -40,8 +43,6 @@ interface VentaFila {
   comision: number;
 }
 
-const SIN_VENDEDOR = 'Sin vendedor';
-
 export function VentasPorVendedorView() {
   const companyId = useActiveCompanyId();
   const [filas, setFilas] = useState<VentaFila[]>([]);
@@ -61,6 +62,7 @@ export function VentasPorVendedorView() {
           .select('id, numero, fecha, vendedor_member_id, sale_items(product_id, product_nombre, cantidad)')
           .eq('company_id', companyId)
           .eq('estado', 'confirmed')
+          .not('vendedor_member_id', 'is', null)
           .order('fecha', { ascending: false }),
         supabase.from('products').select('id, comision_bs').eq('company_id', companyId),
         supabase.rpc('get_company_members_detail', { p_company_id: companyId }),
@@ -77,9 +79,12 @@ export function VentasPorVendedorView() {
         ((membersRes.data ?? []) as MemberLite[]).map(m => [m.member_id, m.display_name || m.email])
       );
 
+      // Solo ventas con vendedor asignado — sin vendedor no hay comisión que
+      // pagar (evita mostrar comisión "fantasma" en ventas viejas, hechas
+      // antes de que existiera este sistema, del mismo producto).
       const sales = (salesRes.data ?? []) as unknown as SaleLite[];
       const rows: VentaFila[] = sales
-        .filter(s => s.sale_items.some(it => comisionByProduct.has(it.product_id) && (comisionByProduct.get(it.product_id) ?? 0) > 0))
+        .filter((s): s is SaleLite & { vendedor_member_id: string } => s.vendedor_member_id != null)
         .map(s => {
           const comision = round2(
             s.sale_items.reduce((sum, it) => sum + (comisionByProduct.get(it.product_id) ?? 0) * it.cantidad, 0)
@@ -88,7 +93,7 @@ export function VentasPorVendedorView() {
             id: s.id,
             numero: s.numero,
             fecha: s.fecha,
-            vendedorNombre: s.vendedor_member_id ? (nombreByMember.get(s.vendedor_member_id) ?? 'Vendedor desconocido') : SIN_VENDEDOR,
+            vendedorNombre: nombreByMember.get(s.vendedor_member_id) ?? 'Vendedor desconocido',
             productos: s.sale_items.map(it => `${it.product_nombre} x${it.cantidad}`).join(', '),
             comision,
           };
