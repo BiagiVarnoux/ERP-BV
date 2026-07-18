@@ -212,6 +212,8 @@ export interface BackupData {
   company_sale_account_config?: any[];
   // v3.4 fields — Catálogo de Ventas (fotos de producto; los binarios en Storage no se respaldan)
   product_fotos?: any[];
+  // v3.5 fields — marcas "publicado" por vendedor
+  product_publicaciones?: any[];
 }
 
 export async function createFullBackup(activeCompanyId?: string): Promise<BackupData> {
@@ -256,6 +258,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     investment_analysis_items,
     company_sale_account_config,
     product_fotos,
+    product_publicaciones,
   ] = await Promise.all([
     fetchAllCompanyRows('accounts', companyId),
     fetchAllCompanyRows('journal_entries', companyId),
@@ -307,6 +310,8 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     fetchAllCompanyRows('company_sale_account_config', companyId),
     // v3.4: fotos del Catálogo de Ventas
     fetchAllProductFotos(companyId),
+    // v3.5: marcas "publicado" por vendedor
+    fetchAllCompanyRows('product_publicaciones', companyId),
   ]);
 
   return {
@@ -347,6 +352,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     investment_analysis_items,
     company_sale_account_config,
     product_fotos,
+    product_publicaciones,
   };
 }
 
@@ -551,6 +557,16 @@ async function _performRestoreInternal(
       .filter((r: any) => validProductIds.has(r.product_id))
       .map((r: any) => ({ ...r, company_id: companyId }));
     if (safe.length > 0) await chunkedInsert('product_fotos', safe);
+  }
+  // product_publicaciones: marcas "publicado" por vendedor. user_id se conserva
+  // tal cual (válido al restaurar en la misma cuenta/empresa; una marca huérfana
+  // es inofensiva). company_id se remapea a la empresa destino.
+  if (backup.product_publicaciones?.length) {
+    const validProductIds = new Set((backup.products ?? []).map((p: any) => p.id));
+    const safe = backup.product_publicaciones
+      .filter((r: any) => validProductIds.has(r.product_id))
+      .map(({ id: _id, ...r }: any) => ({ ...r, company_id: companyId }));
+    if (safe.length > 0) await chunkedInsert('product_publicaciones', safe);
   }
   if (backup.import_lots?.length) {
     await chunkedInsert('import_lots', backup.import_lots.map(l => ({ ...l, user_id: userId })));
@@ -836,6 +852,7 @@ export function validateBackupFile(data: any): { valid: boolean; error?: string 
     'investment_analyses', 'investment_analysis_items',
     'company_sale_account_config',
     'product_fotos',
+    'product_publicaciones',
   ];
 
   for (const key of optionalArrays) {

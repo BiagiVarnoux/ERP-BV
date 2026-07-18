@@ -11,7 +11,7 @@ import JSZip from 'jszip';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Copy, ArrowUp, ArrowDown } from 'lucide-react';
+import { Copy, ArrowUp, ArrowDown, Check } from 'lucide-react';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt } from '@/accounting/utils';
@@ -35,6 +35,7 @@ interface CatalogItem {
 export function VendorCatalogView() {
   const companyId = useActiveCompanyId();
   const [items, setItems] = useState<CatalogItem[]>([]);
+  const [publicados, setPublicados] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -45,12 +46,15 @@ export function VendorCatalogView() {
   async function load() {
     setLoading(true);
     try {
-      const [{ data: products, error: prodErr }, { data: stockRows, error: stockErr }] = await Promise.all([
+      const [{ data: products, error: prodErr }, { data: stockRows, error: stockErr }, { data: pubRows, error: pubErr }] = await Promise.all([
         supabase.rpc('get_catalog_productos', { p_company_id: companyId }),
         supabase.rpc('get_catalog_stock', { p_company_id: companyId }),
+        // RLS deja ver solo las marcas del propio vendedor (user_id = auth.uid()).
+        supabase.from('product_publicaciones').select('product_id, publicado').eq('company_id', companyId),
       ]);
       if (prodErr) throw prodErr;
       if (stockErr) throw stockErr;
+      if (pubErr) throw pubErr;
 
       const stockByProduct = new Map<string, number>(
         ((stockRows ?? []) as Array<{ product_id: string; stock_disponible: number }>)
@@ -58,10 +62,29 @@ export function VendorCatalogView() {
       );
       const visibles = ((products ?? []) as CatalogItem[]).filter(p => (stockByProduct.get(p.id) ?? 0) > 0);
       setItems(visibles);
+      setPublicados(Object.fromEntries(
+        ((pubRows ?? []) as Array<{ product_id: string; publicado: boolean }>).map(r => [r.product_id, r.publicado])
+      ));
     } catch (e: any) {
       toast.error(e.message || 'Error cargando el catálogo');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function togglePublicado(productId: string, nuevo: boolean) {
+    setPublicados(prev => ({ ...prev, [productId]: nuevo }));  // optimista
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No autenticado');
+      const { error } = await supabase
+        .from('product_publicaciones')
+        .upsert({ company_id: companyId, product_id: productId, user_id: user.id, publicado: nuevo, updated_at: new Date().toISOString() },
+                { onConflict: 'product_id,user_id' });
+      if (error) throw error;
+    } catch (e: any) {
+      setPublicados(prev => ({ ...prev, [productId]: !nuevo }));  // revertir
+      toast.error(e.message || 'No se pudo guardar la marca');
     }
   }
 
@@ -70,12 +93,19 @@ export function VendorCatalogView() {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {items.map(item => <CatalogCard key={item.id} item={item} />)}
+      {items.map(item => (
+        <CatalogCard
+          key={item.id}
+          item={item}
+          publicado={!!publicados[item.id]}
+          onTogglePublicado={(nuevo) => togglePublicado(item.id, nuevo)}
+        />
+      ))}
     </div>
   );
 }
 
-function CatalogCard({ item }: { item: CatalogItem }) {
+function CatalogCard({ item, publicado, onTogglePublicado }: { item: CatalogItem; publicado: boolean; onTogglePublicado: (nuevo: boolean) => void }) {
   const [sesiones, setSesiones] = useState<FotoSesion[]>([]);
   const [sesionIdx, setSesionIdx] = useState(0);
   const [fotoFiles, setFotoFiles] = useState<File[]>([]);
@@ -198,7 +228,7 @@ function CatalogCard({ item }: { item: CatalogItem }) {
   }
 
   return (
-    <Card>
+    <Card className={publicado ? 'border-2 border-green-500' : ''}>
       <CardContent className="p-4 space-y-3">
         {sesiones.length > 1 && (
           <div className="flex gap-1 flex-wrap">
@@ -219,6 +249,7 @@ function CatalogCard({ item }: { item: CatalogItem }) {
           <div className="flex items-center gap-1.5 flex-wrap">
             <p className="font-semibold">{item.nombre}</p>
             {item.condicion && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{condicionLabel(item.condicion)}</Badge>}
+            {publicado && <Badge className="text-[10px] px-1.5 py-0 h-4 bg-green-600 hover:bg-green-600">Publicado</Badge>}
           </div>
           {item.especificacion && <p className="text-xs text-muted-foreground">{item.especificacion}</p>}
           {item.descripcion_catalogo && (
@@ -291,6 +322,15 @@ function CatalogCard({ item }: { item: CatalogItem }) {
             </Button>
           </div>
         )}
+
+        <Button
+          className={`w-full ${publicado ? 'bg-green-600 hover:bg-green-700' : ''}`}
+          size="sm"
+          variant={publicado ? 'default' : 'outline'}
+          onClick={() => onTogglePublicado(!publicado)}
+        >
+          {publicado ? <><Check className="h-4 w-4 mr-1" /> Publicado — marcar como no publicado</> : 'Marcar como publicado'}
+        </Button>
       </CardContent>
     </Card>
   );
