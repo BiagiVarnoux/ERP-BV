@@ -73,10 +73,16 @@ function computeGanancias(d: Draft): { gananciaNeta: number; gananciaBruta: numb
   };
 }
 
+interface CostoReferencia {
+  costoConIva: number;
+  ivaImportado: number;
+}
+
 export function CatalogManageView() {
   const companyId = useActiveCompanyId();
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [stock, setStock] = useState<Record<string, number>>({});
+  const [costoRef, setCostoRef] = useState<Record<string, CostoReferencia>>({});
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
@@ -93,7 +99,7 @@ export function CatalogManageView() {
   async function load() {
     setLoading(true);
     try {
-      const [{ data: prods, error: prodErr }, { data: stockRows, error: stockErr }] = await Promise.all([
+      const [{ data: prods, error: prodErr }, { data: stockRows, error: stockErr }, { data: costoRows, error: costoErr }] = await Promise.all([
         supabase
           .from('products')
           .select('id, nombre, especificacion, precio_lista, precio_minimo_negociacion, comision_bs, costo_con_iva_bs, iva_importado_bs, descripcion_catalogo, mostrar_en_catalogo, oculto_en_gestion')
@@ -101,9 +107,11 @@ export function CatalogManageView() {
           .eq('status', 'activo')
           .order('nombre'),
         supabase.rpc('get_catalog_stock', { p_company_id: companyId }),
+        supabase.rpc('get_catalog_costo_referencia', { p_company_id: companyId }),
       ]);
       if (prodErr) throw prodErr;
       if (stockErr) throw stockErr;
+      if (costoErr) throw costoErr;
 
       const rows = (prods ?? []) as ProductRow[];
       setProducts(rows);
@@ -111,6 +119,13 @@ export function CatalogManageView() {
       setStock(Object.fromEntries(
         ((stockRows ?? []) as Array<{ product_id: string; stock_disponible: number }>)
           .map(r => [r.product_id, Number(r.stock_disponible)])
+      ));
+      setCostoRef(Object.fromEntries(
+        ((costoRows ?? []) as Array<{ product_id: string; costo_sin_iva: number; iva_importado: number }>)
+          .map(r => [r.product_id, {
+            costoConIva: round2(Number(r.costo_sin_iva) + Number(r.iva_importado)),
+            ivaImportado: round2(Number(r.iva_importado)),
+          }])
       ));
     } catch (e: any) {
       toast.error(e.message || 'Error cargando productos');
@@ -121,6 +136,15 @@ export function CatalogManageView() {
 
   function updateDraft(id: string, changes: Partial<Draft>) {
     setDrafts(prev => ({ ...prev, [id]: { ...prev[id], ...changes } }));
+  }
+
+  function usarCostoDelEmbarque(id: string) {
+    const ref = costoRef[id];
+    if (!ref) return;
+    updateDraft(id, {
+      costo_con_iva_bs: String(ref.costoConIva),
+      iva_importado_bs: String(ref.ivaImportado),
+    });
   }
 
   async function guardar(id: string) {
@@ -235,6 +259,16 @@ export function CatalogManageView() {
                       value={d.costo_con_iva_bs}
                       onChange={e => updateDraft(p.id, { costo_con_iva_bs: e.target.value })}
                     />
+                    {costoRef[p.id] && (
+                      <button
+                        type="button"
+                        className="text-[11px] text-blue-600 hover:underline mt-0.5 block"
+                        onClick={() => usarCostoDelEmbarque(p.id)}
+                        title="Rellena costo c/IVA e IVA importado con los datos del embarque"
+                      >
+                        Embarque: Bs {fmt(costoRef[p.id].costoConIva)} (usar)
+                      </button>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Input
