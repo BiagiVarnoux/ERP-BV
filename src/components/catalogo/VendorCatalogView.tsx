@@ -11,7 +11,7 @@ import JSZip from 'jszip';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Copy } from 'lucide-react';
+import { Copy, ArrowUp, ArrowDown } from 'lucide-react';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt } from '@/accounting/utils';
@@ -27,6 +27,9 @@ interface CatalogItem {
   precio_lista: number | null;
   precio_minimo_negociacion: number | null;
   comision_bs: number | null;
+  precio_con_factura: number | null;
+  precio_lista_anterior: number | null;
+  precio_actualizado_at: string | null;
 }
 
 export function VendorCatalogView() {
@@ -88,6 +91,18 @@ function CatalogCard({ item }: { item: CatalogItem }) {
 
   const sesionActual = sesiones[sesionIdx];
   const lista = sesionActual != null && preparadaSesionId === sesionActual.sesion_id && fotoFiles.length > 0;
+
+  // Indicador de cambio de precio: solo si hay un precio anterior distinto y
+  // el cambio es reciente (últimos 30 días) — así el aviso se desvanece solo.
+  const cambioPrecio = (() => {
+    if (item.precio_lista == null || item.precio_lista_anterior == null) return null;
+    if (item.precio_lista_anterior === item.precio_lista) return null;
+    if (item.precio_actualizado_at) {
+      const dias = (Date.now() - new Date(item.precio_actualizado_at).getTime()) / 86400000;
+      if (dias > 30) return null;
+    }
+    return { subio: item.precio_lista > item.precio_lista_anterior };
+  })();
 
   // Al cambiar de sesión, la preparación anterior queda inválida — no se
   // descarga nada hasta que el vendedor toque "Preparar" para ESTA sesión
@@ -225,10 +240,27 @@ function CatalogCard({ item }: { item: CatalogItem }) {
         </div>
 
         <div className="space-y-1 text-sm">
-          <div className="flex justify-between">
+          <div className="flex justify-between items-center">
             <span className="text-muted-foreground">Precio</span>
-            <span className="font-semibold">Bs {fmt(item.precio_lista ?? 0)}</span>
+            <span className="flex items-center gap-1.5">
+              {cambioPrecio && (
+                <span
+                  className={`flex items-center text-[11px] font-medium ${cambioPrecio.subio ? 'text-red-600' : 'text-green-600'}`}
+                  title={`Antes: Bs ${fmt(item.precio_lista_anterior!)}`}
+                >
+                  {cambioPrecio.subio ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                  <span className="line-through text-muted-foreground ml-0.5">Bs {fmt(item.precio_lista_anterior!)}</span>
+                </span>
+              )}
+              <span className="font-semibold">Bs {fmt(item.precio_lista ?? 0)}</span>
+            </span>
           </div>
+          {item.precio_con_factura != null && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Precio con factura</span>
+              <span>Bs {fmt(item.precio_con_factura)}</span>
+            </div>
+          )}
           {item.precio_minimo_negociacion != null && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Puedes negociar hasta</span>
