@@ -133,12 +133,4 @@ export const ProductFotoStorage = {
     if (error) throw error;
     return (data ?? []).map(d => d.signedUrl ?? '');
   },
-
-  /** URL firmada con Content-Disposition:attachment (fuerza descarga directa
-   *  en el navegador, con el nombre original del archivo) — para el botón
-   *  "Descargar a la computadora". */
-  async getFotoDownloadUrl(path: string, filename: string): Promise<string> {
-    const { data } = await supabase.storage.from('product-photos').createSignedUrl(path, 60, { download: filename });
-    return data?.signedUrl ?? '';
-  },
 };

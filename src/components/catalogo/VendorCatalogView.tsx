@@ -4,6 +4,7 @@
 // un permiso se configure mal, este componente no tiene ruta para mostrarlos.
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import JSZip from 'jszip';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -145,26 +146,34 @@ function CatalogCard({ item }: { item: CatalogItem }) {
     }
   }
 
-  // Descarga directa a disco (para computadora) — cada foto se descarga con
-  // su nombre original vía una URL firmada con Content-Disposition:attachment,
-  // sin pasar por navigator.share (que en escritorio abre el panel nativo de
-  // compartir del sistema operativo — AirDrop/Mensajes/Mail — no un guardado
-  // a disco, que es lo que se busca aquí).
+  // Descarga a disco (para computadora), empaquetada en un solo .zip. Los
+  // navegadores bloquean/descartan descargas automáticas múltiples disparadas
+  // en secuencia (Chrome, por ejemplo, deja pasar solo 1-2 y calla el resto)
+  // — por eso antes solo bajaban 2 fotos. Un único archivo .zip evita ese
+  // límite por completo, porque es una sola descarga.
   async function descargarTodas() {
     if (!sesionActual) return;
     setDescargando(true);
     try {
-      for (const foto of sesionActual.fotos) {
-        const url = await ProductFotoStorage.getFotoDownloadUrl(foto.path, foto.nombre);
-        if (!url) continue;
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = foto.nombre;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        await new Promise(r => setTimeout(r, 250));
-      }
+      const urls = await ProductFotoStorage.getFotoUrls(sesionActual.fotos.map(f => f.path));
+      const zip = new JSZip();
+      await Promise.all(
+        sesionActual.fotos.map(async (foto, i) => {
+          const res = await fetch(urls[i]);
+          const blob = await res.blob();
+          zip.file(foto.nombre, blob);
+        })
+      );
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const zipUrl = URL.createObjectURL(zipBlob);
+      const nombreZip = `${item.nombre}${sesionActual.sesion_nombre ? ' - ' + sesionActual.sesion_nombre : ''}.zip`;
+      const a = document.createElement('a');
+      a.href = zipUrl;
+      a.download = nombreZip;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(zipUrl);
     } catch (e: any) {
       toast.error(e.message || 'No se pudieron descargar las fotos');
     } finally {
