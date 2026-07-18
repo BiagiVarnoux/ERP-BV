@@ -18,12 +18,15 @@ import { Images, EyeOff, Eye, Pencil } from 'lucide-react';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt, round2, toDecimal } from '@/accounting/utils';
+import { CONDICION_OPTIONS } from '@/accounting/product-condicion';
 import { PhotoSessionUploader } from '@/components/catalogo/PhotoSessionUploader';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface ProductRow {
   id: string;
   nombre: string;
   especificacion: string | null;
+  condicion: string | null;
   precio_lista: number | null;
   precio_minimo_negociacion: number | null;
   comision_bs: number | null;
@@ -42,6 +45,7 @@ interface Draft {
   iva_importado_bs: string;
   descripcion_catalogo: string;
   mostrar_en_catalogo: boolean;
+  condicion: string;
 }
 
 function toDraft(p: ProductRow): Draft {
@@ -53,6 +57,7 @@ function toDraft(p: ProductRow): Draft {
     iva_importado_bs: p.iva_importado_bs != null ? String(p.iva_importado_bs) : '',
     descripcion_catalogo: p.descripcion_catalogo ?? '',
     mostrar_en_catalogo: p.mostrar_en_catalogo,
+    condicion: p.condicion ?? 'nuevo',
   };
 }
 
@@ -90,6 +95,7 @@ export function CatalogManageView() {
   const [detalleProductId, setDetalleProductId] = useState<string | null>(null);
   const [mostrarOcultos, setMostrarOcultos] = useState(false);
   const [ocultando, setOcultando] = useState<Record<string, boolean>>({});
+  const [editandoCosto, setEditandoCosto] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (companyId) load();
@@ -102,7 +108,7 @@ export function CatalogManageView() {
       const [{ data: prods, error: prodErr }, { data: stockRows, error: stockErr }, { data: costoRows, error: costoErr }] = await Promise.all([
         supabase
           .from('products')
-          .select('id, nombre, especificacion, precio_lista, precio_minimo_negociacion, comision_bs, costo_con_iva_bs, iva_importado_bs, descripcion_catalogo, mostrar_en_catalogo, oculto_en_gestion')
+          .select('id, nombre, especificacion, condicion, precio_lista, precio_minimo_negociacion, comision_bs, costo_con_iva_bs, iva_importado_bs, descripcion_catalogo, mostrar_en_catalogo, oculto_en_gestion')
           .eq('company_id', companyId)
           .eq('status', 'activo')
           .order('nombre'),
@@ -114,19 +120,28 @@ export function CatalogManageView() {
       if (costoErr) throw costoErr;
 
       const rows = (prods ?? []) as ProductRow[];
-      setProducts(rows);
-      setDrafts(Object.fromEntries(rows.map(p => [p.id, toDraft(p)])));
-      setStock(Object.fromEntries(
-        ((stockRows ?? []) as Array<{ product_id: string; stock_disponible: number }>)
-          .map(r => [r.product_id, Number(r.stock_disponible)])
-      ));
-      setCostoRef(Object.fromEntries(
+      const refMap = Object.fromEntries(
         ((costoRows ?? []) as Array<{ product_id: string; costo_sin_iva: number; iva_importado: number }>)
           .map(r => [r.product_id, {
             costoConIva: round2(Number(r.costo_sin_iva) + Number(r.iva_importado)),
             ivaImportado: round2(Number(r.iva_importado)),
           }])
+      );
+      setProducts(rows);
+      // Auto-llenar costo/IVA desde el embarque cuando el producto todavía no
+      // tiene un valor manual guardado — no hace falta ningún clic.
+      setDrafts(Object.fromEntries(rows.map(p => {
+        const draft = toDraft(p);
+        const ref = refMap[p.id];
+        if (ref && p.costo_con_iva_bs == null) draft.costo_con_iva_bs = String(ref.costoConIva);
+        if (ref && p.iva_importado_bs == null) draft.iva_importado_bs = String(ref.ivaImportado);
+        return [p.id, draft];
+      })));
+      setStock(Object.fromEntries(
+        ((stockRows ?? []) as Array<{ product_id: string; stock_disponible: number }>)
+          .map(r => [r.product_id, Number(r.stock_disponible)])
       ));
+      setCostoRef(refMap);
     } catch (e: any) {
       toast.error(e.message || 'Error cargando productos');
     } finally {
@@ -136,15 +151,6 @@ export function CatalogManageView() {
 
   function updateDraft(id: string, changes: Partial<Draft>) {
     setDrafts(prev => ({ ...prev, [id]: { ...prev[id], ...changes } }));
-  }
-
-  function usarCostoDelEmbarque(id: string) {
-    const ref = costoRef[id];
-    if (!ref) return;
-    updateDraft(id, {
-      costo_con_iva_bs: String(ref.costoConIva),
-      iva_importado_bs: String(ref.ivaImportado),
-    });
   }
 
   async function guardar(id: string) {
@@ -162,6 +168,7 @@ export function CatalogManageView() {
           iva_importado_bs: d.iva_importado_bs !== '' ? toDecimal(d.iva_importado_bs) : null,
           descripcion_catalogo: d.descripcion_catalogo.trim() || null,
           mostrar_en_catalogo: d.mostrar_en_catalogo,
+          condicion: d.condicion || null,
         })
         .eq('id', id)
         .eq('company_id', companyId);
@@ -219,9 +226,10 @@ export function CatalogManageView() {
           <TableHeader>
             <TableRow>
               <TableHead className="min-w-[160px]">Producto</TableHead>
+              <TableHead className="w-28">Condición</TableHead>
               <TableHead className="w-24">Precio lista</TableHead>
-              <TableHead className="w-24">Costo c/IVA</TableHead>
-              <TableHead className="w-24">IVA import.</TableHead>
+              <TableHead className="w-28">Costo c/IVA</TableHead>
+              <TableHead className="w-28">IVA import.</TableHead>
               <TableHead className="w-28">Ganancia neta/bruta</TableHead>
               <TableHead className="w-24">Precio c/factura</TableHead>
               <TableHead className="w-24">Precio mín.</TableHead>
@@ -247,6 +255,14 @@ export function CatalogManageView() {
                     </div>
                   </TableCell>
                   <TableCell>
+                    <Select value={d.condicion} onValueChange={v => updateDraft(p.id, { condicion: v })}>
+                      <SelectTrigger className="h-8 w-28 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {CONDICION_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
                     <Input
                       type="number" step="0.01" className="h-8 w-24"
                       value={d.precio_lista}
@@ -254,28 +270,42 @@ export function CatalogManageView() {
                     />
                   </TableCell>
                   <TableCell>
-                    <Input
-                      type="number" step="0.01" className="h-8 w-24"
-                      value={d.costo_con_iva_bs}
-                      onChange={e => updateDraft(p.id, { costo_con_iva_bs: e.target.value })}
-                    />
+                    {editandoCosto[p.id] ? (
+                      <Input
+                        autoFocus
+                        type="number" step="0.01" className="h-8 w-24"
+                        value={d.costo_con_iva_bs}
+                        onChange={e => updateDraft(p.id, { costo_con_iva_bs: e.target.value })}
+                        onBlur={() => setEditandoCosto(prev => ({ ...prev, [p.id]: false }))}
+                      />
+                    ) : (
+                      <div className="flex items-center gap-1 text-sm">
+                        <span>{d.costo_con_iva_bs ? `Bs ${fmt(toDecimal(d.costo_con_iva_bs))}` : '—'}</span>
+                        <button type="button" title="Editar" onClick={() => setEditandoCosto(prev => ({ ...prev, [p.id]: true }))}>
+                          <Pencil className="h-3 w-3 text-muted-foreground" />
+                        </button>
+                      </div>
+                    )}
                     {costoRef[p.id] && (
-                      <button
-                        type="button"
-                        className="text-[11px] text-blue-600 hover:underline mt-0.5 block"
-                        onClick={() => usarCostoDelEmbarque(p.id)}
-                        title="Rellena costo c/IVA e IVA importado con los datos del embarque"
-                      >
-                        Embarque: Bs {fmt(costoRef[p.id].costoConIva)} (usar)
-                      </button>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">Embarque: Bs {fmt(costoRef[p.id].costoConIva)}</div>
                     )}
                   </TableCell>
                   <TableCell>
-                    <Input
-                      type="number" step="0.01" className="h-8 w-24"
-                      value={d.iva_importado_bs}
-                      onChange={e => updateDraft(p.id, { iva_importado_bs: e.target.value })}
-                    />
+                    {editandoCosto[p.id] ? (
+                      <Input
+                        type="number" step="0.01" className="h-8 w-24"
+                        value={d.iva_importado_bs}
+                        onChange={e => updateDraft(p.id, { iva_importado_bs: e.target.value })}
+                        onBlur={() => setEditandoCosto(prev => ({ ...prev, [p.id]: false }))}
+                      />
+                    ) : (
+                      <div className="flex items-center gap-1 text-sm">
+                        <span>{d.iva_importado_bs ? `Bs ${fmt(toDecimal(d.iva_importado_bs))}` : '—'}</span>
+                        <button type="button" title="Editar" onClick={() => setEditandoCosto(prev => ({ ...prev, [p.id]: true }))}>
+                          <Pencil className="h-3 w-3 text-muted-foreground" />
+                        </button>
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="text-xs">
                     {ganancias ? (

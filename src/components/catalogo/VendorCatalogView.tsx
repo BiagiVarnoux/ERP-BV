@@ -8,15 +8,18 @@ import JSZip from 'jszip';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Copy } from 'lucide-react';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt } from '@/accounting/utils';
+import { condicionLabel } from '@/accounting/product-condicion';
 import { ProductFotoStorage, FotoSesion } from '@/accounting/product-foto-storage';
 
 interface CatalogItem {
   id: string;
   nombre: string;
   especificacion: string | null;
+  condicion: string | null;
   descripcion_catalogo: string | null;
   precio_lista: number | null;
   precio_minimo_negociacion: number | null;
@@ -39,7 +42,7 @@ export function VendorCatalogView() {
       const [{ data: products, error: prodErr }, { data: stockRows, error: stockErr }] = await Promise.all([
         supabase
           .from('products')
-          .select('id, nombre, especificacion, descripcion_catalogo, precio_lista, precio_minimo_negociacion, comision_bs')
+          .select('id, nombre, especificacion, condicion, descripcion_catalogo, precio_lista, precio_minimo_negociacion, comision_bs')
           .eq('company_id', companyId)
           .eq('mostrar_en_catalogo', true)
           .eq('status', 'activo'),
@@ -200,9 +203,27 @@ function CatalogCard({ item }: { item: CatalogItem }) {
         )}
 
         <div>
-          <p className="font-semibold">{item.nombre}</p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className="font-semibold">{item.nombre}</p>
+            {item.condicion && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{condicionLabel(item.condicion)}</Badge>}
+          </div>
           {item.especificacion && <p className="text-xs text-muted-foreground">{item.especificacion}</p>}
-          {item.descripcion_catalogo && <p className="text-sm text-muted-foreground">{item.descripcion_catalogo}</p>}
+          {item.descripcion_catalogo && (
+            <div className="flex items-start gap-1 mt-1">
+              <p className="text-sm text-muted-foreground whitespace-pre-line flex-1">{item.descripcion_catalogo}</p>
+              <button
+                type="button"
+                title="Copiar descripción"
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  navigator.clipboard.writeText(item.descripcion_catalogo ?? '');
+                  toast.success('Descripción copiada');
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="space-y-1 text-sm">
