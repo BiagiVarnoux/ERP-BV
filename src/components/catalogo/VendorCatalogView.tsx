@@ -1,7 +1,10 @@
 // src/components/catalogo/VendorCatalogView.tsx
 // Vista de solo lectura para vendedores a comisión. Nunca trae costo ni
-// margen — el select a `products` está acotado a propósito, así que aunque
-// un permiso se configure mal, este componente no tiene ruta para mostrarlos.
+// margen — usa la RPC get_catalog_productos (SECURITY DEFINER), que solo
+// selecciona columnas seguras. No es un select directo a `products`: esa
+// tabla tiene RLS restringido a permisos de inventario/ventas/gestión del
+// catálogo, así que un vendedor con solo acceso de vista no podría leerla
+// directo de todas formas (ver migración 20260718000005).
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import JSZip from 'jszip';
@@ -40,12 +43,7 @@ export function VendorCatalogView() {
     setLoading(true);
     try {
       const [{ data: products, error: prodErr }, { data: stockRows, error: stockErr }] = await Promise.all([
-        supabase
-          .from('products')
-          .select('id, nombre, especificacion, condicion, descripcion_catalogo, precio_lista, precio_minimo_negociacion, comision_bs')
-          .eq('company_id', companyId)
-          .eq('mostrar_en_catalogo', true)
-          .eq('status', 'activo'),
+        supabase.rpc('get_catalog_productos', { p_company_id: companyId }),
         supabase.rpc('get_catalog_stock', { p_company_id: companyId }),
       ]);
       if (prodErr) throw prodErr;

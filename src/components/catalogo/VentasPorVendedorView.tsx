@@ -6,6 +6,11 @@
 // sale_items.product_id → products.comision_bs — no es una copia histórica
 // (si cambias la comisión de un producto, el reporte usa el valor actual,
 // no el vigente al momento de la venta).
+//
+// Usa la RPC get_ventas_por_vendedor (SECURITY DEFINER) en vez de un select
+// directo a sales/sale_items — esas tablas tienen RLS restringido al permiso
+// 'sales', y esta pantalla solo exige 'catalogo_ventas' edit. La RPC valida
+// ese permiso puertas adentro y devuelve filas planas que se agrupan aquí.
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
@@ -14,18 +19,14 @@ import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt, round2 } from '@/accounting/utils';
 
-interface SaleItemLite {
-  product_id: string;
-  product_nombre: string;
-  cantidad: number;
-}
-
-interface SaleLite {
-  id: string;
+interface VentaItemRow {
+  sale_id: string;
   numero: string;
   fecha: string;
   vendedor_member_id: string | null;
-  sale_items: SaleItemLite[];
+  product_id: string;
+  product_nombre: string;
+  cantidad: number;
 }
 
 interface MemberLite {
@@ -56,18 +57,12 @@ export function VentasPorVendedorView() {
   async function load() {
     setLoading(true);
     try {
-      const [salesRes, productsRes, membersRes] = await Promise.all([
-        supabase
-          .from('sales')
-          .select('id, numero, fecha, vendedor_member_id, sale_items(product_id, product_nombre, cantidad)')
-          .eq('company_id', companyId)
-          .eq('estado', 'confirmed')
-          .not('vendedor_member_id', 'is', null)
-          .order('fecha', { ascending: false }),
+      const [ventasRes, productsRes, membersRes] = await Promise.all([
+        supabase.rpc('get_ventas_por_vendedor', { p_company_id: companyId }),
         supabase.from('products').select('id, comision_bs').eq('company_id', companyId),
         supabase.rpc('get_company_members_detail', { p_company_id: companyId }),
       ]);
-      if (salesRes.error) throw salesRes.error;
+      if (ventasRes.error) throw ventasRes.error;
       if (productsRes.error) throw productsRes.error;
       if (membersRes.error) throw membersRes.error;
 
@@ -82,22 +77,29 @@ export function VentasPorVendedorView() {
       // Solo ventas con vendedor asignado — sin vendedor no hay comisión que
       // pagar (evita mostrar comisión "fantasma" en ventas viejas, hechas
       // antes de que existiera este sistema, del mismo producto).
-      const sales = (salesRes.data ?? []) as unknown as SaleLite[];
-      const rows: VentaFila[] = sales
-        .filter((s): s is SaleLite & { vendedor_member_id: string } => s.vendedor_member_id != null)
-        .map(s => {
-          const comision = round2(
-            s.sale_items.reduce((sum, it) => sum + (comisionByProduct.get(it.product_id) ?? 0) * it.cantidad, 0)
-          );
-          return {
-            id: s.id,
-            numero: s.numero,
-            fecha: s.fecha,
-            vendedorNombre: nombreByMember.get(s.vendedor_member_id) ?? 'Vendedor desconocido',
-            productos: s.sale_items.map(it => `${it.product_nombre} x${it.cantidad}`).join(', '),
-            comision,
-          };
-        });
+      const items = (ventasRes.data ?? []) as VentaItemRow[];
+      const bySale = new Map<string, VentaItemRow[]>();
+      for (const it of items) {
+        if (!it.vendedor_member_id) continue;
+        const grupo = bySale.get(it.sale_id) ?? [];
+        grupo.push(it);
+        bySale.set(it.sale_id, grupo);
+      }
+
+      const rows: VentaFila[] = Array.from(bySale.values()).map(grupo => {
+        const first = grupo[0];
+        const comision = round2(
+          grupo.reduce((sum, it) => sum + (comisionByProduct.get(it.product_id) ?? 0) * it.cantidad, 0)
+        );
+        return {
+          id: first.sale_id,
+          numero: first.numero,
+          fecha: first.fecha,
+          vendedorNombre: nombreByMember.get(first.vendedor_member_id as string) ?? 'Vendedor desconocido',
+          productos: grupo.map(it => `${it.product_nombre} x${it.cantidad}`).join(', '),
+          comision,
+        };
+      }).sort((a, b) => b.fecha.localeCompare(a.fecha));
       setFilas(rows);
     } catch (e: any) {
       toast.error(e.message || 'Error cargando ventas por vendedor');
