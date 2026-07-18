@@ -87,6 +87,7 @@ export const ProductFotoStorage = {
         .from('product_fotos')
         .insert({
           product_id: productId,
+          company_id: companyId,
           sesion_id: sesionId,
           sesion_nombre: sesionNombre,
           path,

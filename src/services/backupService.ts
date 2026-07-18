@@ -547,7 +547,9 @@ async function _performRestoreInternal(
   // huérfanos); los archivos en el bucket product-photos no se restauran.
   if (backup.product_fotos?.length) {
     const validProductIds = new Set((backup.products ?? []).map((p: any) => p.id));
-    const safe = backup.product_fotos.filter((r: any) => validProductIds.has(r.product_id));
+    const safe = backup.product_fotos
+      .filter((r: any) => validProductIds.has(r.product_id))
+      .map((r: any) => ({ ...r, company_id: companyId }));
     if (safe.length > 0) await chunkedInsert('product_fotos', safe);
   }
   if (backup.import_lots?.length) {
