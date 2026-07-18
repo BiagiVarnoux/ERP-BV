@@ -54,6 +54,12 @@ const MODULE_TREE: ModuleDef[] = [
       { key: 'investments', label: 'Análisis de Inversión', description: 'Evaluación de importaciones: rentabilidad, VAN/TIR y conciliación con embarques' },
     ],
   },
+  {
+    label: 'Catálogo', badge: 'CAT',
+    submodules: [
+      { key: 'catalogo_ventas', label: 'Catálogo de Ventas', description: 'Precios, fotos y comisiones para vendedores a comisión' },
+    ],
+  },
 ];
 
 // ─── Componente ───────────────────────────────────────────────────────────────

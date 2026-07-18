@@ -399,7 +399,8 @@ CREATE POLICY "company_member_all" ON public.<table>
 - [ ] Add `canView('<module>')` route guard in `App.tsx`.
 - [ ] Add to `defaultRoute` cascade in `App.tsx`.
 - [ ] Add `ALL_MODULES` array in `UserAccessContext.tsx` (owner fallback permissions).
-- [ ] Add sidebar nav item in `src/components/layout/`.
+- [ ] Add sidebar nav item in `src/components/layout/AppShell.tsx` — use the `v('<module>', '<submodule_key>')` helper (permission **and** company-level feature flag), not a bare `canView('<module>')`, unless the module deliberately has no per-company toggle (e.g. `licitaciones` today).
+- [ ] Add the module/submodule to `MODULE_TREE` in `src/components/settings/ModuleConfigTab.tsx` (Configuración → Módulos). This is a hardcoded array, **easy to forget** — it does not read from the `ErpModule` enum automatically. Skipping it means the owner can never hide/show the module from Configuración, even though permissions work fine everywhere else (this exact bug happened with `catalogo_ventas`).
 - [ ] Use `can('<module>', action)` for all write-action buttons in the page.
 - [ ] Add a `member_permissions` seed default for new owners if applicable.
 - [ ] Follow backup rule above for any new tables the module introduces.

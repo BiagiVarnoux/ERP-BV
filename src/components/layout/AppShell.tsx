@@ -277,7 +277,7 @@ function SidebarContent({ onClose, collapsed = false, onSetCollapsed }: {
           </ModuleSection>
         )}
 
-        {!loading && canView('catalogo_ventas') && (
+        {!loading && v('catalogo_ventas', 'catalogo_ventas') && (
           <ModuleSection
             label="Catálogo" badge="" icon={Images}
             isExpanded={expanded.has('CATALOGO')} collapsed={collapsed}

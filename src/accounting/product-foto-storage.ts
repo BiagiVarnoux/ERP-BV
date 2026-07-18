@@ -125,4 +125,20 @@ export const ProductFotoStorage = {
     const { data } = await supabase.storage.from('product-photos').createSignedUrl(path, 3600);
     return data?.signedUrl ?? '';
   },
+
+  /** Batch de URLs firmadas en una sola llamada de red (en vez de una por foto). */
+  async getFotoUrls(paths: string[]): Promise<string[]> {
+    if (paths.length === 0) return [];
+    const { data, error } = await supabase.storage.from('product-photos').createSignedUrls(paths, 3600);
+    if (error) throw error;
+    return (data ?? []).map(d => d.signedUrl ?? '');
+  },
+
+  /** URL firmada con Content-Disposition:attachment (fuerza descarga directa
+   *  en el navegador, con el nombre original del archivo) — para el botón
+   *  "Descargar a la computadora". */
+  async getFotoDownloadUrl(path: string, filename: string): Promise<string> {
+    const { data } = await supabase.storage.from('product-photos').createSignedUrl(path, 60, { download: filename });
+    return data?.signedUrl ?? '';
+  },
 };

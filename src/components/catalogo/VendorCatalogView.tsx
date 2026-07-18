@@ -75,29 +75,34 @@ function CatalogCard({ item }: { item: CatalogItem }) {
   const [sesionIdx, setSesionIdx] = useState(0);
   const [fotoFiles, setFotoFiles] = useState<File[]>([]);
   const [fotoUrls, setFotoUrls] = useState<string[]>([]);
+  const [preparadaSesionId, setPreparadaSesionId] = useState<string | null>(null);
   const [preparando, setPreparando] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [descargando, setDescargando] = useState(false);
 
   useEffect(() => {
     ProductFotoStorage.listFotos(item.id).then(setSesiones).catch(() => setSesiones([]));
   }, [item.id]);
 
   const sesionActual = sesiones[sesionIdx];
+  const lista = sesionActual != null && preparadaSesionId === sesionActual.sesion_id && fotoFiles.length > 0;
 
-  // Precarga los blobs de la sesión ANTES de que el vendedor toque "Compartir".
-  // iOS Safari exige que navigator.share() se llame sin demoras async después
-  // del gesto del usuario — si esperamos a descargar las fotos recién al
-  // hacer clic, el "user activation" ya expiró y share() falla en silencio
-  // (por eso salía "no se pudo compartir las fotos").
+  // Al cambiar de sesión, la preparación anterior queda inválida — no se
+  // descarga nada hasta que el vendedor toque "Preparar" para ESTA sesión
+  // (evita bajar fotos de todas las sesiones/productos de golpe al entrar
+  // al catálogo, que era lo que lo hacía lento).
   useEffect(() => {
-    let cancelado = false;
     setFotoFiles([]);
     setFotoUrls([]);
+    setPreparadaSesionId(null);
+  }, [sesionActual]);
+
+  async function prepararFotos() {
     if (!sesionActual) return;
     setPreparando(true);
-    (async () => {
-      const urls = await Promise.all(sesionActual.fotos.map(f => ProductFotoStorage.getFotoUrl(f.path)));
-      if (cancelado) return;
+    try {
+      const paths = sesionActual.fotos.map(f => f.path);
+      const urls = await ProductFotoStorage.getFotoUrls(paths);
       setFotoUrls(urls);
       const files = await Promise.all(
         sesionActual.fotos.map(async (f, i) => {
@@ -106,11 +111,19 @@ function CatalogCard({ item }: { item: CatalogItem }) {
           return new File([blob], f.nombre, { type: blob.type || 'image/jpeg' });
         })
       );
-      if (!cancelado) setFotoFiles(files);
-    })().finally(() => { if (!cancelado) setPreparando(false); });
-    return () => { cancelado = true; };
-  }, [sesionActual]);
+      setFotoFiles(files);
+      setPreparadaSesionId(sesionActual.sesion_id);
+    } catch (e: any) {
+      toast.error(e.message || 'No se pudieron preparar las fotos');
+    } finally {
+      setPreparando(false);
+    }
+  }
 
+  // navigator.share() debe llamarse sin demoras async después del toque del
+  // usuario (iOS Safari lo rechaza en silencio si no) — por eso "Compartir"
+  // solo llama a share() directo, ya con las fotos preparadas de antemano
+  // en "prepararFotos" (un toque previo, separado).
   async function compartir() {
     if (!sesionActual || fotoFiles.length === 0) return;
     setSharing(true);
@@ -129,6 +142,33 @@ function CatalogCard({ item }: { item: CatalogItem }) {
       }
     } finally {
       setSharing(false);
+    }
+  }
+
+  // Descarga directa a disco (para computadora) — cada foto se descarga con
+  // su nombre original vía una URL firmada con Content-Disposition:attachment,
+  // sin pasar por navigator.share (que en escritorio abre el panel nativo de
+  // compartir del sistema operativo — AirDrop/Mensajes/Mail — no un guardado
+  // a disco, que es lo que se busca aquí).
+  async function descargarTodas() {
+    if (!sesionActual) return;
+    setDescargando(true);
+    try {
+      for (const foto of sesionActual.fotos) {
+        const url = await ProductFotoStorage.getFotoDownloadUrl(foto.path, foto.nombre);
+        if (!url) continue;
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = foto.nombre;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        await new Promise(r => setTimeout(r, 250));
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'No se pudieron descargar las fotos');
+    } finally {
+      setDescargando(false);
     }
   }
 
@@ -176,9 +216,20 @@ function CatalogCard({ item }: { item: CatalogItem }) {
         </div>
 
         {sesionActual && sesionActual.fotos.length > 0 && (
-          <Button className="w-full" size="sm" onClick={compartir} disabled={sharing || preparando}>
-            {sharing ? 'Compartiendo...' : preparando ? 'Preparando fotos...' : 'Compartir fotos de esta sesión'}
-          </Button>
+          <div className="space-y-2">
+            {lista ? (
+              <Button className="w-full" size="sm" onClick={compartir} disabled={sharing}>
+                {sharing ? 'Compartiendo...' : 'Compartir a celular (iPhone)'}
+              </Button>
+            ) : (
+              <Button className="w-full" size="sm" variant="outline" onClick={prepararFotos} disabled={preparando}>
+                {preparando ? 'Preparando...' : 'Preparar para compartir a celular'}
+              </Button>
+            )}
+            <Button className="w-full" size="sm" variant="outline" onClick={descargarTodas} disabled={descargando}>
+              {descargando ? 'Descargando...' : 'Descargar a la computadora'}
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>
