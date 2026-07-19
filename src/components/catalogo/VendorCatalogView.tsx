@@ -35,6 +35,7 @@ interface CatalogItem {
 export function VendorCatalogView() {
   const companyId = useActiveCompanyId();
   const [items, setItems] = useState<CatalogItem[]>([]);
+  const [stock, setStock] = useState<Record<string, number>>({});
   const [publicados, setPublicados] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
 
@@ -62,6 +63,7 @@ export function VendorCatalogView() {
       );
       const visibles = ((products ?? []) as CatalogItem[]).filter(p => (stockByProduct.get(p.id) ?? 0) > 0);
       setItems(visibles);
+      setStock(Object.fromEntries(stockByProduct));
       setPublicados(Object.fromEntries(
         ((pubRows ?? []) as Array<{ product_id: string; publicado: boolean }>).map(r => [r.product_id, r.publicado])
       ));
@@ -97,6 +99,7 @@ export function VendorCatalogView() {
         <CatalogCard
           key={item.id}
           item={item}
+          unidades={stock[item.id] ?? 0}
           publicado={!!publicados[item.id]}
           onTogglePublicado={(nuevo) => togglePublicado(item.id, nuevo)}
         />
@@ -105,7 +108,7 @@ export function VendorCatalogView() {
   );
 }
 
-function CatalogCard({ item, publicado, onTogglePublicado }: { item: CatalogItem; publicado: boolean; onTogglePublicado: (nuevo: boolean) => void }) {
+function CatalogCard({ item, unidades, publicado, onTogglePublicado }: { item: CatalogItem; unidades: number; publicado: boolean; onTogglePublicado: (nuevo: boolean) => void }) {
   const [sesiones, setSesiones] = useState<FotoSesion[]>([]);
   const [sesionIdx, setSesionIdx] = useState(0);
   const [fotoFiles, setFotoFiles] = useState<File[]>([]);
@@ -252,6 +255,7 @@ function CatalogCard({ item, publicado, onTogglePublicado }: { item: CatalogItem
             {publicado && <Badge className="text-[10px] px-1.5 py-0 h-4 bg-green-600 hover:bg-green-600">Publicado</Badge>}
           </div>
           {item.especificacion && <p className="text-xs text-muted-foreground">{item.especificacion}</p>}
+          <p className="text-xs text-muted-foreground">{unidades} {unidades === 1 ? 'unidad disponible' : 'unidades disponibles'}</p>
           {item.descripcion_catalogo && (
             <div className="flex items-start gap-1 mt-1">
               <p className="text-sm text-muted-foreground whitespace-pre-line flex-1">{item.descripcion_catalogo}</p>
