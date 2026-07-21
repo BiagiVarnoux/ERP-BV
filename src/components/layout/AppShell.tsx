@@ -8,17 +8,16 @@ import { CompanySwitcher } from '@/components/layout/CompanySwitcher';
 import {
   BarChart3, Package, ShoppingCart, Settings,
   Eye, ChevronDown, ChevronRight, Menu, LogOut, Users, Building2, FileText, TrendingUp,
-  PanelLeftClose, PanelLeftOpen, Images,
+  PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const MODULE_PATHS: Record<string, string[]> = {
   FI:           ['/accounts', '/journal', '/ledger', '/auxiliary-ledgers', '/receivables', '/payables', '/reports'],
   MM:           ['/inventory', '/shipments'],
-  SD:           ['/dashboard', '/sales', '/customers'],
+  SD:           ['/dashboard', '/sales', '/customers', '/catalogo'],
   LICITACIONES: ['/licitaciones'],
   INVESTMENTS:  ['/investments'],
-  CATALOGO:     ['/catalogo'],
   SETTINGS:     ['/settings', '/fiscal-years'],
   HOLDING:      ['/holding'],
 };
@@ -245,7 +244,7 @@ function SidebarContent({ onClose, collapsed = false, onSetCollapsed }: {
           </ModuleSection>
         )}
 
-        {!loading && (v('sales', 'sales') || v('customers', 'customers')) && (
+        {!loading && (v('sales', 'sales') || v('customers', 'customers') || v('catalogo_ventas', 'catalogo_ventas')) && (
           <ModuleSection
             label="Ventas" badge="SD" icon={ShoppingCart}
             isExpanded={expanded.has('SD')} collapsed={collapsed}
@@ -254,6 +253,7 @@ function SidebarContent({ onClose, collapsed = false, onSetCollapsed }: {
             {v('sales',     'dashboard') && <NavItem path="/dashboard" label="Dashboard" currentPath={location.pathname} onClick={close} />}
             {v('customers', 'customers') && <NavItem path="/customers" label="Clientes"  currentPath={location.pathname} onClick={close} />}
             {v('sales',     'sales')     && <NavItem path="/sales"     label="Ventas"    currentPath={location.pathname} onClick={close} />}
+            {v('catalogo_ventas', 'catalogo_ventas') && <NavItem path="/catalogo" label="Catálogo de Ventas" currentPath={location.pathname} onClick={close} />}
           </ModuleSection>
         )}
 
@@ -274,16 +274,6 @@ function SidebarContent({ onClose, collapsed = false, onSetCollapsed }: {
             onToggle={() => toggle('INVESTMENTS')} onIconClick={() => iconClick('INVESTMENTS')}
           >
             <NavItem path="/investments" label="Análisis de Inversión" currentPath={location.pathname} onClick={close} />
-          </ModuleSection>
-        )}
-
-        {!loading && v('catalogo_ventas', 'catalogo_ventas') && (
-          <ModuleSection
-            label="Catálogo" badge="" icon={Images}
-            isExpanded={expanded.has('CATALOGO')} collapsed={collapsed}
-            onToggle={() => toggle('CATALOGO')} onIconClick={() => iconClick('CATALOGO')}
-          >
-            <NavItem path="/catalogo" label="Catálogo de Ventas" currentPath={location.pathname} onClick={close} />
           </ModuleSection>
         )}
 
