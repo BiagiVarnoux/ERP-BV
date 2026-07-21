@@ -215,7 +215,7 @@ function SidebarContent({ onClose, collapsed = false, onSetCollapsed }: {
       )}
 
       <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
-        {!loading && (
+        {!loading && fiItems.length > 0 && (
           <ModuleSection
             label="Finanzas" badge="FI" icon={BarChart3}
             isExpanded={expanded.has('FI')} collapsed={collapsed}
@@ -244,7 +244,7 @@ function SidebarContent({ onClose, collapsed = false, onSetCollapsed }: {
           </ModuleSection>
         )}
 
-        {!loading && (v('sales', 'sales') || v('customers', 'customers') || v('catalogo_ventas', 'catalogo_ventas')) && (
+        {!loading && (v('sales', 'sales') || v('sales', 'dashboard') || v('customers', 'customers') || v('catalogo_ventas', 'catalogo_ventas')) && (
           <ModuleSection
             label="Ventas" badge="SD" icon={ShoppingCart}
             isExpanded={expanded.has('SD')} collapsed={collapsed}
