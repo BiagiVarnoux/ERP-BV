@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +21,13 @@ interface ManualMovementModalProps {
 
 type TipoMovimiento = 'ENTRADA' | 'SALIDA' | 'AJUSTE_COSTO';
 
+interface Lote {
+  id: string;
+  fecha_ingreso: string;
+  cantidad_disponible: number;
+  costo_unitario: number;
+}
+
 export function ManualMovementModal({ isOpen, onClose, productId, productName, movements, onSaved }: ManualMovementModalProps) {
   const activeCompanyId = useActiveCompanyId();
   const [tipo, setTipo] = useState<TipoMovimiento>('ENTRADA');
@@ -31,12 +38,68 @@ export function ManualMovementModal({ isOpen, onClose, productId, productName, m
   const [montoAjuste, setMontoAjuste] = useState('');
   const [referencia, setReferencia] = useState('');
   const [saving, setSaving] = useState(false);
+  // FIFO: el ajuste de costo se aplica a un lote concreto, no a un promedio.
+  const [metodo, setMetodo] = useState<string>('FIFO');
+  const [lotes, setLotes] = useState<Lote[]>([]);
+  const [loteId, setLoteId] = useState('');
+  const [asiento, setAsiento] = useState('');
 
   const state = calcularEstadoProducto(movements);
   const isAjuste = tipo === 'AJUSTE_COSTO';
+  const isFifo = metodo === 'FIFO';
+
+  useEffect(() => {
+    if (!isOpen || !productId) return;
+    (async () => {
+      const [{ data: prod }, { data: lots }] = await Promise.all([
+        supabase.from('products').select('metodo_valuacion').eq('id', productId).maybeSingle(),
+        supabase.from('inventory_lots')
+          .select('id, fecha_ingreso, cantidad_disponible, costo_unitario')
+          .eq('product_id', productId)
+          .eq('company_id', activeCompanyId)
+          .gt('cantidad_disponible', 0)
+          .order('fecha_ingreso'),
+      ]);
+      setMetodo(prod?.metodo_valuacion ?? 'FIFO');
+      const l = (lots ?? []) as Lote[];
+      setLotes(l);
+      if (l.length === 1) setLoteId(l[0].id);
+    })();
+  }, [isOpen, productId, activeCompanyId]);
+
+  const loteSel = lotes.find(l => l.id === loteId) ?? null;
 
   async function handleSave() {
-    // ── Ajuste de costo (NIC 2) ────────────────────────────────────────────
+    // ── Ajuste de costo (NIC 2) — FIFO: sobre un lote concreto ─────────────
+    if (isAjuste && isFifo) {
+      const monto = parseFloat(montoAjuste);
+      if (!monto || monto <= 0) { toast.error('Ingresa un monto de ajuste válido'); return; }
+      if (!loteId) { toast.error('Selecciona el lote al que corresponde el costo'); return; }
+
+      setSaving(true);
+      try {
+        const { data, error } = await supabase.rpc('ajustar_costo_lote', {
+          p_company_id: activeCompanyId,
+          p_lot_id: loteId,
+          p_monto: monto,
+          p_fecha: fecha,
+          p_concepto: referencia.trim() || concepto.trim() || 'Ajuste de costo (NIC 2)',
+          p_journal_entry_id: asiento.trim() || null,
+        });
+        if (error) throw error;
+        const r = data as { nuevo_costo_unitario?: number } | null;
+        toast.success(`Ajuste aplicado. Nuevo costo del lote: ${Number(r?.nuevo_costo_unitario ?? 0).toFixed(2)} Bs/u`);
+        onSaved();
+        resetAndClose();
+      } catch (e: any) {
+        toast.error(e.message || 'Error al guardar el ajuste');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // ── Ajuste de costo (NIC 2) — CPP: promedio sobre todo el stock ────────
     if (isAjuste) {
       const monto = parseFloat(montoAjuste);
       if (!monto || monto <= 0) { toast.error('Ingresa un monto de ajuste válido'); return; }
@@ -120,6 +183,7 @@ export function ManualMovementModal({ isOpen, onClose, productId, productName, m
   function resetAndClose() {
     setTipo('ENTRADA'); setFecha(todayISO()); setConcepto('');
     setCantidad(''); setCostoUnitario(''); setMontoAjuste(''); setReferencia('');
+    setLoteId(''); setAsiento('');
     onClose();
   }
 
@@ -149,15 +213,42 @@ export function ManualMovementModal({ isOpen, onClose, productId, productName, m
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 space-y-1">
               <p className="font-semibold">¿Cuándo usar este tipo?</p>
               <p>Cuando incurres en un costo necesario para poner el producto en condición vendible después del embarque — por ejemplo, reparaciones, acondicionamiento, o pruebas.</p>
-              <p>El monto se suma al saldo valorado existente y sube el CPP. <span className="font-semibold">No cambia la cantidad en stock.</span></p>
-              {state.saldo > 0 && (
+              {isFifo ? (
+                <p>El monto se suma al costo del <span className="font-semibold">lote que elijas</span> y sube el costo de sus unidades restantes. <span className="font-semibold">No cambia la cantidad en stock.</span></p>
+              ) : (
+                <p>El monto se suma al saldo valorado existente y sube el CPP. <span className="font-semibold">No cambia la cantidad en stock.</span></p>
+              )}
+              <p className="pt-1 text-amber-700">
+                Recuerda registrar el asiento contable (Debe Inventario / Haber Banco o CxP) y enlazarlo abajo.
+              </p>
+              {!isFifo && state.saldo > 0 && (
                 <p className="pt-1 text-amber-700">
                   Stock actual: <b>{state.saldo} u</b> · CPP actual: <b>{state.costoUnitario.toFixed(2)} Bs/u</b>
                 </p>
               )}
-              {state.saldo <= 0 && (
+              {isFifo && lotes.length === 0 && (
+                <p className="pt-1 font-semibold text-red-700">⚠ Sin lotes con unidades disponibles — no se puede ajustar el costo.</p>
+              )}
+              {!isFifo && state.saldo <= 0 && (
                 <p className="pt-1 font-semibold text-red-700">⚠ Sin stock — no se puede ajustar el costo de un producto sin unidades.</p>
               )}
+            </div>
+          )}
+
+          {/* Selector de lote — solo FIFO */}
+          {isAjuste && isFifo && lotes.length > 0 && (
+            <div className="space-y-2">
+              <Label>Lote al que corresponde el costo</Label>
+              <Select value={loteId} onValueChange={setLoteId}>
+                <SelectTrigger><SelectValue placeholder="Selecciona el lote..." /></SelectTrigger>
+                <SelectContent>
+                  {lotes.map(l => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.fecha_ingreso} · {l.cantidad_disponible} u · {Number(l.costo_unitario).toFixed(2)} Bs/u
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
 
@@ -205,13 +296,28 @@ export function ManualMovementModal({ isOpen, onClose, productId, productName, m
                 onChange={e => setMontoAjuste(e.target.value)}
                 placeholder="Ej: 500"
               />
-              {/* Vista previa del nuevo CPP */}
-              {state.saldo > 0 && parseFloat(montoAjuste) > 0 && (
+              {/* Vista previa — FIFO: sobre el lote elegido */}
+              {isFifo && loteSel && parseFloat(montoAjuste) > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Nuevo costo del lote: <b>{(Number(loteSel.costo_unitario) + parseFloat(montoAjuste) / Number(loteSel.cantidad_disponible)).toFixed(2)} Bs/u</b>
+                  {' '}(antes: {Number(loteSel.costo_unitario).toFixed(2)} Bs/u · {loteSel.cantidad_disponible} u)
+                </p>
+              )}
+              {/* Vista previa — CPP */}
+              {!isFifo && state.saldo > 0 && parseFloat(montoAjuste) > 0 && (
                 <p className="text-xs text-muted-foreground">
                   Nuevo CPP: <b>{((state.saldoValorado + parseFloat(montoAjuste)) / state.saldo).toFixed(2)} Bs/u</b>
                   {' '}(antes: {state.costoUnitario.toFixed(2)} Bs/u)
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Asiento contable — solo ajuste FIFO */}
+          {isAjuste && isFifo && (
+            <div className="space-y-2">
+              <Label>Asiento del Libro Diario <span className="text-muted-foreground">(opcional)</span></Label>
+              <Input value={asiento} onChange={e => setAsiento(e.target.value)} placeholder="Ej: 048-Q3-26" />
             </div>
           )}
 
@@ -224,7 +330,7 @@ export function ManualMovementModal({ isOpen, onClose, productId, productName, m
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={resetAndClose}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={saving || (isAjuste && state.saldo <= 0)}>
+          <Button onClick={handleSave} disabled={saving || (isAjuste && (isFifo ? lotes.length === 0 : state.saldo <= 0))}>
             {saving ? 'Guardando...' : 'Guardar'}
           </Button>
         </DialogFooter>

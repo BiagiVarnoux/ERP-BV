@@ -178,7 +178,9 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
         if (error) throw error;
         toast.success('Producto actualizado');
       } else {
-        const { error } = await supabase.from('products').insert({ ...payload, user_id: user.id, company_id: activeCompanyId });
+        // metodo_valuacion explícito solo al crear (al editar no se toca, para
+        // no cambiarle el método a un producto existente sin querer).
+        const { error } = await supabase.from('products').insert({ ...payload, metodo_valuacion: 'FIFO', user_id: user.id, company_id: activeCompanyId });
         if (error) throw error;
         toast.success('Producto creado');
       }

@@ -348,6 +348,10 @@ export default function ShipmentsPage() {
               condicion: link.newProductData.condicion || null,
               category_id: link.newProductData.category_id || null,
               tipo_inventario: link.newProductData.tipo_inventario || null,
+              // Explícito: el lote y el movimiento de abajo se crean como FIFO,
+              // así que el producto DEBE nacer FIFO. Omitirlo lo dejaba en el
+              // default de la tabla ('CPP' antes) y descuadraba la valuación.
+              metodo_valuacion: 'FIFO',
               user_id: user.user.id,
               company_id: activeCompanyId,
             }).select('id').single();
