@@ -33,12 +33,13 @@ interface Props {
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 function NumInput({
-  value, onChange, className = '', min, step = '0.01', placeholder = '0',
+  value, onChange, className = '', min, max, step = '0.01', placeholder = '0',
 }: {
   value: number | undefined;
   onChange: (v: number | undefined) => void;
   className?: string;
   min?: string;
+  max?: string;
   step?: string;
   placeholder?: string;
 }) {
@@ -46,6 +47,7 @@ function NumInput({
     <Input
       type="number"
       min={min}
+      max={max}
       step={step}
       className={`h-7 text-xs px-1.5 text-right ${className}`}
       value={value ?? ''}

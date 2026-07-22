@@ -90,7 +90,9 @@ export function InvestmentsConsolidado({ analyses, onClose }: Props) {
               Por análisis
             </p>
             {analyses.map(a => {
-              const calcs = a.items.map(it => calcItem(it, a.plazo_importacion_meses, a.costo_capital_anual, a.fuc_pct, a.tc_oficial));
+              const calcs = a.items.map(it => calcItem(it, a.plazo_importacion_meses, a.costo_capital_anual, a.fuc_pct, {
+                tcOficial: a.tc_oficial, fleteCifPct: a.flete_cif_pct,
+              }));
               const r = calcResumen(a, calcs);
               return (
                 <div key={a.id} className="rounded border p-3 flex items-center gap-3">

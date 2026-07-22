@@ -27,6 +27,8 @@ function toLicitacionProducto(it: InvestmentItem): LicitacionProducto {
     especificacion:    it.especificacion,
     link_producto:     it.link_producto,
     hs_code:           it.hs_code,
+    // Los análisis de inversión siempre modelan importaciones.
+    origen:            'importado',
     cantidad:          it.cantidad,
     tc:                it.tc,
     tc_envio:          it.tc_envio,
@@ -402,7 +404,9 @@ export function consolidarAnalisis(analyses: InvestmentAnalysis[]): InvestmentRe
 
   for (const a of analyses) {
     const calcs = a.items.map(it =>
-      calcItem(it, a.plazo_importacion_meses, a.costo_capital_anual, a.fuc_pct, a.tc_oficial)
+      calcItem(it, a.plazo_importacion_meses, a.costo_capital_anual, a.fuc_pct, {
+        tcOficial: a.tc_oficial, fleteCifPct: a.flete_cif_pct,
+      })
     );
 
     let inversionAnalisis = 0;

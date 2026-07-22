@@ -32,7 +32,9 @@ export function LicitacionesConsolidado({ ids, onClose }: Props) {
       try {
         const licitaciones = await Promise.all(ids.map(id => LicitacionStorage.loadOne(id)));
         const built = licitaciones.map(lit => {
-          const calcs = lit.productos.map(p => calcProducto(p, lit.tc_oficial));
+          const calcs = lit.productos.map(p => calcProducto(p, {
+            tcOficial: lit.tc_oficial, fleteCifPct: lit.flete_cif_pct,
+          }));
           const costosLic = (lit.garantia_licitacion || 0) + (lit.pasaje_licitacion || 0)
             + (lit.envio_licitacion || 0) + (lit.otros_costos_licitacion || 0);
           return { licitacion: lit, resumen: calcResumen(lit.productos, calcs, costosLic) };

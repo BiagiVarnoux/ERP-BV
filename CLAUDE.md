@@ -11,10 +11,14 @@ npm run dev        # Start dev server (Vite)
 npm run build      # Production build
 npm run lint       # ESLint
 npm run preview    # Preview production build locally
-tsc --noEmit       # Type-check without emitting (required to pass before every commit)
+tsc -p tsconfig.app.json --noEmit   # Type-check (required to pass before every commit)
 ```
 
-There is no test suite. Type-checking is done via `tsc --noEmit` (implied by the build step).
+There is no test suite. Type-checking is done via `tsc -p tsconfig.app.json --noEmit`.
+
+⚠️ **Do NOT use bare `tsc --noEmit`** — the root `tsconfig.json` has `"files": []` and only
+declares project references, so `tsc --noEmit` type-checks ZERO files and always exits 0.
+It gives a false "clean" result. Always point at `tsconfig.app.json` (or run `tsc -b`).
 
 ---
 
@@ -380,7 +384,7 @@ CREATE POLICY "company_member_all" ON public.<table>
   - If the table has a UNIQUE constraint: use `upsert` with `onConflict` in the restore block, not `chunkedInsert`.
 - [ ] Add to `validateBackupFile()` `optionalArrays` list.
 - [ ] Client mutations: include `.eq('company_id', activeCompanyId)` on every UPDATE/DELETE.
-- [ ] Run `tsc --noEmit` and `npm run lint` — zero errors.
+- [ ] Run `tsc -p tsconfig.app.json --noEmit` and `npm run lint` — zero errors.
 
 ### Adding or modifying a Supabase RPC
 
@@ -389,7 +393,7 @@ CREATE POLICY "company_member_all" ON public.<table>
 - [ ] Use `SECURITY DEFINER SET search_path = 'public'`. Because SECURITY DEFINER bypasses RLS, the WHERE clause is the only access guard — it must be explicit.
 - [ ] To rename a parameter (e.g. from `p_user_id` to `p_company_id`), you must `DROP FUNCTION` first — PostgreSQL does not allow renaming params via `CREATE OR REPLACE`.
 - [ ] The TypeScript caller must pass `p_company_id: activeCompanyId` (from `useActiveCompanyId()`), not `p_user_id: user.id`.
-- [ ] Run `tsc --noEmit` — zero errors required.
+- [ ] Run `tsc -p tsconfig.app.json --noEmit` — zero errors required.
 
 ### Adding a new module/page
 
@@ -515,7 +519,7 @@ Run through this list mentally before finishing any change. Flag issues in code 
 
 | # | Check |
 |---|-------|
-| Q1 | Run `tsc --noEmit` — zero type errors required before committing. |
+| Q1 | Run `tsc -p tsconfig.app.json --noEmit` — zero type errors required before committing. Bare `tsc --noEmit` checks nothing (root tsconfig has `"files": []`). |
 | Q2 | No `console.log` left in production paths (use `console.warn`/`console.error` only for genuine warnings/errors). |
 | Q3 | Monetary arithmetic uses `round2()`. Never use raw floating-point addition/subtraction for Bs amounts. |
 | Q4 | New paginated queries use `fetchAllPaginated()` — never assume PostgREST returns all rows without pagination. |
