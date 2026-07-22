@@ -43,6 +43,11 @@ export function NuevaLicitacionModal({ open, onClose, onCreated }: Props) {
         tipo_proceso:      form.tipo_proceso,
         fecha_presentacion: form.fecha_presentacion || undefined,
         estado:            'BORRADOR',
+        // Costos a nivel de licitación: arrancan en 0 (igual que el default en BD)
+        garantia_licitacion:     0,
+        pasaje_licitacion:       0,
+        envio_licitacion:        0,
+        otros_costos_licitacion: 0,
         datos_ia:          {},
       });
       toast.success('Licitación creada');

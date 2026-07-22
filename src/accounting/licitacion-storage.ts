@@ -2,6 +2,7 @@
 // Persistencia del módulo de Licitaciones en Supabase
 
 import { supabase } from '@/integrations/supabase/client';
+import type { Database, Json } from '@/integrations/supabase/types';
 import { resolveUserCompanyId } from '@/lib/resolveCompanyId';
 import {
   Licitacion, LicitacionProducto, LicitacionDoc,
@@ -162,7 +163,7 @@ export const LicitacionStorage = {
         user_id:    user.id,
         company_id: companyId,
         ...lit,
-        datos_ia: lit.datos_ia || {},
+        datos_ia: (lit.datos_ia ?? {}) as Json,
       })
       .select()
       .single();
@@ -180,7 +181,7 @@ export const LicitacionStorage = {
     const companyId = await resolveUserCompanyId();
     const { error } = await supabase
       .from('licitaciones')
-      .update({ ...changes, updated_at: new Date().toISOString() })
+      .update({ ...changes, updated_at: new Date().toISOString() } as Database["public"]["Tables"]["licitaciones"]["Update"])
       .eq('id', id)
       .eq('company_id', companyId);
     if (error) throw error;

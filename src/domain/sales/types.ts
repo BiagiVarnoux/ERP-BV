@@ -114,6 +114,7 @@ export interface CreateCustomerInput {
   credito_autorizado?: number;
   dias_credito?: number;
   notas?: string;
+  activo?: boolean;
 }
 
 // ── Stock ────────────────────────────────────────────────────────────────────

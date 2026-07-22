@@ -42,7 +42,6 @@ import {
 } from '@/accounting/shipment-utils';
 import { ShipmentCloseModal, ProductLink } from '@/components/inventory/ShipmentCloseModal';
 import { FileAttachments } from '@/components/shipments/FileAttachments';
-import { supabase } from '@/integrations/supabase/client';
 import { exportShipmentToPDF, ShipmentPDFData } from '@/services/pdfService';
 import { useProductCategories, ProductCategoryRow } from '@/hooks/useProductCategories';
 

@@ -11,6 +11,10 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, ShieldCheck } from 'lucide-react';
+import type { Database } from '@/integrations/supabase/types';
+
+type CompanyRole = Database['public']['Enums']['company_role'];
+type ErpModuleEnum = Database['public']['Enums']['erp_module'];
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -26,7 +30,7 @@ export interface MemberDetail {
 }
 
 interface ModuleRow {
-  module: string;
+  module: ErpModuleEnum;
   can_view: boolean;
   can_create: boolean;
   can_edit: boolean;
@@ -94,13 +98,13 @@ interface Props {
 export function UserPermissionsModal({ member, open, onClose, onSaved }: Props) {
   const { toast } = useToast();
   const [permissions, setPermissions] = useState<ModuleRow[]>([]);
-  const [selectedRole, setSelectedRole] = useState<string>('viewer');
+  const [selectedRole, setSelectedRole] = useState<CompanyRole>('viewer');
   const [loadingPerms, setLoadingPerms] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (member && open) {
-      setSelectedRole(member.role);
+      setSelectedRole(member.role as CompanyRole);
       loadPermissions(member.member_id);
     }
   }, [member, open]);
@@ -112,7 +116,7 @@ export function UserPermissionsModal({ member, open, onClose, onSaved }: Props) 
         p_member_id: memberId,
       });
       if (error) throw error;
-      setPermissions(data || []);
+      setPermissions((data ?? []) as unknown as ModuleRow[]);
     } catch (e: any) {
       toast({ title: 'Error', description: e.message, variant: 'destructive' });
     } finally {
@@ -120,7 +124,7 @@ export function UserPermissionsModal({ member, open, onClose, onSaved }: Props) 
     }
   };
 
-  const handleRoleChange = async (newRole: string) => {
+  const handleRoleChange = async (newRole: CompanyRole) => {
     if (!member || newRole === member.role) return;
     setSaving(true);
     try {

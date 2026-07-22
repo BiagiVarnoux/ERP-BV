@@ -93,8 +93,9 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     loadProductsAndStock();
     if (activeCompanyId) {
       loadPaymentMethods(activeCompanyId).then(setPaymentMethods).catch(() => {});
-      supabase.rpc('get_company_members_detail', { p_company_id: activeCompanyId })
-        .then(({ data }) => setVendedores(((data ?? []) as VendedorOption[]).filter(m => m.role === 'custom')))
+      // El builder de Supabase es un thenable, no una Promise: sin envolverlo no tiene .catch
+      Promise.resolve(supabase.rpc('get_company_members_detail', { p_company_id: activeCompanyId }))
+        .then(({ data }) => setVendedores(((data ?? []) as unknown as VendedorOption[]).filter(m => m.role === 'custom')))
         .catch(() => setVendedores([]));
     }
   }, [isOpen]);

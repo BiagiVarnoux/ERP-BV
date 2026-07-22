@@ -12,8 +12,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Copy, Loader2, UserPlus } from 'lucide-react';
+import type { Database } from '@/integrations/supabase/types';
 
-const ROLE_OPTIONS = [
+type CompanyRole = Database['public']['Enums']['company_role'];
+
+const ROLE_OPTIONS: { value: CompanyRole; label: string; description: string }[] = [
   { value: 'manager',    label: 'Gerente',    description: 'Acceso completo excepto configuración' },
   { value: 'accountant', label: 'Contador',   description: 'Módulos contables + lectura inventario/ventas' },
   { value: 'auditor',    label: 'Auditor',    description: 'Solo lectura en todos los módulos' },
@@ -30,7 +33,7 @@ interface Props {
 export function InviteUserModal({ open, onClose, onCreated }: Props) {
   const { toast } = useToast();
   const { companyId } = useUserAccess();
-  const [role, setRole] = useState('viewer');
+  const [role, setRole] = useState<CompanyRole>('viewer');
   const [expirationDays, setExpirationDays] = useState(7);
   const [loading, setLoading] = useState(false);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
@@ -97,7 +100,7 @@ export function InviteUserModal({ open, onClose, onCreated }: Props) {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Rol del nuevo usuario</Label>
-              <Select value={role} onValueChange={setRole}>
+              <Select value={role} onValueChange={v => setRole(v as CompanyRole)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

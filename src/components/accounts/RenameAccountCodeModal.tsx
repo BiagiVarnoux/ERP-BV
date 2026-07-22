@@ -106,10 +106,14 @@ export function RenameAccountCodeModal({
         p_new_id:     newCode.trim(),
       });
       if (error) throw error;
-      if (!data?.success) throw new Error('El servidor no confirmó el éxito');
+      // El RPC devuelve jsonb, que llega tipado como Json genérico.
+      const res = (data ?? {}) as unknown as {
+        success?: boolean; journal_lines?: number; aux_ledger?: number;
+      };
+      if (!res.success) throw new Error('El servidor no confirmó el éxito');
 
-      const j = data.journal_lines ?? 0;
-      const a = data.aux_ledger ?? 0;
+      const j = res.journal_lines ?? 0;
+      const a = res.aux_ledger ?? 0;
       toast.success(
         `Código ${account.id} → ${newCode.trim()} · ${j} asiento${j !== 1 ? 's' : ''}, ${a} registro${a !== 1 ? 's' : ''} auxiliares actualizados`
       );

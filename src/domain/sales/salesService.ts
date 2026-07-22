@@ -25,7 +25,7 @@ export async function createSale(
   }
 
   const totals = calculateTaxes(items, header.con_factura);
-  const accounts = resolveAccounts(header.canal, header.tipo_pago, paymentConfig);
+  const accounts = resolveAccounts(header.canal, header.tipo_pago as TipoPago, paymentConfig);
 
   const payload = {
     ...header,

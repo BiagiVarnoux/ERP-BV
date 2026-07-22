@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { useUserAccess } from '@/contexts/UserAccessContext';
+import { useUserAccess, type ErpModule } from '@/contexts/UserAccessContext';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { CompanySwitcher } from '@/components/layout/CompanySwitcher';
 import {

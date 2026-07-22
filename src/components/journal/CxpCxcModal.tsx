@@ -32,6 +32,18 @@ export interface CxpCxcLineToProcess {
   modulo: 'cxp' | 'cxc';
 }
 
+// Vista mínima del query builder de PostgREST, para consultas con tabla/columnas
+// dinámicas donde la inferencia completa de Supabase es demasiado profunda.
+interface LooseQuery {
+  select: (cols: string) => LooseQuery;
+  eq: (col: string, val: unknown) => LooseQuery;
+  in: (col: string, vals: readonly unknown[]) => LooseQuery;
+  order: (col: string) => PromiseLike<{
+    data: Record<string, unknown>[] | null;
+    error: { message: string } | null;
+  }>;
+}
+
 interface OpenDoc {
   id: string;
   numero_documento: string;
@@ -97,8 +109,11 @@ export function CxpCxcModal({ isOpen, linesToProcess, journalEntry, companyId, o
       const selectCols = line.modulo === 'cxp'
         ? 'id, numero_documento, proveedor_nombre, monto_pendiente, moneda'
         : 'id, numero_documento, monto_pendiente, moneda, customers ( razon_social )';
-      supabase
-        .from(table)
+      // `table`/`selectCols` son dinámicos: si dejamos que PostgREST infiera sobre
+      // la unión de tablas, TS revienta con "excessively deep". Acotamos el builder
+      // a una forma mínima desde el `.from()` para cortar la inferencia.
+      const builder = supabase.from(table) as unknown as LooseQuery;
+      builder
         .select(selectCols)
         .eq('company_id', companyId)
         .eq(cuentaCol, line.accountId)

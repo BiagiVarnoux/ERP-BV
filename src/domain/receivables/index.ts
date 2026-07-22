@@ -75,7 +75,7 @@ export async function listReceivables(): Promise<ReceivableRow[]> {
     const customers = r.customers as { razon_social?: string | null } | null;
     const sales = r.sales as { canal?: string | null } | null;
     return {
-      ...(r as ReceivableRow),
+      ...(r as unknown as ReceivableRow),
       customer_razon_social: customers?.razon_social ?? null,
       sale_canal: sales?.canal ?? null,
     };
