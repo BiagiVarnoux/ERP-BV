@@ -10,20 +10,31 @@ import { round2, round6 } from './utils';
 export const TC_OFICIAL = 6.97;
 
 // Tasas fijas
-const IVA_ADUANA_RATE = 0.1494;   // 14.94% sobre PRECIO_BOB + GA
+const IVA_ADUANA_RATE = 0.1494;   // 14.94% sobre la base CIF + GA
 const IVA_VENTA_RATE  = 0.13;     // 13% del precio ofertado
 const IT_RATE         = 0.03;     // 3% del precio ofertado
 const IVA_IT_TOTAL    = IVA_VENTA_RATE + IT_RATE; // 0.16 (para precio piso)
-const GA_CIF_EXTRA    = 0.02;     // 2% adicional sobre PRECIO_BOB para base CIF
+const GA_CIF_EXTRA    = 0.02;     // 2% adicional sobre PRECIO_BOB para base CIF (seguro)
+
+// Porcentaje del flete que se computa en la base CIF. Solo una fracción del costo
+// de envío entra al valor aduanero; el resto sigue siendo costo real del producto.
+export const FLETE_CIF_PCT_AEREO    = 10;  // % por defecto para envío aéreo
+export const FLETE_CIF_PCT_MARITIMO = 25;  // % de referencia para envío marítimo
+
+/** Valores por defecto de la cotización/análisis; cada producto puede sobreescribirlos. */
+export interface CalcDefaults {
+  tcOficial?: number;    // T/C para tributos aduaneros
+  fleteCifPct?: number;  // % del flete que entra a la base CIF
+}
 
 /**
  * Calcula todos los valores derivados para un producto de cotización.
  * Todas las fórmulas reproducen exactamente el Excel de referencia.
  *
- * @param tcOficialDefault T/C aduanero por defecto de la cotización. El producto
- *   puede sobreescribirlo con `p.tc_oficial`. Si ambos faltan, se usa TC_OFICIAL.
+ * @param defaults Valores por defecto de la cotización (T/C aduanero, % de flete
+ *   computable en el CIF). Cada producto puede sobreescribirlos individualmente.
  */
-export function calcProducto(p: LicitacionProducto, tcOficialDefault?: number): ProductoCalc {
+export function calcProducto(p: LicitacionProducto, defaults?: CalcDefaults): ProductoCalc {
   const cantidad = p.cantidad || 1;
 
   // — Compra local (Bolivia): sin GA, sin IVA aduanero, sin flete internacional ni T/C —
@@ -59,6 +70,8 @@ export function calcProducto(p: LicitacionProducto, tcOficialDefault?: number): 
       peso_vol: 0,
       peso: 0,
       envio: 0,
+      flete_cif: 0,
+      cif: 0,
       ga_calculado: 0,
       ga: 0,
       iva_aduana_calculado: iva_aduana,
@@ -84,7 +97,9 @@ export function calcProducto(p: LicitacionProducto, tcOficialDefault?: number): 
   const precioUsd = p.precio_usd ?? 0;
 
   // T/C para tributos aduaneros: override del producto → default de la cotización → oficial.
-  const tcOficial = p.tc_oficial ?? tcOficialDefault ?? TC_OFICIAL;
+  const tcOficial = p.tc_oficial ?? defaults?.tcOficial ?? TC_OFICIAL;
+  // % del flete computable en el CIF: override del producto → default → aéreo (10%).
+  const fleteCifPct = p.flete_cif_pct ?? defaults?.fleteCifPct ?? FLETE_CIF_PCT_AEREO;
 
   // — Costo de compra en Bs (con tax del proveedor) —
   const precio_bs  = round2((precioUsd * (1 + p.tax_pct / 100)) * tc);
@@ -105,15 +120,20 @@ export function calcProducto(p: LicitacionProducto, tcOficialDefault?: number): 
   // — Envío por unidad: peso × tarifa_envio_USD × tc_envio —
   const envio = round2(peso * (p.tarifa_envio || 0) * tcEnvio);
 
-  // — GA (Gravamen Arancelario): (PRECIO_BOB + ENVÍO + PRECIO_BOB×2%) × ga% —
-  const ga_base      = precio_bob + envio + precio_bob * GA_CIF_EXTRA;
-  const ga_calculado = round2(ga_base * (p.ga_pct / 100));
+  // — Flete computable en el CIF: solo una fracción del envío entra al valor aduanero —
+  const flete_cif = round2(envio * (fleteCifPct / 100));
+
+  // — BASE CIF: PRECIO_BOB + flete computable + 2% del PRECIO_BOB (seguro) —
+  const cif = round2(precio_bob + flete_cif + precio_bob * GA_CIF_EXTRA);
+
+  // — GA (Gravamen Arancelario): CIF × ga% —
+  const ga_calculado = round2(cif * (p.ga_pct / 100));
   const ga           = (p.usa_ga_manual && p.ga_manual != null)
     ? round2(p.ga_manual)
     : ga_calculado;
 
-  // — IVA aduanero: (PRECIO_BOB + GA) × 14.94% —
-  const iva_aduana_calculado = round2((precio_bob + ga) * IVA_ADUANA_RATE);
+  // — IVA aduanero: (CIF + GA) × 14.94% —
+  const iva_aduana_calculado = round2((cif + ga) * IVA_ADUANA_RATE);
   const iva_aduana           = (p.usa_iva_manual && p.iva_aduana_manual != null)
     ? round2(p.iva_aduana_manual)
     : iva_aduana_calculado;
@@ -166,6 +186,8 @@ export function calcProducto(p: LicitacionProducto, tcOficialDefault?: number): 
     peso_vol,
     peso,
     envio,
+    flete_cif,
+    cif,
     ga_calculado,
     ga,
     iva_aduana_calculado,

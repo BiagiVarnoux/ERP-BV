@@ -12,7 +12,7 @@ import {
   INVESTMENT_ESTADO_LABELS, INVESTMENT_ESTADO_COLORS,
 } from '@/accounting/investment-types';
 import { calcItem, calcResumen, emptyItem } from '@/accounting/investment-utils';
-import { TC_OFICIAL } from '@/accounting/licitacion-utils';
+import { TC_OFICIAL, FLETE_CIF_PCT_AEREO } from '@/accounting/licitacion-utils';
 import { InvestmentStorage } from '@/accounting/investment-storage';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { TabProductos } from './TabProductos';
@@ -36,6 +36,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
   const [plazoImport, setPlazoImport] = useState(analysis.plazo_importacion_meses);
   const [fuc, setFuc] = useState(analysis.fuc_pct);
   const [tcOficial, setTcOficial] = useState<number>(analysis.tc_oficial ?? TC_OFICIAL);
+  const [fleteCifPct, setFleteCifPct] = useState<number>(analysis.flete_cif_pct ?? FLETE_CIF_PCT_AEREO);
   // T/C de compra y envío a nivel de análisis: se aplican en bloque a todos los productos.
   const [headerTcCompra, setHeaderTcCompra] = useState<number>(analysis.items[0]?.tc ?? 9.97);
   const [headerTcEnvio, setHeaderTcEnvio]   = useState<number | undefined>(analysis.items[0]?.tc_envio);
@@ -44,8 +45,8 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
   const [saving, setSaving] = useState(false);
 
   const calcs = useMemo(
-    () => items.map(it => calcItem(it, plazoImport, costoCapital, fuc, tcOficial)),
-    [items, plazoImport, costoCapital, fuc, tcOficial],
+    () => items.map(it => calcItem(it, plazoImport, costoCapital, fuc, { tcOficial, fleteCifPct })),
+    [items, plazoImport, costoCapital, fuc, tcOficial, fleteCifPct],
   );
   const resumen = useMemo(
     () => calcResumen({ ...analysis, items, fuc_pct: fuc }, calcs),
@@ -59,6 +60,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
     plazoImport !== analysis.plazo_importacion_meses ||
     fuc !== analysis.fuc_pct ||
     tcOficial !== (analysis.tc_oficial ?? TC_OFICIAL) ||
+    fleteCifPct !== (analysis.flete_cif_pct ?? FLETE_CIF_PCT_AEREO) ||
     (embarqueId ?? null) !== (analysis.embarque_id ?? null);
 
   // ── Edición de items ──────────────────────────────────────────────────────
@@ -98,6 +100,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
         plazo_importacion_meses: plazoImport,
         fuc_pct:                 fuc,
         tc_oficial:              tcOficial,
+        flete_cif_pct:           fleteCifPct,
         embarque_id:             embarqueId ?? null,
       });
       await InvestmentStorage.upsertItems(companyId, items);
@@ -105,7 +108,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
       for (const old of analysis.items) {
         if (!idsActuales.has(old.id)) await InvestmentStorage.deleteItem(old.id, old.analysis_id);
       }
-      onUpdated({ ...analysis, nombre, items, costo_capital_anual: costoCapital, plazo_importacion_meses: plazoImport, fuc_pct: fuc, tc_oficial: tcOficial, embarque_id: embarqueId });
+      onUpdated({ ...analysis, nombre, items, costo_capital_anual: costoCapital, plazo_importacion_meses: plazoImport, fuc_pct: fuc, tc_oficial: tcOficial, flete_cif_pct: fleteCifPct, embarque_id: embarqueId });
       toast.success('Análisis guardado');
     } catch (e) {
       toast.error('Error al guardar');
@@ -229,6 +232,8 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
             calcs={calcs}
             resumen={resumen}
             tcOficial={tcOficial}
+            fleteCifPct={fleteCifPct}
+            onFleteCifPct={setFleteCifPct}
             onTcOficial={setTcOficial}
             headerTcCompra={headerTcCompra}
             headerTcEnvio={headerTcEnvio}
@@ -285,6 +290,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
                 setPlazoImport(analysis.plazo_importacion_meses);
                 setFuc(analysis.fuc_pct);
                 setTcOficial(analysis.tc_oficial ?? TC_OFICIAL);
+                setFleteCifPct(analysis.flete_cif_pct ?? FLETE_CIF_PCT_AEREO);
                 setHeaderTcCompra(analysis.items[0]?.tc ?? 9.97);
                 setHeaderTcEnvio(analysis.items[0]?.tc_envio);
                 setEmbarqueId(analysis.embarque_id);

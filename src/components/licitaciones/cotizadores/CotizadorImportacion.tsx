@@ -18,7 +18,7 @@ import {
 import { Plus, Trash2, ChevronDown, ChevronRight, ExternalLink, AlertTriangle, TrendingUp, TrendingDown, Download, Weight, Box } from 'lucide-react';
 import { toast } from 'sonner';
 import { Licitacion, LicitacionProducto } from '@/accounting/licitacion-types';
-import { calcProducto, calcResumen, emptyProducto, TC_OFICIAL } from '@/accounting/licitacion-utils';
+import { calcProducto, calcResumen, emptyProducto, TC_OFICIAL, FLETE_CIF_PCT_AEREO, FLETE_CIF_PCT_MARITIMO } from '@/accounting/licitacion-utils';
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
 import { fmt, round2 } from '@/accounting/utils';
 import { toDecimal } from '@/accounting/utils';
@@ -67,6 +67,7 @@ function Pct({ v, decimals = 1 }: { v: number; decimals?: number }) {
 export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   const [productos, setProductos] = useState<LicitacionProducto[]>(licitacion.productos);
   const [tcOficial, setTcOficial] = useState<number>(licitacion.tc_oficial ?? TC_OFICIAL);
+  const [fleteCifPct, setFleteCifPct] = useState<number>(licitacion.flete_cif_pct ?? FLETE_CIF_PCT_AEREO);
   // T/C de compra y envío a nivel de licitación: se aplican en bloque a todos los productos.
   const [headerTcCompra, setHeaderTcCompra] = useState<number>(licitacion.productos[0]?.tc ?? 9.97);
   const [headerTcEnvio, setHeaderTcEnvio]   = useState<number | undefined>(licitacion.productos[0]?.tc_envio);
@@ -93,8 +94,11 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
     setProductos(prev => prev.map(p => ({ ...p, tc_envio: v })));
   };
 
-  // Recalcular todo cada vez que cambia productos o el T/C aduanero por defecto
-  const calcs = useMemo(() => productos.map(p => calcProducto(p, tcOficial)), [productos, tcOficial]);
+  // Recalcular todo cada vez que cambian productos o los defaults de la cotización
+  const calcs = useMemo(
+    () => productos.map(p => calcProducto(p, { tcOficial, fleteCifPct })),
+    [productos, tcOficial, fleteCifPct],
+  );
   const costosLicitacionTotal = round2(garantiaLic + pasajeLic + envioLic + otrosLic);
   const resumen = useMemo(
     () => calcResumen(productos, calcs, costosLicitacionTotal),
@@ -139,10 +143,13 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   const handleSave = async () => {
     try {
       setSaving(true);
-      // Persistir el T/C aduanero por defecto y los costos de la licitación si cambiaron
-      if (tcOficial !== (licitacion.tc_oficial ?? TC_OFICIAL) || costosLicitacionDirty) {
+      // Persistir los defaults y los costos de la licitación si cambiaron
+      if (tcOficial !== (licitacion.tc_oficial ?? TC_OFICIAL)
+        || fleteCifPct !== (licitacion.flete_cif_pct ?? FLETE_CIF_PCT_AEREO)
+        || costosLicitacionDirty) {
         await LicitacionStorage.update(licitacion.id, {
           tc_oficial: tcOficial,
+          flete_cif_pct: fleteCifPct,
           garantia_licitacion: garantiaLic,
           pasaje_licitacion: pasajeLic,
           envio_licitacion: envioLic,
@@ -160,6 +167,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
         ...licitacion,
         productos,
         tc_oficial: tcOficial,
+        flete_cif_pct: fleteCifPct,
         garantia_licitacion: garantiaLic,
         pasaje_licitacion: pasajeLic,
         envio_licitacion: envioLic,
@@ -176,6 +184,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   const isDirty =
     JSON.stringify(productos) !== JSON.stringify(licitacion.productos) ||
     tcOficial !== (licitacion.tc_oficial ?? TC_OFICIAL) ||
+    fleteCifPct !== (licitacion.flete_cif_pct ?? FLETE_CIF_PCT_AEREO) ||
     costosLicitacionDirty;
 
   // ── Exportar PDF ───────────────────────────────────────────────────────────
@@ -273,9 +282,30 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
                 )}
               </div>
             </div>
+            {/* % del flete que entra a la base CIF */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">% flete en CIF</label>
+              <div className="flex items-center gap-1.5">
+                <NumInput value={fleteCifPct} onChange={v => setFleteCifPct(v ?? 0)} min="0" max="100" step="1" className="w-20" />
+                <button
+                  type="button"
+                  className={`text-[11px] hover:underline ${fleteCifPct === FLETE_CIF_PCT_AEREO ? 'text-primary font-semibold' : 'text-muted-foreground'}`}
+                  onClick={() => setFleteCifPct(FLETE_CIF_PCT_AEREO)}
+                >
+                  aéreo {FLETE_CIF_PCT_AEREO}%
+                </button>
+                <button
+                  type="button"
+                  className={`text-[11px] hover:underline ${fleteCifPct === FLETE_CIF_PCT_MARITIMO ? 'text-primary font-semibold' : 'text-muted-foreground'}`}
+                  onClick={() => setFleteCifPct(FLETE_CIF_PCT_MARITIMO)}
+                >
+                  marít. {FLETE_CIF_PCT_MARITIMO}%
+                </button>
+              </div>
+            </div>
             <div className="flex-1 min-w-[180px] flex items-end">
               <p className="text-[11px] text-muted-foreground">
-                El T/C de aduana es la base de GA + IVA; cada producto puede sobreescribirlo individualmente.
+                CIF = precio Bs + {fleteCifPct}% del flete + 2%. Sobre el CIF se calcula el GA, y sobre CIF + GA el IVA aduanero.
               </p>
             </div>
           </div>
@@ -326,6 +356,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
                   producto={p}
                   calc={calcs[i]}
                   tcOficialDefault={tcOficial}
+                  fleteCifPctDefault={fleteCifPct}
                   expanded={expandedIds.has(p.id)}
                   onToggle={() => toggleExpand(p.id)}
                   onChange={changes => updateProducto(p.id, changes)}
@@ -363,6 +394,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
               <Button variant="outline" onClick={() => {
                 setProductos(licitacion.productos);
                 setTcOficial(licitacion.tc_oficial ?? TC_OFICIAL);
+                setFleteCifPct(licitacion.flete_cif_pct ?? FLETE_CIF_PCT_AEREO);
                 setHeaderTcCompra(licitacion.productos[0]?.tc ?? 9.97);
                 setHeaderTcEnvio(licitacion.productos[0]?.tc_envio);
                 setGarantiaLic(licitacion.garantia_licitacion || 0);
@@ -385,10 +417,11 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
 
 // ─── Fila de producto ──────────────────────────────────────────────────────────
 
-function ProductoRow({ producto: p, calc, tcOficialDefault, expanded, onToggle, onChange, onRemove }: {
+function ProductoRow({ producto: p, calc, tcOficialDefault, fleteCifPctDefault, expanded, onToggle, onChange, onRemove }: {
   producto: LicitacionProducto;
   calc: ReturnType<typeof calcProducto>;
   tcOficialDefault: number;
+  fleteCifPctDefault: number;
   expanded: boolean;
   onToggle: () => void;
   onChange: (c: Partial<LicitacionProducto>) => void;
@@ -539,7 +572,7 @@ function ProductoRow({ producto: p, calc, tcOficialDefault, expanded, onToggle, 
       {/* Formulario expandido */}
       <CollapsibleContent>
         <div className="px-4 pb-5 pt-1 bg-muted/20 border-t space-y-5">
-          <ProductoForm producto={p} calc={calc} tcOficialDefault={tcOficialDefault} onChange={onChange} />
+          <ProductoForm producto={p} calc={calc} tcOficialDefault={tcOficialDefault} fleteCifPctDefault={fleteCifPctDefault} onChange={onChange} />
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -548,10 +581,11 @@ function ProductoRow({ producto: p, calc, tcOficialDefault, expanded, onToggle, 
 
 // ─── Formulario detallado de producto ─────────────────────────────────────────
 
-function ProductoForm({ producto: p, calc, tcOficialDefault, onChange }: {
+function ProductoForm({ producto: p, calc, tcOficialDefault, fleteCifPctDefault, onChange }: {
   producto: LicitacionProducto;
   calc: ReturnType<typeof calcProducto>;
   tcOficialDefault: number;
+  fleteCifPctDefault: number;
   onChange: (c: Partial<LicitacionProducto>) => void;
 }) {
   const n = (k: keyof LicitacionProducto) => (v: number | undefined) => onChange({ [k]: v });
@@ -608,7 +642,7 @@ function ProductoForm({ producto: p, calc, tcOficialDefault, onChange }: {
       {p.origen === 'local' ? (
         <CostoLocal producto={p} calc={calc} onChange={onChange} />
       ) : (
-        <CostoImportacion producto={p} calc={calc} tcOficialDefault={tcOficialDefault} onChange={onChange} />
+        <CostoImportacion producto={p} calc={calc} tcOficialDefault={tcOficialDefault} fleteCifPctDefault={fleteCifPctDefault} onChange={onChange} />
       )}
 
       <Separator />
@@ -713,10 +747,11 @@ function ProductoForm({ producto: p, calc, tcOficialDefault, onChange }: {
 
 // ─── Costo de importación (sección del formulario, origen='importado') ───────
 
-function CostoImportacion({ producto: p, calc, tcOficialDefault, onChange }: {
+function CostoImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefault, onChange }: {
   producto: LicitacionProducto;
   calc: ReturnType<typeof calcProducto>;
   tcOficialDefault: number;
+  fleteCifPctDefault: number;
   onChange: (c: Partial<LicitacionProducto>) => void;
 }) {
   const n = (k: keyof LicitacionProducto) => (v: number | undefined) => onChange({ [k]: v });
@@ -748,6 +783,9 @@ function CostoImportacion({ producto: p, calc, tcOficialDefault, onChange }: {
           </Field>
           <Field label="GA %" hint="Gravamen Arancelario">
             <NumInput value={p.ga_pct} onChange={n('ga_pct')} min="0" />
+          </Field>
+          <Field label="% flete en CIF" hint="10 aéreo / 25 marít.">
+            <NumInput value={p.flete_cif_pct} onChange={n('flete_cif_pct')} min="0" max="100" step="1" placeholder={`= cotiz. (${fleteCifPctDefault})`} />
           </Field>
         </div>
 
@@ -893,13 +931,18 @@ function CostoImportacion({ producto: p, calc, tcOficialDefault, onChange }: {
               ? `kg bruto (vol. = ${calc.peso_vol} kg)`
               : 'kg volumétrico — (M1×M2×M3)/5000',
           },
-          { label: 'Envío',       value: calc.envio,           hint: 'Bs/unidad' },
+          { label: 'Envío',       value: calc.envio,           hint: 'Bs/unidad — costo real (100%)' },
+          {
+            label: 'Base CIF',
+            value: calc.cif,
+            hint: `Precio BOB + ${p.flete_cif_pct ?? fleteCifPctDefault}% del flete (${fmt(calc.flete_cif)}) + 2% — base de GA e IVA`,
+          },
           {
             label: p.usa_ga_manual ? 'GA (manual)' : 'GA',
             value: calc.ga,
             hint: p.usa_ga_manual
               ? `Bs/unidad manual (auto = ${fmt(calc.ga_calculado)})`
-              : 'Bs/unidad — calculado',
+              : 'CIF × GA% — Bs/unidad',
           },
           {
             label: p.usa_iva_manual ? 'IVA aduana (manual)' : 'IVA aduana',

@@ -115,6 +115,7 @@ export interface LicitacionProducto {
   tc: number;              // T/C paralelo (compra del producto)
   tc_envio?: number;       // T/C al momento del flete (puede diferir)
   tc_oficial?: number;     // T/C para tributos aduaneros (GA + IVA). undefined = hereda el de la cotización (→ TC_OFICIAL)
+  flete_cif_pct?: number;  // % del envío que entra a la base CIF (10 aéreo / 25 marítimo). undefined = hereda el de la cotización
 
   // Precio de compra
   precio_usd: number;
@@ -189,6 +190,10 @@ export interface Licitacion {
   // Cada producto puede sobreescribirlo. undefined = usar TC_OFICIAL (6.97).
   tc_oficial?: number;
 
+  // % del flete que entra a la base CIF por defecto (10 aéreo / 25 marítimo).
+  // Cada producto puede sobreescribirlo. undefined = FLETE_CIF_PCT_AEREO.
+  flete_cif_pct?: number;
+
   // Estado
   estado: LicitacionEstado;
 
@@ -234,7 +239,9 @@ export interface ProductoCalc {
   precio_bob: number;          // precio_usd × 6.97 (para tributos aduaneros)
   peso_vol: number;            // (m1×m2×m3) / 5000 — siempre calculado para referencia
   peso: number;                // peso efectivo usado (volumétrico o bruto)
-  envio: number;               // peso × tarifa_envio × tc_envio
+  envio: number;               // peso × tarifa_envio × tc_envio (costo REAL, 100%)
+  flete_cif: number;           // porción del envío que entra a la base CIF (envio × flete_cif_pct%)
+  cif: number;                 // base aduanera = precio_bob + flete_cif + precio_bob×2%
   ga_calculado: number;        // GA auto-calculado (para mostrar como referencia al usar override)
   ga: number;                  // GA efectivo (calculado o manual)
   iva_aduana_calculado: number; // IVA aduana auto-calculado (para referencia)

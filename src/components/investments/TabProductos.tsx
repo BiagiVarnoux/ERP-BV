@@ -10,10 +10,9 @@ import {
   Plus, Trash2, ChevronDown, ChevronRight, ExternalLink, AlertTriangle,
   TrendingUp, TrendingDown, Box, Weight, GripVertical,
 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
 import { InvestmentItem, ItemCalc, InvestmentResumen } from '@/accounting/investment-types';
 import { fmt, toDecimal, round2 } from '@/accounting/utils';
-import { TC_OFICIAL } from '@/accounting/licitacion-utils';
+import { TC_OFICIAL, FLETE_CIF_PCT_AEREO, FLETE_CIF_PCT_MARITIMO } from '@/accounting/licitacion-utils';
 import { NumInput, Pct, Field, StatCard } from './ui-helpers';
 
 interface Props {
@@ -22,6 +21,8 @@ interface Props {
   resumen: InvestmentResumen;
   tcOficial: number;
   onTcOficial: (v: number) => void;
+  fleteCifPct: number;
+  onFleteCifPct: (v: number) => void;
   headerTcCompra: number;
   headerTcEnvio: number | undefined;
   onTcCompraAll: (v: number | undefined) => void;
@@ -33,7 +34,7 @@ interface Props {
 }
 
 export function TabProductos({
-  items, calcs, resumen, tcOficial, onTcOficial,
+  items, calcs, resumen, tcOficial, onTcOficial, fleteCifPct, onFleteCifPct,
   headerTcCompra, headerTcEnvio, onTcCompraAll, onTcEnvioAll,
   onUpdate, onAdd, onRemove, onReorder,
 }: Props) {
@@ -121,9 +122,30 @@ export function TabProductos({
                 )}
               </div>
             </div>
+            {/* % del flete que entra a la base CIF */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">% flete en CIF</label>
+              <div className="flex items-center gap-1.5">
+                <NumInput value={fleteCifPct} onChange={v => onFleteCifPct(v ?? 0)} min="0" max="100" step="1" className="w-20" />
+                <button
+                  type="button"
+                  className={`text-[11px] hover:underline ${fleteCifPct === FLETE_CIF_PCT_AEREO ? 'text-primary font-semibold' : 'text-muted-foreground'}`}
+                  onClick={() => onFleteCifPct(FLETE_CIF_PCT_AEREO)}
+                >
+                  aéreo {FLETE_CIF_PCT_AEREO}%
+                </button>
+                <button
+                  type="button"
+                  className={`text-[11px] hover:underline ${fleteCifPct === FLETE_CIF_PCT_MARITIMO ? 'text-primary font-semibold' : 'text-muted-foreground'}`}
+                  onClick={() => onFleteCifPct(FLETE_CIF_PCT_MARITIMO)}
+                >
+                  marít. {FLETE_CIF_PCT_MARITIMO}%
+                </button>
+              </div>
+            </div>
             <div className="flex-1 min-w-[180px] flex items-end">
               <p className="text-[11px] text-muted-foreground">
-                El T/C de aduana es la base de GA + IVA; cada producto puede sobreescribirlo individualmente.
+                CIF = precio Bs + {fleteCifPct}% del flete + 2%. Sobre el CIF se calcula el GA, y sobre CIF + GA el IVA aduanero.
               </p>
             </div>
           </div>
@@ -156,6 +178,7 @@ export function TabProductos({
                   item={it}
                   calc={calcs[i]}
                   tcOficialDefault={tcOficial}
+                  fleteCifPctDefault={fleteCifPct}
                   expanded={expandedIds.has(it.id)}
                   onToggle={() => toggle(it.id)}
                   onChange={c => onUpdate(it.id, c)}
@@ -181,10 +204,11 @@ export function TabProductos({
 
 // ─── Fila de producto ─────────────────────────────────────────────────────────
 
-function ItemRow({ item: p, calc, tcOficialDefault, expanded, onToggle, onChange, onRemove, showDragHandle }: {
+function ItemRow({ item: p, calc, tcOficialDefault, fleteCifPctDefault, expanded, onToggle, onChange, onRemove, showDragHandle }: {
   item: InvestmentItem;
   calc: ItemCalc;
   tcOficialDefault: number;
+  fleteCifPctDefault: number;
   expanded: boolean;
   onToggle: () => void;
   onChange: (c: Partial<InvestmentItem>) => void;
@@ -277,7 +301,7 @@ function ItemRow({ item: p, calc, tcOficialDefault, expanded, onToggle, onChange
 
       <CollapsibleContent>
         <div className="px-4 pb-5 pt-1 bg-muted/20 border-t">
-          <ItemForm item={p} calc={calc} tcOficialDefault={tcOficialDefault} onChange={onChange} />
+          <ItemForm item={p} calc={calc} tcOficialDefault={tcOficialDefault} fleteCifPctDefault={fleteCifPctDefault} onChange={onChange} />
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -286,10 +310,11 @@ function ItemRow({ item: p, calc, tcOficialDefault, expanded, onToggle, onChange
 
 // ─── Formulario detallado ──────────────────────────────────────────────────────
 
-function ItemForm({ item: p, calc, tcOficialDefault, onChange }: {
+function ItemForm({ item: p, calc, tcOficialDefault, fleteCifPctDefault, onChange }: {
   item: InvestmentItem;
   calc: ItemCalc;
   tcOficialDefault: number;
+  fleteCifPctDefault: number;
   onChange: (c: Partial<InvestmentItem>) => void;
 }) {
   const { costeo } = calc;
@@ -326,6 +351,7 @@ function ItemForm({ item: p, calc, tcOficialDefault, onChange }: {
           <Field label="T/C compra"><NumInput value={p.tc} onChange={n('tc')} min="0" /></Field>
           <Field label="T/C envío"><NumInput value={p.tc_envio} onChange={n('tc_envio')} min="0" placeholder="= compra" /></Field>
           <Field label="T/C aduana" hint="GA + IVA"><NumInput value={p.tc_oficial} onChange={n('tc_oficial')} min="0" step="0.01" placeholder={`= análisis (${tcOficialDefault})`} /></Field>
+          <Field label="% flete en CIF" hint="10 aéreo / 25 marít."><NumInput value={p.flete_cif_pct} onChange={n('flete_cif_pct')} min="0" max="100" step="1" placeholder={`= análisis (${fleteCifPctDefault})`} /></Field>
           <Field label="GA %" hint="Gravamen"><NumInput value={p.ga_pct} onChange={n('ga_pct')} min="0" /></Field>
         </div>
 
@@ -363,8 +389,9 @@ function ItemForm({ item: p, calc, tcOficialDefault, onChange }: {
         {/* Resultados costeo */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
           <StatCard label="Precio Bs" value={costeo.precio_bs} hint="(USD + tax) × T/C" />
-          <StatCard label="Envío" value={costeo.envio} hint="peso × tarifa × T/C envío" />
-          <StatCard label="GA" value={costeo.ga} hint={`Gravamen arancelario (T/C aduana ${p.tc_oficial ?? tcOficialDefault})`} />
+          <StatCard label="Envío" value={costeo.envio} hint="peso × tarifa × T/C envío — costo real (100%)" />
+          <StatCard label="Base CIF" value={costeo.cif} hint={`Precio BOB + ${p.flete_cif_pct ?? fleteCifPctDefault}% del flete (${fmt(costeo.flete_cif)}) + 2% — base de GA e IVA`} />
+          <StatCard label="GA" value={costeo.ga} hint={`CIF × GA% (T/C aduana ${p.tc_oficial ?? tcOficialDefault})`} />
           <StatCard label="IVA aduana" value={costeo.iva_aduana} hint="Crédito fiscal (recuperable) — no es costo contable del inventario" />
           <StatCard label="Manipuleo" value={costeo.manipuleo} />
           <StatCard label="Costo unit. CON IVA" value={costeo.costo_unitario} bold hint="Desembolso total por unidad, IVA aduana incluido" />

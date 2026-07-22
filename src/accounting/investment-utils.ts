@@ -7,7 +7,7 @@
 //    velocidad de venta.
 
 import { LicitacionProducto } from './licitacion-types';
-import { calcProducto } from './licitacion-utils';
+import { calcProducto, type CalcDefaults } from './licitacion-utils';
 import { round2 } from './utils';
 import {
   InvestmentItem, InvestmentAnalysis, ItemCosteo, ItemTiempo, ItemCalc, InvestmentResumen,
@@ -31,6 +31,7 @@ function toLicitacionProducto(it: InvestmentItem): LicitacionProducto {
     tc:                it.tc,
     tc_envio:          it.tc_envio,
     tc_oficial:        it.tc_oficial,
+    flete_cif_pct:     it.flete_cif_pct,
     precio_usd:        it.precio_usd,
     tax_pct:           it.tax_pct,
     m1:                it.m1,
@@ -61,11 +62,11 @@ function toLicitacionProducto(it: InvestmentItem): LicitacionProducto {
 const IVA_VENTA_RATE = 0.13;
 const IT_RATE        = 0.03;
 
-export function calcCosteo(it: InvestmentItem, tcOficialDefault?: number): ItemCosteo {
+export function calcCosteo(it: InvestmentItem, defaults?: CalcDefaults): ItemCosteo {
   // Lado de costos de importación: reutiliza el motor de licitaciones (no depende
   // del precio de venta). Las salidas de venta (iva_pagar, ganancia, etc.) las
   // recalculamos aquí porque manejamos venta mixta con/sin factura.
-  const c = calcProducto(toLicitacionProducto(it), tcOficialDefault);
+  const c = calcProducto(toLicitacionProducto(it), defaults);
 
   const cantidad = Math.max(0, it.cantidad || 0);
   const sinFactura = it.modalidad_venta === 'sin_factura';
@@ -112,6 +113,8 @@ export function calcCosteo(it: InvestmentItem, tcOficialDefault?: number): ItemC
     peso_vol:             c.peso_vol,
     peso:                 c.peso,
     envio:                c.envio,
+    flete_cif:            c.flete_cif,
+    cif:                  c.cif,
     ga_calculado:         c.ga_calculado,
     ga:                   c.ga,
     iva_aduana_calculado: c.iva_aduana_calculado,
@@ -303,9 +306,9 @@ export function calcItem(
   plazoImportacionMeses: number,
   costoCapitalAnual: number,
   fucPct = 100,
-  tcOficialDefault?: number,
+  defaults?: CalcDefaults,
 ): ItemCalc {
-  const costeo = calcCosteo(it, tcOficialDefault);
+  const costeo = calcCosteo(it, defaults);
   const tiempo = calcTiempo(it, costeo, plazoImportacionMeses, costoCapitalAnual, fucPct);
   return { costeo, tiempo };
 }

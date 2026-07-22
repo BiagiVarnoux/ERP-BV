@@ -37,6 +37,7 @@ export interface InvestmentItem {
   tc: number;
   tc_envio?: number;
   tc_oficial?: number;     // T/C para tributos aduaneros (GA + IVA). undefined = hereda el del análisis (→ TC_OFICIAL)
+  flete_cif_pct?: number;  // % del envío que entra a la base CIF (10 aéreo / 25 marítimo). undefined = hereda el del análisis
 
   // Compra
   precio_usd: number;
@@ -100,6 +101,7 @@ export interface InvestmentAnalysis {
   plazo_importacion_meses: number;   // meses desde el pago hasta la mercadería en almacén
   fuc_pct: number;                   // Factor de Utilización de Capital (% ) — tiempo activo / total
   tc_oficial?: number;               // T/C para tributos aduaneros (GA + IVA) por defecto. undefined = TC_OFICIAL (6.97)
+  flete_cif_pct?: number;            // % del flete que entra a la base CIF por defecto. undefined = 10 (aéreo)
 
   estado: InvestmentEstado;
   embarque_id?: string;              // set cuando se "envía a embarque"
@@ -119,7 +121,9 @@ export interface ItemCosteo {
   precio_bob: number;
   peso_vol: number;
   peso: number;
-  envio: number;
+  envio: number;               // costo REAL de envío (100%)
+  flete_cif: number;           // porción del envío computada en la base CIF
+  cif: number;                 // base aduanera (precio_bob + flete_cif + 2%)
   ga_calculado: number;
   ga: number;
   iva_aduana_calculado: number;
