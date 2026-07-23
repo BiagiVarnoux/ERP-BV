@@ -10,11 +10,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev        # Start dev server (Vite)
 npm run build      # Production build
 npm run lint       # ESLint
+npm run typecheck  # Type-check (tsc -p tsconfig.app.json --noEmit) — must pass before every commit
 npm run preview    # Preview production build locally
-tsc -p tsconfig.app.json --noEmit   # Type-check (required to pass before every commit)
 ```
 
-There is no test suite. Type-checking is done via `tsc -p tsconfig.app.json --noEmit`.
+There is no test suite. Type-checking is done via `npm run typecheck` (= `tsc -p tsconfig.app.json --noEmit`).
 
 ⚠️ **Do NOT use bare `tsc --noEmit`** — the root `tsconfig.json` has `"files": []` and only
 declares project references, so `tsc --noEmit` type-checks ZERO files and always exits 0.
