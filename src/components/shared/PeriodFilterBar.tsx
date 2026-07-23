@@ -70,8 +70,8 @@ export function PeriodFilterBar({ value, onChange }: PeriodFilterBarProps) {
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
-      <Tabs value={value.type} onValueChange={(v) => onChange({ ...value, type: v as ExtendedPeriodType })}>
-        <TabsList className="grid grid-cols-4 w-[440px]">
+      <Tabs value={value.type} onValueChange={(v) => onChange({ ...value, type: v as ExtendedPeriodType })} className="w-full sm:w-auto">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-4 h-auto sm:h-10 w-full sm:w-[440px]">
           {PERIOD_TABS.map(t => (
             <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
           ))}

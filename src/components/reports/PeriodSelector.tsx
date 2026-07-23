@@ -66,8 +66,8 @@ export function PeriodSelector({
       {/* Period Type Toggle */}
       <div className="flex items-center gap-4 flex-wrap">
         <Label className="text-sm font-medium">Tipo de período:</Label>
-        <Tabs value={periodType} onValueChange={(v) => onPeriodTypeChange(v as PeriodType)}>
-          <TabsList className="grid w-[360px] grid-cols-3">
+        <Tabs value={periodType} onValueChange={(v) => onPeriodTypeChange(v as PeriodType)} className="w-full sm:w-auto">
+          <TabsList className="grid w-full sm:w-[360px] grid-cols-3">
             <TabsTrigger value="monthly">Mensual</TabsTrigger>
             <TabsTrigger value="quarterly">Trimestral</TabsTrigger>
             <TabsTrigger value="annual">Anual</TabsTrigger>

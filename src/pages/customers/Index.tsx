@@ -118,8 +118,8 @@ export default function CustomersPage() {
     <div className="space-y-6">
       <ReadOnlyBanner />
 
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text- font-semibold flex items-center gap-2">
           <Users className="w-6 h-6" /> Clientes
         </h1>
         {canCreate && (

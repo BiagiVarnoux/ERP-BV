@@ -203,8 +203,8 @@ export default function SalesDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text- font-semibold flex items-center gap-2">
           <BarChart2 className="w-6 h-6" /> Dashboard de Ventas
         </h1>
         <PeriodFilterBar value={period} onChange={setPeriod} />
@@ -229,7 +229,7 @@ export default function SalesDashboardPage() {
                 <CardTitle className="text-sm font-medium text-muted-foreground">Total Vendido</CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4">
-                <div className="text-2xl font-bold">Bs {fmt(kpis.totalVendido)}</div>
+                <div className="text-xl sm:text-2xl font-bold">Bs {fmt(kpis.totalVendido)}</div>
                 <p className="text-xs text-muted-foreground mt-1">{kpis.count} ventas</p>
               </CardContent>
             </Card>
@@ -239,7 +239,7 @@ export default function SalesDashboardPage() {
                 <CardTitle className="text-sm font-medium text-muted-foreground">Ingreso Neto</CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4">
-                <div className="text-2xl font-bold">Bs {fmt(kpis.ingresoNeto)}</div>
+                <div className="text-xl sm:text-2xl font-bold">Bs {fmt(kpis.ingresoNeto)}</div>
                 <p className="text-xs text-muted-foreground mt-1">sin IVA</p>
               </CardContent>
             </Card>
@@ -249,7 +249,7 @@ export default function SalesDashboardPage() {
                 <CardTitle className="text-sm font-medium text-muted-foreground">Margen Bruto</CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4">
-                <div className="text-2xl font-bold">Bs {fmt(kpis.margenBruto)}</div>
+                <div className="text-xl sm:text-2xl font-bold">Bs {fmt(kpis.margenBruto)}</div>
                 <div className="mt-1">{margenBadge(kpis.margenPct)}</div>
               </CardContent>
             </Card>
@@ -259,7 +259,7 @@ export default function SalesDashboardPage() {
                 <CardTitle className="text-sm font-medium text-muted-foreground">Ticket Promedio</CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4">
-                <div className="text-2xl font-bold">Bs {fmt(kpis.ticketPromedio)}</div>
+                <div className="text-xl sm:text-2xl font-bold">Bs {fmt(kpis.ticketPromedio)}</div>
                 <p className="text-xs text-muted-foreground mt-1">por venta</p>
               </CardContent>
             </Card>

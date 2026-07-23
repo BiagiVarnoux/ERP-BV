@@ -206,8 +206,8 @@ export default function InventoryPage() {
   return (
     <div className="space-y-6">
       <ReadOnlyBanner />
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Inventario</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text- font-semibold">Inventario</h1>
         {canCreate && (
           <Button onClick={() => { setEditProduct(null); setShowNewProduct(true); }}>
             <Plus className="w-4 h-4 mr-2" /> Nuevo Producto

@@ -202,8 +202,8 @@ export default function SalesPage() {
     <div className="space-y-6">
       <ReadOnlyBanner />
 
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text- font-semibold flex items-center gap-2">
           <ShoppingCart className="w-6 h-6" /> Ventas
         </h1>
         {canCreate && (
@@ -214,30 +214,30 @@ export default function SalesPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="rounded-lg border bg-card p-4 space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <DollarSign className="w-4 h-4" /> Ventas
           </div>
-          <div className="text-2xl font-bold">Bs {fmt(kpis.ventas)}</div>
+          <div className="text-xl sm:text-2xl font-bold">Bs {fmt(kpis.ventas)}</div>
         </div>
         <div className="rounded-lg border bg-card p-4 space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <TrendingUp className="w-4 h-4" /> Margen bruto
           </div>
-          <div className="text-2xl font-bold">Bs {fmt(kpis.margenBruto)}</div>
+          <div className="text-xl sm:text-2xl font-bold">Bs {fmt(kpis.margenBruto)}</div>
         </div>
         <div className="rounded-lg border bg-card p-4 space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <ShoppingCart className="w-4 h-4" /> Transacciones
           </div>
-          <div className="text-2xl font-bold">{kpis.transactions}</div>
+          <div className="text-xl sm:text-2xl font-bold">{kpis.transactions}</div>
         </div>
         <div className="rounded-lg border bg-card p-4 space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Percent className="w-4 h-4" /> Margen promedio
           </div>
-          <div className="text-2xl font-bold">{kpis.margenPct.toFixed(1)}%</div>
+          <div className="text-xl sm:text-2xl font-bold">{kpis.margenPct.toFixed(1)}%</div>
         </div>
       </div>
 

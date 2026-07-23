@@ -392,8 +392,8 @@ export default function JournalPage() {
     <div className="space-y-6">
       <ReadOnlyBanner />
 
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Libro Diario</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text- font-semibold">Libro Diario</h1>
         <Button variant="outline" onClick={() => exportJournalToCSV(entries)}>
           <Download className="w-4 h-4 mr-2" />
           Exportar Diario

@@ -296,8 +296,8 @@ export default function PayablesPage() {
       <ReadOnlyBanner />
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text- font-semibold flex items-center gap-2">
           <CreditCard className="w-6 h-6" /> Cuentas por Pagar
         </h1>
         {canCreate && (
@@ -308,18 +308,18 @@ export default function PayablesPage() {
       </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="rounded-lg border bg-card p-4 space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Banknote className="w-4 h-4" /> Total pendiente
           </div>
-          <div className="text-2xl font-bold">Bs {fmt(kpis.totalPend)}</div>
+          <div className="text-xl sm:text-2xl font-bold">Bs {fmt(kpis.totalPend)}</div>
         </div>
         <div className="rounded-lg border bg-card p-4 space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Clock className="w-4 h-4" /> Documentos abiertos
           </div>
-          <div className="text-2xl font-bold">{kpis.countOpen}</div>
+          <div className="text-xl sm:text-2xl font-bold">{kpis.countOpen}</div>
         </div>
         <div className="rounded-lg border bg-card p-4 space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -586,8 +586,8 @@ export default function PayablesPage() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2 col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="c-proveedor">Proveedor <span className="text-destructive">*</span></Label>
                 <Input
                   id="c-proveedor"
@@ -616,7 +616,7 @@ export default function PayablesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="c-fecha-em">Fecha emisión</Label>
                 <Input
@@ -637,7 +637,7 @@ export default function PayablesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="c-monto">Monto original <span className="text-destructive">*</span></Label>
                 <Input
@@ -665,7 +665,7 @@ export default function PayablesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Cuenta de gasto/activo (Débito) <span className="text-destructive">*</span></Label>
                 <AccountCombobox value={createCuentaGasto} onChange={setCreateCuentaGasto} accounts={accounts} />

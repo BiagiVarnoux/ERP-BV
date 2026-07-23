@@ -81,7 +81,7 @@ export function Breadcrumbs() {
 
   return (
     <div className="border-b bg-muted/30">
-      <div className="container px-6 py-2 flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+      <div className="container px-4 sm:px-6 py-2 flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
         <Link to="/" className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
           <Home className="h-3.5 w-3.5" />
           <span>Inicio</span>

@@ -598,7 +598,7 @@ export default function ShipmentsPage() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Embarques</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold">Embarques</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Gestión de importaciones por etapas
           </p>
@@ -807,8 +807,8 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
     <>
       <div className="space-y-6">
         {/* Datos generales */}
-        <div className="grid grid-cols-4 gap-4">
-          <div className="col-span-3">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="sm:col-span-3">
             <Label>Descripción <span className="text-muted-foreground font-normal">(opcional)</span></Label>
             <Input
               value={draft.descripcion}
@@ -1074,7 +1074,7 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
 
       <CardContent>
         {/* Resumen financiero */}
-        <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
           {[
             { label: 'Productos', value: totalProductos },
             { label: 'Flete', value: s.flete_total_bs ?? 0 },

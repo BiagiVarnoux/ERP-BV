@@ -59,7 +59,7 @@ export function JournalEntryForm({
         <CardTitle>{editingEntry ? `Editando Asiento ${editingEntry.id}` : 'Nuevo Asiento'}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
           <div>
             <div className="flex items-center justify-between">
               <Label>Fecha</Label>
@@ -85,7 +85,7 @@ export function JournalEntryForm({
               />
             )}
           </div>
-          <div className="col-span-5">
+          <div className="sm:col-span-5">
             <Label>Glosa</Label>
             <Input
               value={memo}

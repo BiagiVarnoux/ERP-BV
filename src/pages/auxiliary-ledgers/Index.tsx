@@ -420,8 +420,8 @@ export default function AuxiliaryLedgersPage() {
     <div className="space-y-6">
       <ReadOnlyBanner />
       
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Libros Auxiliares</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text- font-semibold">Libros Auxiliares</h1>
         {!isReadOnly && (
           <Button variant="outline" onClick={() => setIsDefinitionsModalOpen(true)}>
             <Settings className="w-4 h-4 mr-2" />

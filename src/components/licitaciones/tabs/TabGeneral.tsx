@@ -67,7 +67,7 @@ export function TabGeneral({ licitacion: l, onUpdated }: Props) {
           <Input id="entidad" value={form.entidad} onChange={set('entidad')} placeholder="Ej: Ministerio de Educación" />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label htmlFor="sicoes">N° SICOES / CUCE</Label>
             <Input id="sicoes" value={form.numero_sicoes} onChange={set('numero_sicoes')} placeholder="ANPE-1663625-1" />

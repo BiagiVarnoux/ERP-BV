@@ -147,7 +147,7 @@ export function CustomerModal({ isOpen, onClose, onSaved, initialName, editCusto
             {errors.razon_social && <p className="text-xs text-destructive mt-1">{errors.razon_social}</p>}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label>Nombre Corto</Label>
               <Input
@@ -178,7 +178,7 @@ export function CustomerModal({ isOpen, onClose, onSaved, initialName, editCusto
             {errors.nit && <p className="text-xs text-destructive mt-1">{errors.nit}</p>}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label>Email</Label>
               <Input
@@ -216,7 +216,7 @@ export function CustomerModal({ isOpen, onClose, onSaved, initialName, editCusto
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-4 pt-2">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label>Crédito autorizado (Bs)</Label>
                   <Input

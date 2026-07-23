@@ -101,7 +101,7 @@ export function FifoExitModal({ isOpen, onClose, product, lots, onSaved, journal
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label>Fecha</Label>
               <Input type="date" value={fecha} onChange={e => setFecha(e.target.value)} />

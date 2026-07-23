@@ -53,16 +53,18 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Reportes Financieros</h1>
+      <h1 className="text-xl sm:text-2xl font-semibold">Reportes Financieros</h1>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-4xl grid-cols-5">
+        <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
+        <TabsList className="inline-flex w-max sm:grid sm:w-full sm:max-w-4xl sm:grid-cols-5">
           <TabsTrigger value="trial-balance">Balance Comprobación</TabsTrigger>
           <TabsTrigger value="income-statement">Estado Resultados</TabsTrigger>
           <TabsTrigger value="balance-sheet">Balance General</TabsTrigger>
           <TabsTrigger value="cash-flow">Flujo de Caja</TabsTrigger>
           <TabsTrigger value="equity-changes">Cambios Patrimonio</TabsTrigger>
         </TabsList>
+        </div>
 
         <TabsContent value="trial-balance" className="mt-6">
           <TrialBalanceReport {...sharedProps} />

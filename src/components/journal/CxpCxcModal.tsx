@@ -335,7 +335,7 @@ export function CxpCxcModal({ isOpen, linesToProcess, journalEntry, companyId, o
                 <Label className="text-xs">N° Documento *</Label>
                 <Input value={numeroDocumento} onChange={e => setNumeroDocumento(e.target.value)} placeholder="Ej. FACT-001" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Vencimiento (opcional)</Label>
                   <Input type="date" value={fechaVencimiento} onChange={e => setFechaVencimiento(e.target.value)} />

@@ -382,11 +382,11 @@ export function AppShell() {
 
         <Breadcrumbs />
 
-        <main className="flex-1 overflow-auto px-6 py-6">
+        <main className="flex-1 overflow-auto px-4 py-4 sm:px-6 sm:py-6">
           <Outlet />
         </main>
 
-        <footer className="shrink-0 border-t bg-card/30 px-6 py-4">
+        <footer className="shrink-0 border-t bg-card/30 px-4 sm:px-6 py-4">
           <p className="text-xs text-muted-foreground">
             {isReadOnly
               ? 'Modo de solo lectura — Estás viendo datos compartidos contigo.'

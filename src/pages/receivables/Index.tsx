@@ -313,8 +313,8 @@ export default function ReceivablesPage() {
       <ReadOnlyBanner />
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text- font-semibold flex items-center gap-2">
           <ReceiptText className="w-6 h-6" /> Cuentas por Cobrar
         </h1>
         {canCreate && (
@@ -355,7 +355,7 @@ export default function ReceivablesPage() {
       </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="rounded-lg border bg-card p-4 space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Banknote className="w-4 h-4" />
@@ -364,13 +364,13 @@ export default function ReceivablesPage() {
               <span className={`text-xs font-medium ${activeTab.color}`}>· {activeTab.label}</span>
             )}
           </div>
-          <div className="text-2xl font-bold">Bs {fmt(kpis.totalPend)}</div>
+          <div className="text-xl sm:text-2xl font-bold">Bs {fmt(kpis.totalPend)}</div>
         </div>
         <div className="rounded-lg border bg-card p-4 space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Clock className="w-4 h-4" /> Documentos abiertos
           </div>
-          <div className="text-2xl font-bold">{kpis.countOpen}</div>
+          <div className="text-xl sm:text-2xl font-bold">{kpis.countOpen}</div>
         </div>
         <div className="rounded-lg border bg-card p-4 space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -610,7 +610,7 @@ export default function ReceivablesPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="c-fecha-em">Fecha emisión</Label>
                 <Input
@@ -631,7 +631,7 @@ export default function ReceivablesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="c-monto">Monto original <span className="text-destructive">*</span></Label>
                 <Input
@@ -659,7 +659,7 @@ export default function ReceivablesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Cuenta por cobrar (Débito) <span className="text-destructive">*</span></Label>
                 <AccountCombobox value={createCuentaActivo} onChange={setCreateCuentaActivo} accounts={cuentasActivo} />
