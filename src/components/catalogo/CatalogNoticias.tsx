@@ -243,12 +243,13 @@ export function CatalogNoticias() {
     if (idx >= visibles.length) setIdx(0);
   }, [visibles.length, idx]);
 
-  // Rotación automática (se pausa al pasar el mouse).
+  // Rotación automática (se pausa al pasar el mouse). En celular es más lenta.
   useEffect(() => {
     if (pausado || visibles.length <= 1) return;
-    const t = setInterval(() => setIdx(i => (i + 1) % visibles.length), ROTACION_MS);
+    const intervalo = esMovil ? ROTACION_MS_MOVIL : ROTACION_MS;
+    const t = setInterval(() => setIdx(i => (i + 1) % visibles.length), intervalo);
     return () => clearInterval(t);
-  }, [pausado, visibles.length]);
+  }, [pausado, visibles.length, esMovil]);
 
   const ocultar = useCallback((id: string) => {
     setOcultas(prev => {
