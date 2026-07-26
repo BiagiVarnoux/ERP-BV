@@ -211,7 +211,7 @@ export function CatalogManageView() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
           {visibles.length} producto(s) {mostrarOcultos ? '' : `— ${ocultosCount} sin stock u ocultos no se muestran`}
         </p>
@@ -221,7 +221,8 @@ export function CatalogManageView() {
         </Button>
       </div>
 
-      <div className="border rounded-md overflow-x-auto">
+      {/* Escritorio: tabla compacta con edición inline */}
+      <div className="hidden md:block border rounded-md overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -361,6 +362,125 @@ export function CatalogManageView() {
             })}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Celular: una tarjeta por producto (la tabla de 11 columnas no cabe) */}
+      <div className="md:hidden space-y-3">
+        {visibles.map(p => {
+          const d = drafts[p.id];
+          if (!d) return null;
+          const stockDisponible = stock[p.id] ?? 0;
+          const ganancias = computeGanancias(d);
+          return (
+            <div key={p.id} className="border rounded-lg p-3 space-y-3 bg-card">
+              {/* Encabezado */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-medium text-sm leading-tight">{p.nombre}</div>
+                  {p.especificacion && <div className="text-xs text-muted-foreground">{p.especificacion}</div>}
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    Stock: {fmt(stockDisponible)}{stockDisponible <= 0 && ' (agotado)'}
+                  </div>
+                </div>
+                <label className="flex items-center gap-1.5 text-xs shrink-0">
+                  <Checkbox
+                    checked={d.mostrar_en_catalogo}
+                    onCheckedChange={(checked) => updateDraft(p.id, { mostrar_en_catalogo: !!checked })}
+                  />
+                  Catálogo
+                </label>
+              </div>
+
+              {/* Condición */}
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Condición</Label>
+                <Select value={d.condicion} onValueChange={v => updateDraft(p.id, { condicion: v })}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CONDICION_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Precios y costos */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Precio lista</Label>
+                  <Input type="number" step="0.01" className="h-9"
+                    value={d.precio_lista}
+                    onChange={e => updateDraft(p.id, { precio_lista: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Precio mín.</Label>
+                  <Input type="number" step="0.01" className="h-9"
+                    value={d.precio_minimo_negociacion}
+                    onChange={e => updateDraft(p.id, { precio_minimo_negociacion: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Costo c/IVA</Label>
+                  <Input type="number" step="0.01" className="h-9"
+                    value={d.costo_con_iva_bs}
+                    onChange={e => updateDraft(p.id, { costo_con_iva_bs: e.target.value })} />
+                  {costoRef[p.id] && (
+                    <div className="text-[11px] text-muted-foreground">Embarque: Bs {fmt(costoRef[p.id].costoConIva)}</div>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">IVA import.</Label>
+                  <Input type="number" step="0.01" className="h-9"
+                    value={d.iva_importado_bs}
+                    onChange={e => updateDraft(p.id, { iva_importado_bs: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Comisión</Label>
+                  <Input type="number" step="0.01" className="h-9"
+                    value={d.comision_bs}
+                    onChange={e => updateDraft(p.id, { comision_bs: e.target.value })} />
+                </div>
+              </div>
+
+              {/* Ganancias calculadas */}
+              <div className="rounded-md bg-muted/50 p-2 text-xs space-y-0.5">
+                {ganancias ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Ganancia neta</span>
+                      <span className="font-medium">Bs {fmt(ganancias.gananciaNeta)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Ganancia bruta</span>
+                      <span>Bs {fmt(ganancias.gananciaBruta)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Precio c/factura</span>
+                      <span>Bs {fmt(ganancias.precioConFactura)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">Falta precio/costo</span>
+                )}
+              </div>
+
+              {/* Acciones */}
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="flex-1" onClick={() => setDetalleProductId(p.id)}>
+                  <Pencil className="h-4 w-4 mr-1" /> Descripción
+                </Button>
+                <Button variant="outline" size="sm" className="flex-1" onClick={() => setFotosProductId(p.id)}>
+                  <Images className="h-4 w-4 mr-1" /> Fotos
+                </Button>
+                <Button variant="outline" size="icon" className="h-9 w-9 shrink-0"
+                  title={p.oculto_en_gestion ? 'Mostrar' : 'Ocultar'}
+                  onClick={() => toggleOcultar(p)} disabled={ocultando[p.id]}>
+                  {p.oculto_en_gestion ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                </Button>
+              </div>
+              <Button className="w-full" onClick={() => guardar(p.id)} disabled={saving[p.id]}>
+                {saving[p.id] ? 'Guardando...' : 'Guardar'}
+              </Button>
+            </div>
+          );
+        })}
       </div>
 
       {detalleProduct && (

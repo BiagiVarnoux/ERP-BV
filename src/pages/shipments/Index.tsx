@@ -611,9 +611,9 @@ export default function ShipmentsPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-12 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Lista */}
-        <div className="col-span-4 space-y-2">
+        <div className="lg:col-span-4 space-y-2">
           {shipments.length === 0 && (
             <Card className="p-10 text-center">
               <Package className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
@@ -649,7 +649,7 @@ export default function ShipmentsPage() {
         </div>
 
         {/* Detalle */}
-        <div className="col-span-8">
+        <div className="lg:col-span-8 min-w-0">
           {!selected ? (
             <Card className="p-16 text-center">
               <ChevronRight className="w-10 h-10 mx-auto mb-3 text-muted-foreground/20" />
@@ -844,32 +844,32 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
               return (
                 <Card key={p.id} className="p-4 bg-muted/30">
                   {/* Fila 1: Nombre, Categoría, Cantidad, Fecha */}
-                  <div className="grid grid-cols-12 gap-3 items-end mb-3">
-                    <div className="col-span-4">
+                  <div className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end mb-3">
+                    <div className="col-span-2 lg:col-span-4">
                       <Label className="text-xs">Nombre del producto</Label>
                       <Input placeholder="iPhone 14 Pro" value={p.nombre}
                         onChange={e => updateProduct(p.id, { nombre: e.target.value })} />
                     </div>
-                    <div className="col-span-3">
+                    <div className="col-span-2 lg:col-span-3">
                       <Label className="text-xs">Categoría</Label>
                       <CategorySelect categories={categories} value={p.categoria} onChange={v => updateProduct(p.id, { categoria: v })} />
                     </div>
-                    <div className="col-span-1">
+                    <div className="col-span-1 lg:col-span-1">
                       <Label className="text-xs">Cant.</Label>
                       <Input type="number" min="1" value={p.cantidad}
                         onChange={e => updateProduct(p.id, { cantidad: parseInt(e.target.value) || 1 })} />
                     </div>
-                    <div className="col-span-2">
+                    <div className="col-span-1 lg:col-span-2">
                       <Label className="text-xs">Fecha compra</Label>
                       <Input type="date" value={p.fecha_compra}
                         onChange={e => updateProduct(p.id, { fecha_compra: e.target.value })} />
                     </div>
-                    <div className="col-span-1">
+                    <div className="col-span-1 lg:col-span-1">
                       <Label className="text-xs">GA %</Label>
                       <Input type="number" value={p.ga_pct}
                         onChange={e => updateProduct(p.id, { ga_pct: parseFloat(e.target.value) || 0 })} />
                     </div>
-                    <div className="col-span-1 flex items-center justify-center mt-4">
+                    <div className="col-span-1 lg:col-span-1 flex items-center justify-end lg:justify-center lg:mt-4">
                       <Button size="sm" variant="ghost" onClick={() => removeProduct(p.id)}
                         disabled={draft.products.length <= 1}>
                         <Trash2 className="w-4 h-4 text-destructive" />
@@ -878,13 +878,13 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
                   </div>
 
                   {/* Fila 2: Precio USD, Precio Bs pagado, T/C calculado, Tax */}
-                  <div className="grid grid-cols-12 gap-3 items-end">
-                    <div className="col-span-3">
+                  <div className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+                    <div className="col-span-1 lg:col-span-3">
                       <Label className="text-xs">Precio USD <span className="text-muted-foreground">(sin tax)</span></Label>
                       <Input type="number" step="0.01" placeholder="0.00" value={p.precio_usd || ''}
                         onChange={e => updateProduct(p.id, { precio_usd: parseFloat(e.target.value) || 0 })} />
                     </div>
-                    <div className="col-span-3">
+                    <div className="col-span-1 lg:col-span-3">
                       <Label className="text-xs">
                         Precio Bs pagado
                         <span className="text-muted-foreground ml-1">(para calcular T/C)</span>
@@ -893,19 +893,19 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
                         value={p.precio_bs_pagado || ''}
                         onChange={e => updateProduct(p.id, { precio_bs_pagado: parseFloat(e.target.value) || undefined })} />
                     </div>
-                    <div className="col-span-2">
+                    <div className="col-span-1 lg:col-span-2">
                       <Label className="text-xs">T/C calculado</Label>
                       <div className={`h-9 px-3 flex items-center rounded-md border text-sm font-semibold
                         ${p.tc_producto ? 'bg-success/10 border-success/20 text-success' : 'bg-muted text-muted-foreground'}`}>
                         {p.tc_producto ? p.tc_producto.toFixed(4) : `≈ ${draft.tc_paralelo} (ref.)`}
                       </div>
                     </div>
-                    <div className="col-span-2">
+                    <div className="col-span-1 lg:col-span-2">
                       <Label className="text-xs">Tax %</Label>
                       <Input type="number" step="0.1" placeholder="0" value={p.tax_pct || ''}
                         onChange={e => updateProduct(p.id, { tax_pct: parseFloat(e.target.value) || 0 })} />
                     </div>
-                    <div className="col-span-2">
+                    <div className="col-span-2 lg:col-span-2">
                       {p.precio_usd > 0 && (
                         <div className="h-9 px-3 flex flex-col justify-center rounded-md bg-primary/10 border border-primary/20">
                           <span className="text-[10px] text-primary">Precio Bs</span>
@@ -979,8 +979,8 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Package className="w-5 h-5" />
               {s.numero}
@@ -988,7 +988,7 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
                 <span className="text-sm font-normal text-muted-foreground">— {s.descripcion}</span>
               )}
             </CardTitle>
-            <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-muted-foreground">
               <Badge className={SHIPMENT_STATUS_COLORS[s.status]}>
                 {SHIPMENT_STATUS_LABELS[s.status]}
               </Badge>
@@ -997,7 +997,7 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
             </div>
           </div>
 
-          <div className="flex gap-2 items-center">
+          <div className="flex flex-wrap gap-2 items-center shrink-0">
               {(() => {
                 const buildAndExport = (includeIVA: boolean) => {
                   const costos = calcCostoFinalPorProducto(s);
@@ -1089,7 +1089,8 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
         </div>
 
         <Tabs defaultValue="productos">
-          <TabsList className="mb-4 w-full">
+          <div className="overflow-x-auto mb-4">
+          <TabsList className="w-max sm:w-full">
             <TabsTrigger value="productos" className="flex-1">
               <ShoppingCart className="w-4 h-4 mr-1.5" />
               Productos ({s.products.length})
@@ -1119,6 +1120,7 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
               </TabsTrigger>
             )}
           </TabsList>
+          </div>
 
           {/* Tab: Productos */}
           <TabsContent value="productos">

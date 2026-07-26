@@ -25,12 +25,14 @@ export default function CatalogoPage() {
       <CatalogNoticias />
 
       <Tabs defaultValue="vendedor">
-        <TabsList>
-          <TabsTrigger value="vendedor">Vista de Vendedor</TabsTrigger>
-          <TabsTrigger value="mis-ventas">Mis Ventas</TabsTrigger>
-          {canManage && <TabsTrigger value="gestionar">Gestionar</TabsTrigger>}
-          {canManage && <TabsTrigger value="ventas">Ventas por Vendedor</TabsTrigger>}
-        </TabsList>
+        <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
+          <TabsList className="w-max">
+            <TabsTrigger value="vendedor">Vista de Vendedor</TabsTrigger>
+            <TabsTrigger value="mis-ventas">Mis Ventas</TabsTrigger>
+            {canManage && <TabsTrigger value="gestionar">Gestionar</TabsTrigger>}
+            {canManage && <TabsTrigger value="ventas">Ventas por Vendedor</TabsTrigger>}
+          </TabsList>
+        </div>
         <TabsContent value="vendedor" className="pt-4">
           <VendorCatalogView />
         </TabsContent>

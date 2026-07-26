@@ -15,9 +15,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { fmt } from '@/accounting/utils';
 
 // Ventana "momentánea": solo sucesos recientes.
-const DIAS_VISIBLES   = 7;
-const MAX_NOTICIAS    = 8;
-const ROTACION_MS     = 6000;
+const DIAS_VISIBLES     = 7;
+const MAX_NOTICIAS      = 8;
+const ROTACION_MS       = 6000;   // escritorio
+const ROTACION_MS_MOVIL = 11000;  // celular: texto a 2 líneas, más tiempo para leer
 
 type NoticiaTipo = 'precio_sube' | 'precio_baja' | 'venta' | 'venta_propia' | 'agotado' | 'fotos';
 
@@ -83,6 +84,16 @@ export function CatalogNoticias() {
   const [ocultas, setOcultas]   = useState<Set<string>>(() => leerOcultas(companyId));
   const [idx, setIdx]           = useState(0);
   const [pausado, setPausado]   = useState(false);
+  const [esMovil, setEsMovil]   = useState(false);
+
+  // Detectar pantalla chica (celular) para rotar más lento.
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const actualizar = () => setEsMovil(mq.matches);
+    actualizar();
+    mq.addEventListener('change', actualizar);
+    return () => mq.removeEventListener('change', actualizar);
+  }, []);
 
   // Al cambiar de empresa, recargar qué avisos estaban ocultos.
   useEffect(() => { setOcultas(leerOcultas(companyId)); }, [companyId]);
