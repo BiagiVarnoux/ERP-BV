@@ -8,7 +8,7 @@ import { CompanySwitcher } from '@/components/layout/CompanySwitcher';
 import {
   BarChart3, Package, ShoppingCart, Settings,
   Eye, ChevronDown, ChevronRight, Menu, LogOut, Users, Building2, FileText, TrendingUp,
-  PanelLeftClose, PanelLeftOpen,
+  PanelLeftClose, PanelLeftOpen, RotateCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -27,6 +27,25 @@ function getActiveModule(pathname: string): string | null {
     if (paths.some(p => pathname === p || pathname.startsWith(p + '/'))) return key;
   }
   return null;
+}
+
+// Botón para recargar la app y traer datos frescos, sin cerrar/reabrir el link.
+function RefreshButton({ className }: { className?: string }) {
+  const [spinning, setSpinning] = useState(false);
+  return (
+    <button
+      type="button"
+      title="Actualizar datos"
+      aria-label="Actualizar datos"
+      onClick={() => { setSpinning(true); window.location.reload(); }}
+      className={cn(
+        'flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors',
+        className,
+      )}
+    >
+      <RotateCw className={cn('h-4 w-4', spinning && 'animate-spin')} />
+    </button>
+  );
 }
 
 function NavItem({ path, label, currentPath, onClick }: {
@@ -161,31 +180,48 @@ function SidebarContent({ onClose, collapsed = false, onSetCollapsed }: {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Logo + nombre ERP + botón minimizar */}
+      {/* Logo + nombre ERP + acciones (actualizar / minimizar) */}
       <div className="px-4 pt-4 pb-2 shrink-0">
-        <div className="flex items-center gap-2">
-          {!collapsed && <span className="font-bold text-base leading-tight">ERP BV</span>}
-          {!collapsed && isReadOnly && (
-            <span className="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 rounded-full">
-              <Eye className="w-3 h-3" />
-              Solo lectura
-            </span>
-          )}
-          {onSetCollapsed && (
-            <button
-              type="button"
-              onClick={() => onSetCollapsed(!collapsed)}
-              title={collapsed ? 'Expandir menú' : 'Minimizar menú'}
-              aria-label={collapsed ? 'Expandir menú' : 'Minimizar menú'}
-              className={cn(
-                'hidden md:flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors',
-                collapsed ? 'mx-auto' : 'ml-auto',
+        {collapsed ? (
+          <div className="flex flex-col items-center gap-1">
+            {onSetCollapsed && (
+              <button
+                type="button"
+                onClick={() => onSetCollapsed(false)}
+                title="Expandir menú"
+                aria-label="Expandir menú"
+                className="hidden md:flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+              </button>
+            )}
+            <RefreshButton />
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-base leading-tight">ERP BV</span>
+            {isReadOnly && (
+              <span className="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 rounded-full">
+                <Eye className="w-3 h-3" />
+                Solo lectura
+              </span>
+            )}
+            <div className="ml-auto flex items-center gap-1">
+              <RefreshButton />
+              {onSetCollapsed && (
+                <button
+                  type="button"
+                  onClick={() => onSetCollapsed(true)}
+                  title="Minimizar menú"
+                  aria-label="Minimizar menú"
+                  className="hidden md:flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <PanelLeftClose className="h-4 w-4" />
+                </button>
               )}
-            >
-              {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-            </button>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
       </div>
       {/* Company switcher (oculto en modo minimizado) */}
       {!collapsed && <CompanySwitcher />}
@@ -372,12 +408,15 @@ export function AppShell() {
             <Menu className="h-5 w-5" />
           </Button>
           <span className="font-semibold text-sm">ERP BV</span>
-          {isReadOnly && (
-            <span className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 rounded-full">
-              <Eye className="w-3 h-3" />
-              Solo lectura
-            </span>
-          )}
+          <div className="ml-auto flex items-center gap-2">
+            {isReadOnly && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 rounded-full">
+                <Eye className="w-3 h-3" />
+                Solo lectura
+              </span>
+            )}
+            <RefreshButton />
+          </div>
         </header>
 
         <Breadcrumbs />
