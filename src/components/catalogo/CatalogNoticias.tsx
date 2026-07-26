@@ -248,7 +248,7 @@ export function CatalogNoticias() {
               {actual.texto}
             </p>
             {/* Descripción abajo: variante del producto + detalle + cuándo */}
-            <p className="text-xs text-muted-foreground leading-snug line-clamp-2 sm:truncate">
+            <p className="text-[13px] text-muted-foreground leading-snug line-clamp-2 sm:truncate">
               {[actual.descripcion, actual.detalle, haceCuanto(actual.fecha)]
                 .filter(Boolean)
                 .join(' · ')}
