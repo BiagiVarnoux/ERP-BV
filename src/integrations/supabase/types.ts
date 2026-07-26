@@ -2790,6 +2790,7 @@ export type Database = {
         Args: { p_company_id: string; p_dias?: number }
         Returns: {
           cantidad: number
+          especificacion: string
           fecha: string
           nombre: string
           product_id: string

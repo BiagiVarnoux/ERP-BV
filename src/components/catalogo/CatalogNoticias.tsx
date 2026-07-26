@@ -25,6 +25,7 @@ interface Noticia {
   id: string;            // estable: si el suceso se repite con otra fecha, es un aviso nuevo
   tipo: NoticiaTipo;
   texto: string;
+  descripcion?: string;  // variante/especificación del producto (color, almacenamiento…)
   detalle?: string;
   fecha: number;         // epoch ms, para ordenar
 }
@@ -102,7 +103,7 @@ export function CatalogNoticias() {
       // 1) Cambios de precio (el trigger de la BD guarda precio anterior + fecha)
       if (prodRes.status === 'fulfilled' && !prodRes.value.error) {
         const productos = (prodRes.value.data ?? []) as Array<{
-          id: string; nombre: string;
+          id: string; nombre: string; especificacion: string | null;
           precio_lista: number | null;
           precio_lista_anterior: number | null;
           precio_actualizado_at: string | null;
@@ -117,6 +118,7 @@ export function CatalogNoticias() {
             id: `precio:${p.id}:${p.precio_actualizado_at}`,
             tipo: subio ? 'precio_sube' : 'precio_baja',
             texto: `${p.nombre} ${subio ? 'subió' : 'bajó'} a Bs ${fmt(p.precio_lista)}`,
+            descripcion: p.especificacion || undefined,
             detalle: `antes Bs ${fmt(p.precio_lista_anterior)}`,
             fecha: t,
           });
@@ -160,7 +162,7 @@ export function CatalogNoticias() {
       //    algo que ya salió. Si además quedó en cero, se marca como agotado.
       if (ventasEmpresaRes.status === 'fulfilled' && !ventasEmpresaRes.value.error) {
         const ventas = (ventasEmpresaRes.value.data ?? []) as Array<{
-          product_id: string; nombre: string; cantidad: number; fecha: string;
+          product_id: string; nombre: string; especificacion: string | null; cantidad: number; fecha: string;
         }>;
         for (const v of ventas) {
           const t = new Date(v.fecha).getTime();
@@ -177,6 +179,7 @@ export function CatalogNoticias() {
             texto: agotado
               ? `${v.nombre} se agotó — ya no lo promociones`
               : `Se vendi${uds === 1 ? 'ó' : 'eron'} ${uds} ${v.nombre}`,
+            descripcion: v.especificacion || undefined,
             detalle: agotado
               ? undefined
               : restante != null ? `quedan ${restante}` : undefined,
@@ -237,15 +240,20 @@ export function CatalogNoticias() {
         </span>
 
         {/* El `key` fuerza el remount en cada cambio → se re-dispara la animación */}
-        <div key={actual.id} className="flex-1 min-w-0 flex items-start sm:items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
-          <Icon className={`h-5 w-5 shrink-0 mt-0.5 sm:mt-0 ${color}`} />
-          {/* En celular el texto se ajusta hasta en 2 líneas (line-clamp) para leerlo
-              completo; en pantallas grandes se mantiene en una sola línea. */}
-          <p className="text-sm leading-snug line-clamp-2 sm:truncate">
-            <span className="font-semibold">{actual.texto}</span>
-            {actual.detalle && <span className="text-muted-foreground"> · {actual.detalle}</span>}
-            <span className="text-muted-foreground"> · {haceCuanto(actual.fecha)}</span>
-          </p>
+        <div key={actual.id} className="flex-1 min-w-0 flex items-start gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+          <Icon className={`h-5 w-5 shrink-0 mt-0.5 ${color}`} />
+          <div className="min-w-0">
+            {/* Título del suceso */}
+            <p className="text-sm font-semibold leading-snug line-clamp-2 sm:truncate">
+              {actual.texto}
+            </p>
+            {/* Descripción abajo: variante del producto + detalle + cuándo */}
+            <p className="text-xs text-muted-foreground leading-snug line-clamp-2 sm:truncate">
+              {[actual.descripcion, actual.detalle, haceCuanto(actual.fecha)]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          </div>
         </div>
 
         {visibles.length > 1 && (
