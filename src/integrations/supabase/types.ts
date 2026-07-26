@@ -2763,6 +2763,17 @@ export type Database = {
           product_id: string
         }[]
       }
+      get_catalog_fotos_recientes: {
+        Args: { p_company_id: string; p_dias?: number }
+        Returns: {
+          especificacion: string
+          fecha: string
+          fotos: number
+          nombre: string
+          product_id: string
+          sesion_nombre: string
+        }[]
+      }
       get_catalog_productos: {
         Args: { p_company_id: string }
         Returns: {

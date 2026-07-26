@@ -7,7 +7,7 @@
 // catálogo (get_catalog_productos / get_catalog_stock / get_my_ventas), así que
 // un vendedor nunca ve costo, margen ni ventas de otros vendedores.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { EyeOff, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, PackageCheck, PackageX, ShoppingCart } from 'lucide-react';
+import { EyeOff, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, PackageCheck, PackageX, ShoppingCart, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
@@ -19,7 +19,7 @@ const DIAS_VISIBLES   = 7;
 const MAX_NOTICIAS    = 8;
 const ROTACION_MS     = 6000;
 
-type NoticiaTipo = 'precio_sube' | 'precio_baja' | 'venta' | 'venta_propia' | 'agotado';
+type NoticiaTipo = 'precio_sube' | 'precio_baja' | 'venta' | 'venta_propia' | 'agotado' | 'fotos';
 
 interface Noticia {
   id: string;            // estable: si el suceso se repite con otra fecha, es un aviso nuevo
@@ -72,6 +72,7 @@ const ESTILO: Record<NoticiaTipo, { icon: React.ElementType; color: string }> = 
   venta:        { icon: ShoppingCart, color: 'text-violet-600 dark:text-violet-400' },
   venta_propia: { icon: PackageCheck, color: 'text-blue-600 dark:text-blue-400' },
   agotado:      { icon: PackageX,     color: 'text-red-600 dark:text-red-400' },
+  fotos:        { icon: Camera,       color: 'text-fuchsia-600 dark:text-fuchsia-400' },
 };
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -91,11 +92,12 @@ export function CatalogNoticias() {
     let activo = true;
     (async () => {
       const desde = Date.now() - DIAS_VISIBLES * 24 * 60 * 60 * 1000;
-      const [prodRes, stockRes, ventasRes, ventasEmpresaRes] = await Promise.allSettled([
+      const [prodRes, stockRes, ventasRes, ventasEmpresaRes, fotosRes] = await Promise.allSettled([
         supabase.rpc('get_catalog_productos', { p_company_id: companyId }),
         supabase.rpc('get_catalog_stock',     { p_company_id: companyId }),
         supabase.rpc('get_my_ventas',         { p_company_id: companyId }),
         supabase.rpc('get_catalog_ventas_recientes', { p_company_id: companyId, p_dias: DIAS_VISIBLES }),
+        supabase.rpc('get_catalog_fotos_recientes',  { p_company_id: companyId, p_dias: DIAS_VISIBLES }),
       ]);
 
       const items: Noticia[] = [];
@@ -183,6 +185,28 @@ export function CatalogNoticias() {
             detalle: agotado
               ? undefined
               : restante != null ? `quedan ${restante}` : undefined,
+            fecha: t,
+          });
+        }
+      }
+
+      // 4) Nuevas sesiones de fotos — material fresco para promocionar.
+      if (fotosRes.status === 'fulfilled' && !fotosRes.value.error) {
+        const sesiones = (fotosRes.value.data ?? []) as Array<{
+          product_id: string; nombre: string; especificacion: string | null;
+          sesion_nombre: string | null; fotos: number; fecha: string;
+        }>;
+        for (const s of sesiones) {
+          const t = new Date(s.fecha).getTime();
+          if (!isFinite(t) || t < desde) continue;
+          const n = Number(s.fotos);
+          items.push({
+            id: `fotos:${s.product_id}:${s.fecha}`,
+            tipo: 'fotos',
+            texto: `Nuevas fotos de ${s.nombre}`,
+            descripcion: s.especificacion || undefined,
+            detalle: [s.sesion_nombre?.trim() || null, `${n} foto${n === 1 ? '' : 's'}`]
+              .filter(Boolean).join(' · '),
             fecha: t,
           });
         }
