@@ -91,7 +91,7 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
   // que consumieron lotes de ESTE embarque — nada de fuzzy match por nombre.
   const realizedByItem = useMemo(() => {
     const out: Record<string, {
-      unidades: number; precioReal: number; margen: number; roiReal: number;
+      unidades: number; ingreso: number; costo: number; precioReal: number; margen: number; roiReal: number;
       conF: number; sinF: number; ultima: string; diasVenta: number | null;
     }> = {};
     if (!shipment || !isCerrado) return out;
@@ -110,6 +110,8 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
       const margen = round2(ingreso - costo);
       out[it.id] = {
         unidades,
+        ingreso: round2(ingreso),
+        costo: round2(costo),
         precioReal: unidades > 0 ? ingreso / unidades : 0,
         margen,
         roiReal: costo > 0 ? margen / costo : 0,
@@ -119,6 +121,29 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
     }
     return out;
   }, [items, shipment, realized, isCerrado]);
+
+  // ── Ganancia: estimada (plan total) vs realizada (lo ya vendido, Bs reales) ──
+  const gananciaResumen = useMemo(() => {
+    const gananciaEstimada = round2(calcs.reduce((s, c) => s + c.costeo.ganancia, 0));
+    let gananciaRealizada = 0, ingresoRealizado = 0, unidadesVendidas = 0;
+    for (const it of items) {
+      const r = realizedByItem[it.id];
+      if (!r) continue;
+      gananciaRealizada += r.margen;
+      ingresoRealizado += r.ingreso;
+      unidadesVendidas += r.unidades;
+    }
+    const unidadesTotales = items.reduce((s, it) => s + (it.cantidad || 0), 0);
+    return {
+      gananciaEstimada,
+      gananciaRealizada: round2(gananciaRealizada),
+      ingresoRealizado: round2(ingresoRealizado),
+      unidadesVendidas: round2(unidadesVendidas),
+      unidadesTotales: round2(unidadesTotales),
+      avancePct: unidadesTotales > 0 ? unidadesVendidas / unidadesTotales : 0,
+      cumplimientoPct: gananciaEstimada !== 0 ? gananciaRealizada / gananciaEstimada : 0,
+    };
+  }, [calcs, items, realizedByItem]);
 
   const hayVentas = Object.values(realizedByItem).some(r => r.unidades > 0);
 
@@ -385,6 +410,59 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
               </Card>
             )}
 
+            {/* Ganancia: estimada vs realizada (lo ya vendido en Bs) */}
+            {isCerrado && hayVentas && (
+              <Card>
+                <CardContent className="p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                    Ganancia — estimada vs realizada
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mb-3">
+                    "Estimada" es la ganancia total que proyectaba el análisis si todo se vendía al plan.
+                    "Realizada" es la ganancia real de lo que YA vendiste (ingreso neto real − costo real del lote).
+                    El resto se irá sumando a medida que vendas las unidades pendientes.
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                    <StatCard
+                      label="Ganancia estimada (plan total)"
+                      value={gananciaResumen.gananciaEstimada}
+                      bold
+                      hint="Ganancia total proyectada por el análisis si se vende todo al precio cotizado"
+                    />
+                    <StatCard
+                      label="Ganancia realizada (a hoy)"
+                      value={gananciaResumen.gananciaRealizada}
+                      bold
+                      color="text-green-600 dark:text-green-400"
+                      hint="Ganancia real de las unidades ya vendidas (ingreso neto real − costo real del lote)"
+                    />
+                    <StatCard
+                      label="% del plan realizado"
+                      value={gananciaResumen.cumplimientoPct}
+                      isPct
+                      hint="Ganancia realizada ÷ ganancia estimada total"
+                    />
+                    <StatCard
+                      label="Avance de ventas"
+                      value={gananciaResumen.unidadesVendidas}
+                      suffix={` / ${gananciaResumen.unidadesTotales} uds`}
+                      hint="Unidades vendidas sobre el total planeado"
+                    />
+                    <StatCard
+                      label="Ingreso realizado"
+                      value={gananciaResumen.ingresoRealizado}
+                      hint="Ingreso neto real de lo ya vendido"
+                    />
+                    <StatCard
+                      label="Ganancia proyectada (costo real)"
+                      value={resumenReal.gananciaReal}
+                      hint="Real ya vendido + lo pendiente proyectado al precio y velocidad cotizados"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Resultado real (ventas) — Fase 2 */}
             <Card>
               <CardContent className="p-4">
@@ -410,6 +488,8 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
                           <th className="text-right px-2 font-medium">Precio venta plan</th>
                           <th className="text-right px-2 font-medium">Precio venta real</th>
                           <th className="text-right px-2 font-medium">Vendidas</th>
+                          <th className="text-right px-2 font-medium" title="Ganancia que esperabas de las unidades ya vendidas (ganancia plan por unidad × vendidas)">Gan. plan (vend.)</th>
+                          <th className="text-right px-2 font-medium" title="Ganancia real de las unidades ya vendidas (ingreso neto real − costo real del lote)">Gan. real</th>
                           <th className="text-right px-2 font-medium">ROI plan</th>
                           <th className="text-right px-2 font-medium">ROI real</th>
                           <th className="text-right px-2 font-medium">Días en vender</th>
@@ -423,9 +503,14 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
                             ? it.precio_venta_sin_factura : it.precio_venta;
                           const planRoi = calcs[i].costeo.roi;
                           const sold = r && r.unidades > 0;
+                          // Ganancia plan de LO YA VENDIDO (prorrateada), para comparar peras con peras
+                          const gananciaPlanUnit = it.cantidad > 0 ? calcs[i].costeo.ganancia / it.cantidad : 0;
+                          const gananciaPlanVendidas = sold ? round2(gananciaPlanUnit * r.unidades) : 0;
                           const precioColor = sold && r.precioReal >= planPrecio
                             ? 'text-green-600 dark:text-green-400' : sold ? 'text-amber-600 dark:text-amber-400' : '';
                           const roiColor = sold && r.roiReal >= planRoi
+                            ? 'text-green-600 dark:text-green-400' : sold ? 'text-red-500' : '';
+                          const ganColor = sold && r.margen >= gananciaPlanVendidas
                             ? 'text-green-600 dark:text-green-400' : sold ? 'text-red-500' : '';
                           return (
                             <tr key={it.id} className="border-b last:border-0">
@@ -437,6 +522,10 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
                                 {sold ? `Bs ${fmt(r.precioReal)}` : <span className="text-muted-foreground">—</span>}
                               </td>
                               <td className="text-right px-2 font-mono">{sold ? `${fmt(r.unidades)} / ${it.cantidad}` : '—'}</td>
+                              <td className="text-right px-2 font-mono">{sold ? `Bs ${fmt(gananciaPlanVendidas)}` : '—'}</td>
+                              <td className={`text-right px-2 font-mono font-semibold ${ganColor}`}>
+                                {sold ? `Bs ${fmt(r.margen)}` : '—'}
+                              </td>
                               <td className="text-right px-2 font-mono"><Pct v={planRoi} /></td>
                               <td className={`text-right px-2 font-mono font-semibold ${roiColor}`}>
                                 {sold ? <Pct v={r.roiReal} /> : '—'}
