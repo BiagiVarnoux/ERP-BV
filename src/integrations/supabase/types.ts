@@ -2786,6 +2786,15 @@ export type Database = {
           stock_disponible: number
         }[]
       }
+      get_catalog_ventas_recientes: {
+        Args: { p_company_id: string; p_dias?: number }
+        Returns: {
+          cantidad: number
+          fecha: string
+          nombre: string
+          product_id: string
+        }[]
+      }
       get_company_kpis: {
         Args: { p_company_id: string; p_year?: number }
         Returns: {

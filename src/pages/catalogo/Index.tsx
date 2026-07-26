@@ -6,6 +6,7 @@ import { VendorCatalogView } from '@/components/catalogo/VendorCatalogView';
 import { CatalogManageView } from '@/components/catalogo/CatalogManageView';
 import { VentasPorVendedorView } from '@/components/catalogo/VentasPorVendedorView';
 import { MisVentasView } from '@/components/catalogo/MisVentasView';
+import { CatalogNoticias } from '@/components/catalogo/CatalogNoticias';
 
 export default function CatalogoPage() {
   const { can } = useUserAccess();
@@ -19,6 +20,9 @@ export default function CatalogoPage() {
           Precios, fotos y comisiones para tus vendedores.
         </p>
       </div>
+
+      {/* Últimos sucesos del catálogo (se ocultan solos si no hay nada que mostrar) */}
+      <CatalogNoticias />
 
       <Tabs defaultValue="vendedor">
         <TabsList>
