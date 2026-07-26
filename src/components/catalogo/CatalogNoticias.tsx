@@ -7,7 +7,7 @@
 // catálogo (get_catalog_productos / get_catalog_stock / get_my_ventas), así que
 // un vendedor nunca ve costo, margen ni ventas de otros vendedores.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { EyeOff, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, PackageCheck, PackageX, ShoppingCart, Flame } from 'lucide-react';
+import { EyeOff, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, PackageCheck, PackageX, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
@@ -18,9 +18,8 @@ import { fmt } from '@/accounting/utils';
 const DIAS_VISIBLES   = 7;
 const MAX_NOTICIAS    = 8;
 const ROTACION_MS     = 6000;
-const STOCK_BAJO_MAX  = 3;   // "últimas unidades" cuando queda <= esto
 
-type NoticiaTipo = 'precio_sube' | 'precio_baja' | 'venta' | 'venta_propia' | 'agotado' | 'stock_bajo';
+type NoticiaTipo = 'precio_sube' | 'precio_baja' | 'venta' | 'venta_propia' | 'agotado';
 
 interface Noticia {
   id: string;            // estable: si el suceso se repite con otra fecha, es un aviso nuevo
@@ -72,7 +71,6 @@ const ESTILO: Record<NoticiaTipo, { icon: React.ElementType; color: string }> = 
   venta:        { icon: ShoppingCart, color: 'text-violet-600 dark:text-violet-400' },
   venta_propia: { icon: PackageCheck, color: 'text-blue-600 dark:text-blue-400' },
   agotado:      { icon: PackageX,     color: 'text-red-600 dark:text-red-400' },
-  stock_bajo:   { icon: Flame,        color: 'text-amber-600 dark:text-amber-400' },
 };
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -160,7 +158,6 @@ export function CatalogNoticias() {
 
       // 3) Ventas de TODA la empresa: el aviso clave para dejar de promocionar
       //    algo que ya salió. Si además quedó en cero, se marca como agotado.
-      const vendidosSinStock = new Set<string>();
       if (ventasEmpresaRes.status === 'fulfilled' && !ventasEmpresaRes.value.error) {
         const ventas = (ventasEmpresaRes.value.data ?? []) as Array<{
           product_id: string; nombre: string; cantidad: number; fecha: string;
@@ -174,7 +171,6 @@ export function CatalogNoticias() {
           // Cuando se agotó sí lo mostramos: es información que nadie debe perderse.
           if (!agotado && misVentas.has(`${v.fecha}|${v.nombre}`)) continue;
           const uds      = Number(v.cantidad);
-          if (agotado) vendidosSinStock.add(v.product_id);
           items.push({
             id: `venta:${v.product_id}:${v.fecha}`,
             tipo: agotado ? 'agotado' : 'venta',
@@ -185,25 +181,6 @@ export function CatalogNoticias() {
               ? undefined
               : restante != null ? `quedan ${restante}` : undefined,
             fecha: t,
-          });
-        }
-      }
-
-      // 4) Últimas unidades — urgencia útil. Se omite si ya avisamos que se agotó.
-      if (prodRes.status === 'fulfilled' && !prodRes.value.error) {
-        const nombres = new Map(
-          ((prodRes.value.data ?? []) as Array<{ id: string; nombre: string }>).map(p => [p.id, p.nombre])
-        );
-        for (const [productId, n] of stockPorProducto) {
-          if (!(n > 0 && n <= STOCK_BAJO_MAX)) continue;
-          if (vendidosSinStock.has(productId)) continue;
-          const nombre = nombres.get(productId);
-          if (!nombre) continue;
-          items.push({
-            id: `stock:${productId}:${n}`,
-            tipo: 'stock_bajo',
-            texto: `Quedan ${n} unidad${n === 1 ? '' : 'es'} de ${nombre}`,
-            fecha: desde,   // menor prioridad que los sucesos con fecha real
           });
         }
       }
@@ -251,7 +228,7 @@ export function CatalogNoticias() {
   return (
     <TooltipProvider>
       <div
-        className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 overflow-hidden"
+        className="flex items-center gap-2 sm:gap-3 rounded-lg border bg-muted/40 px-3 sm:px-4 py-3 min-h-[3.5rem] overflow-hidden shadow-sm"
         onMouseEnter={() => setPausado(true)}
         onMouseLeave={() => setPausado(false)}
       >
@@ -260,10 +237,12 @@ export function CatalogNoticias() {
         </span>
 
         {/* El `key` fuerza el remount en cada cambio → se re-dispara la animación */}
-        <div key={actual.id} className="flex-1 min-w-0 flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
-          <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
-          <p className="text-xs truncate">
-            <span className="font-medium">{actual.texto}</span>
+        <div key={actual.id} className="flex-1 min-w-0 flex items-start sm:items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+          <Icon className={`h-5 w-5 shrink-0 mt-0.5 sm:mt-0 ${color}`} />
+          {/* En celular el texto se ajusta hasta en 2 líneas (line-clamp) para leerlo
+              completo; en pantallas grandes se mantiene en una sola línea. */}
+          <p className="text-sm leading-snug line-clamp-2 sm:truncate">
+            <span className="font-semibold">{actual.texto}</span>
             {actual.detalle && <span className="text-muted-foreground"> · {actual.detalle}</span>}
             <span className="text-muted-foreground"> · {haceCuanto(actual.fecha)}</span>
           </p>
@@ -272,21 +251,21 @@ export function CatalogNoticias() {
         {visibles.length > 1 && (
           <div className="flex items-center gap-0.5 shrink-0">
             <Button
-              variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground"
+              variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
               aria-label="Anterior"
               onClick={() => setIdx(i => (i - 1 + visibles.length) % visibles.length)}
             >
-              <ChevronLeft className="h-3.5 w-3.5" />
+              <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-[10px] text-muted-foreground tabular-nums px-0.5">
+            <span className="text-[11px] text-muted-foreground tabular-nums px-0.5">
               {Math.min(idx, visibles.length - 1) + 1}/{visibles.length}
             </span>
             <Button
-              variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground"
+              variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
               aria-label="Siguiente"
               onClick={() => setIdx(i => (i + 1) % visibles.length)}
             >
-              <ChevronRight className="h-3.5 w-3.5" />
+              <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         )}
@@ -295,11 +274,11 @@ export function CatalogNoticias() {
           <TooltipTrigger asChild>
             <Button
               variant="ghost" size="icon"
-              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
               aria-label="Ocultar este aviso"
               onClick={() => ocultar(actual.id)}
             >
-              <EyeOff className="h-3.5 w-3.5" />
+              <EyeOff className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>No mostrar más este aviso</TooltipContent>
