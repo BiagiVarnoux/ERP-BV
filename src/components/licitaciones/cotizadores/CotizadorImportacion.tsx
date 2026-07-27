@@ -15,7 +15,7 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { Plus, Trash2, ChevronDown, ChevronRight, ExternalLink, AlertTriangle, TrendingUp, TrendingDown, Download, Weight, Box, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Copy, ChevronDown, ChevronRight, ExternalLink, AlertTriangle, TrendingUp, TrendingDown, Download, Weight, Box, GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import { Licitacion, LicitacionProducto } from '@/accounting/licitacion-types';
 import { calcProducto, calcResumen, emptyProducto, TC_OFICIAL, FLETE_CIF_PCT_AEREO, FLETE_CIF_PCT_MARITIMO } from '@/accounting/licitacion-utils';
@@ -125,6 +125,25 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   const removeProducto = (id: string) => {
     setProductos(prev => prev.filter(p => p.id !== id));
     setExpandedIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+  };
+
+  // Duplica un producto: inserta una copia justo debajo con un id nuevo,
+  // heredando todos los datos para no llenarlos de cero.
+  const duplicateProducto = (id: string) => {
+    setProductos(prev => {
+      const idx = prev.findIndex(p => p.id === id);
+      if (idx === -1) return prev;
+      const copia: LicitacionProducto = {
+        ...prev[idx],
+        id: crypto.randomUUID(),
+        created_at: undefined,
+        updated_at: undefined,
+      };
+      const next = [...prev];
+      next.splice(idx + 1, 0, copia);
+      // Renumerar `orden` según la nueva posición para que se persista al guardar.
+      return next.map((p, i) => (p.orden === i ? p : { ...p, orden: i }));
+    });
   };
 
   const toggleExpand = (id: string) => {
@@ -396,6 +415,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
                   onToggle={() => toggleExpand(p.id)}
                   onChange={changes => updateProducto(p.id, changes)}
                   onRemove={() => removeProducto(p.id)}
+                  onDuplicate={() => duplicateProducto(p.id)}
                   canReorder={productos.length > 1}
                   isDragging={dragIdx === i}
                   isOver={overIdx === i && dragIdx !== i}
@@ -459,7 +479,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
 
 // ─── Fila de producto ──────────────────────────────────────────────────────────
 
-function ProductoRow({ producto: p, index, calc, tcOficialDefault, fleteCifPctDefault, expanded, onToggle, onChange, onRemove, canReorder, isDragging, isOver, onDragStart, onDragOver, onDrop, onDragEnd }: {
+function ProductoRow({ producto: p, index, calc, tcOficialDefault, fleteCifPctDefault, expanded, onToggle, onChange, onRemove, onDuplicate, canReorder, isDragging, isOver, onDragStart, onDragOver, onDrop, onDragEnd }: {
   producto: LicitacionProducto;
   index: number;
   calc: ReturnType<typeof calcProducto>;
@@ -469,6 +489,7 @@ function ProductoRow({ producto: p, index, calc, tcOficialDefault, fleteCifPctDe
   onToggle: () => void;
   onChange: (c: Partial<LicitacionProducto>) => void;
   onRemove: () => void;
+  onDuplicate: () => void;
   canReorder: boolean;
   isDragging: boolean;
   isOver: boolean;
@@ -638,7 +659,17 @@ function ProductoRow({ producto: p, index, calc, tcOficialDefault, fleteCifPctDe
           <Button
             variant="ghost"
             size="icon"
+            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+            title="Duplicar producto"
+            onClick={e => { e.stopPropagation(); onDuplicate(); }}
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+            title="Eliminar producto"
             onClick={e => { e.stopPropagation(); onRemove(); }}
           >
             <Trash2 className="h-3.5 w-3.5" />
