@@ -15,7 +15,7 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { Plus, Trash2, ChevronDown, ChevronRight, ExternalLink, AlertTriangle, TrendingUp, TrendingDown, Download, Weight, Box } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight, ExternalLink, AlertTriangle, TrendingUp, TrendingDown, Download, Weight, Box, GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import { Licitacion, LicitacionProducto } from '@/accounting/licitacion-types';
 import { calcProducto, calcResumen, emptyProducto, TC_OFICIAL, FLETE_CIF_PCT_AEREO, FLETE_CIF_PCT_MARITIMO } from '@/accounting/licitacion-utils';
@@ -80,6 +80,8 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   const [otrosLic, setOtrosLic]       = useState<number>(licitacion.otros_costos_licitacion || 0);
   const [saving, setSaving] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
 
   // ¿Todos los productos comparten el mismo T/C? (si no, avisamos que hay valores mixtos)
   const allSameTcCompra = productos.length <= 1 || productos.every(p => p.tc === productos[0].tc);
@@ -132,6 +134,29 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
       else s.add(id);
       return s;
     });
+  };
+
+  // ── Reordenar productos (arrastrar y soltar, igual que en Embarques) ─────────
+  const handleDragStart = (idx: number) => setDragIdx(idx);
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    if (idx !== dragIdx) setOverIdx(idx);
+  };
+  const handleDrop = (idx: number) => {
+    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setOverIdx(null); return; }
+    setProductos(prev => {
+      const reordered = [...prev];
+      const [moved] = reordered.splice(dragIdx, 1);
+      reordered.splice(idx, 0, moved);
+      // Renumerar `orden` según la nueva posición para que se persista al guardar.
+      return reordered.map((p, i) => (p.orden === i ? p : { ...p, orden: i }));
+    });
+    setDragIdx(null);
+    setOverIdx(null);
+  };
+  const handleDragEnd = () => {
+    setDragIdx(null);
+    setOverIdx(null);
   };
 
   // ── Guardar ────────────────────────────────────────────────────────────────
@@ -362,6 +387,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
               {productos.map((p, i) => (
                 <ProductoRow
                   key={p.id}
+                  index={i}
                   producto={p}
                   calc={calcs[i]}
                   tcOficialDefault={tcOficial}
@@ -370,6 +396,13 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
                   onToggle={() => toggleExpand(p.id)}
                   onChange={changes => updateProducto(p.id, changes)}
                   onRemove={() => removeProducto(p.id)}
+                  canReorder={productos.length > 1}
+                  isDragging={dragIdx === i}
+                  isOver={overIdx === i && dragIdx !== i}
+                  onDragStart={() => handleDragStart(i)}
+                  onDragOver={e => handleDragOver(e, i)}
+                  onDrop={() => handleDrop(i)}
+                  onDragEnd={handleDragEnd}
                 />
               ))}
             </div>
@@ -426,8 +459,9 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
 
 // ─── Fila de producto ──────────────────────────────────────────────────────────
 
-function ProductoRow({ producto: p, calc, tcOficialDefault, fleteCifPctDefault, expanded, onToggle, onChange, onRemove }: {
+function ProductoRow({ producto: p, index, calc, tcOficialDefault, fleteCifPctDefault, expanded, onToggle, onChange, onRemove, canReorder, isDragging, isOver, onDragStart, onDragOver, onDrop, onDragEnd }: {
   producto: LicitacionProducto;
+  index: number;
   calc: ReturnType<typeof calcProducto>;
   tcOficialDefault: number;
   fleteCifPctDefault: number;
@@ -435,6 +469,13 @@ function ProductoRow({ producto: p, calc, tcOficialDefault, fleteCifPctDefault, 
   onToggle: () => void;
   onChange: (c: Partial<LicitacionProducto>) => void;
   onRemove: () => void;
+  canReorder: boolean;
+  isDragging: boolean;
+  isOver: boolean;
+  onDragStart: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
 }) {
   const isUnprofitable = calc.ganancia < 0;
   const isBelowFloor   = p.precio_ofertado > 0 && p.precio_ofertado < calc.precio_piso;
@@ -442,10 +483,37 @@ function ProductoRow({ producto: p, calc, tcOficialDefault, fleteCifPctDefault, 
   const isOverEntidad  = p.precio_entidad != null && p.precio_entidad > 0 && p.precio_ofertado > p.precio_entidad;
 
   return (
+    <div
+      className="drag-row-lic"
+      onDragStart={canReorder ? onDragStart : undefined}
+      onDragOver={canReorder ? onDragOver : undefined}
+      onDrop={canReorder ? onDrop : undefined}
+      onDragEnd={canReorder ? e => { (e.currentTarget as HTMLElement).draggable = false; onDragEnd(); } : undefined}
+      style={{
+        opacity: isDragging ? 0.4 : 1,
+        borderTop: isOver ? '2px solid hsl(var(--primary))' : undefined,
+        transition: 'opacity 0.15s',
+      }}
+    >
     <Collapsible open={expanded} onOpenChange={onToggle}>
       {/* Fila compacta (siempre visible) */}
       <CollapsibleTrigger asChild>
-        <div className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/40 transition-colors ${isUnprofitable ? 'bg-red-50/30 dark:bg-red-950/10' : ''}`}>
+        <div className={`flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-muted/40 transition-colors ${isUnprofitable ? 'bg-red-50/30 dark:bg-red-950/10' : ''}`}>
+          {canReorder && (
+            <span
+              className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors flex items-center shrink-0"
+              onMouseDown={e => {
+                e.stopPropagation();
+                const row = (e.currentTarget as HTMLElement).closest('.drag-row-lic') as HTMLElement | null;
+                if (row) row.draggable = true;
+              }}
+              onClick={e => e.stopPropagation()}
+              title="Arrastra para reordenar"
+            >
+              <GripVertical className="h-4 w-4" />
+            </span>
+          )}
+          <span className="text-xs font-semibold text-muted-foreground tabular-nums w-5 text-right shrink-0">{index + 1}</span>
           {expanded
             ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
@@ -585,6 +653,7 @@ function ProductoRow({ producto: p, calc, tcOficialDefault, fleteCifPctDefault, 
         </div>
       </CollapsibleContent>
     </Collapsible>
+    </div>
   );
 }
 
