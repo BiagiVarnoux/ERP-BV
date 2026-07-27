@@ -216,6 +216,7 @@ export function calcResumen(
   costosLicitacion: number = 0
 ): LicitacionResumen {
   let total_ofertado    = 0;
+  let total_entidad     = 0;
   let precio_piso_total = 0;
   let iva_pagar         = 0;
   let it_pagar          = 0;
@@ -259,6 +260,7 @@ export function calcResumen(
     }
 
     total_ofertado    += c.total_ofertado;
+    total_entidad     += (p.precio_entidad || 0) * cantidad;
     precio_piso_total += c.precio_piso * cantidad;
     iva_pagar         += c.iva_pagar;
     it_pagar          += c.it_pagar;
@@ -273,6 +275,7 @@ export function calcResumen(
 
   return {
     total_import,
+    total_entidad:     round2(total_entidad),
     total_ofertado:    round2(total_ofertado),
     precio_piso_total: round2(precio_piso_total),
     iva_pagar:         round2(iva_pagar),
@@ -304,7 +307,7 @@ export function calcResumen(
  */
 export function sumarResumenes(resumenes: LicitacionResumen[]): LicitacionResumen {
   const acc = {
-    total_import: 0, total_ofertado: 0, precio_piso_total: 0, iva_pagar: 0, it_pagar: 0,
+    total_import: 0, total_entidad: 0, total_ofertado: 0, precio_piso_total: 0, iva_pagar: 0, it_pagar: 0,
     costos_licitacion: 0, costos: 0, ganancia: 0,
     costo_importados: 0, tiene_importados: false,
     total_usd: 0, total_precio_bs: 0, total_envio: 0, total_ga: 0, total_iva_aduana: 0, total_manipuleo: 0,
@@ -313,6 +316,7 @@ export function sumarResumenes(resumenes: LicitacionResumen[]): LicitacionResume
 
   for (const r of resumenes) {
     acc.total_import        += r.total_import;
+    acc.total_entidad        += r.total_entidad;
     acc.total_ofertado       += r.total_ofertado;
     acc.precio_piso_total    += r.precio_piso_total;
     acc.iva_pagar            += r.iva_pagar;
@@ -341,6 +345,7 @@ export function sumarResumenes(resumenes: LicitacionResumen[]): LicitacionResume
 
   return {
     total_import:      round2(acc.total_import),
+    total_entidad:     round2(acc.total_entidad),
     total_ofertado:    round2(acc.total_ofertado),
     precio_piso_total: round2(acc.precio_piso_total),
     iva_pagar:         round2(acc.iva_pagar),

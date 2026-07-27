@@ -269,6 +269,7 @@ export interface ProductoCalc {
 export interface LicitacionResumen {
   // Totales generales de la licitación (combinan productos importados + locales)
   total_import: number;        // costo_importados + costo_nacional — uso interno (costos totales)
+  total_entidad: number;       // Σ (precio_entidad × cantidad) — presupuesto referencial de la entidad
   total_ofertado: number;
   precio_piso_total: number;   // Σ (precio_piso × cantidad) — oferta mínima total para no perder
   iva_pagar: number;

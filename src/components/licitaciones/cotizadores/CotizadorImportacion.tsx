@@ -145,10 +145,15 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   const handleSave = async () => {
     try {
       setSaving(true);
+      // El precio referencial de la licitación se deriva del presupuesto de la
+      // entidad (Σ precio_entidad × cantidad), calculado en el resumen — se
+      // persiste acá para que la lista lo muestre al día sin depender del tab General.
+      const nuevoRef = resumen.total_entidad;
+      const refDirty = nuevoRef !== (licitacion.precio_referencial ?? 0);
       // Persistir los defaults y los costos de la licitación si cambiaron
       if (tcOficial !== (licitacion.tc_oficial ?? TC_OFICIAL)
         || fleteCifPct !== (licitacion.flete_cif_pct ?? FLETE_CIF_PCT_AEREO)
-        || costosLicitacionDirty) {
+        || costosLicitacionDirty || refDirty) {
         await LicitacionStorage.update(licitacion.id, {
           tc_oficial: tcOficial,
           flete_cif_pct: fleteCifPct,
@@ -156,6 +161,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
           pasaje_licitacion: pasajeLic,
           envio_licitacion: envioLic,
           otros_costos_licitacion: otrosLic,
+          precio_referencial: nuevoRef,
         });
       }
       // Upsert todos los productos actuales
@@ -174,6 +180,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
         pasaje_licitacion: pasajeLic,
         envio_licitacion: envioLic,
         otros_costos_licitacion: otrosLic,
+        precio_referencial: nuevoRef,
       });
       toast.success('Cotización guardada');
     } catch {

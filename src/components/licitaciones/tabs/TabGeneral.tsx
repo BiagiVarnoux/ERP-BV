@@ -1,13 +1,15 @@
 // src/components/licitaciones/tabs/TabGeneral.tsx
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Licitacion, TipoProceso, TIPO_PROCESO_LABELS } from '@/accounting/licitacion-types';
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
+import { fmt, round2 } from '@/accounting/utils';
 
 interface Props {
   licitacion: Licitacion;
@@ -20,11 +22,20 @@ export function TabGeneral({ licitacion: l, onUpdated }: Props) {
     entidad:           l.entidad,
     numero_sicoes:     l.numero_sicoes,
     tipo_proceso:      l.tipo_proceso,
-    precio_referencial: l.precio_referencial?.toString() || '',
     embarque_id:       l.embarque_id || '',
     notas:             l.notas || '',
   });
   const [saving, setSaving] = useState(false);
+
+  // Precio referencial (presupuesto de la entidad) y tu oferta total, derivados
+  // de la cotización — precio_entidad y precio_ofertado son por unidad.
+  const totales = useMemo(() => {
+    const refEntidad = round2(l.productos.reduce((s, p) => s + (p.precio_entidad || 0) * (p.cantidad || 0), 0));
+    const totalOfertado = round2(l.productos.reduce((s, p) => s + (p.precio_ofertado || 0) * (p.cantidad || 0), 0));
+    const faltanEntidad = l.productos.some(p => !p.precio_entidad);
+    const pctVsRef = refEntidad > 0 ? (totalOfertado - refEntidad) / refEntidad : null;
+    return { refEntidad, totalOfertado, faltanEntidad, pctVsRef, sinProductos: l.productos.length === 0 };
+  }, [l.productos]);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(prev => ({ ...prev, [k]: e.target.value }));
@@ -38,7 +49,6 @@ export function TabGeneral({ licitacion: l, onUpdated }: Props) {
         entidad:           form.entidad.trim(),
         numero_sicoes:     form.numero_sicoes.trim(),
         tipo_proceso:      form.tipo_proceso,
-        precio_referencial: form.precio_referencial ? Number(form.precio_referencial) : undefined,
         embarque_id:       form.embarque_id.trim() || undefined,
       };
       await LicitacionStorage.update(l.id, changes);
@@ -90,18 +100,44 @@ export function TabGeneral({ licitacion: l, onUpdated }: Props) {
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="precio_ref">Precio referencial (Bs)</Label>
-          <Input
-            id="precio_ref"
-            type="number"
-            min="0"
-            step="0.01"
-            value={form.precio_referencial}
-            onChange={set('precio_referencial')}
-            placeholder="0.00"
-            className="max-w-[200px]"
-          />
+        <div className="space-y-2">
+          <Label>Precio referencial y oferta</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-muted-foreground">Precio referencial (entidad)</p>
+              <p className="text-lg font-semibold font-mono">Bs {fmt(totales.refEntidad)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-muted-foreground">Tu oferta total</p>
+              <p className="text-lg font-semibold font-mono">Bs {fmt(totales.totalOfertado)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-muted-foreground">Tu oferta vs referencial</p>
+              {totales.pctVsRef == null ? (
+                <p className="text-lg font-semibold font-mono text-muted-foreground">—</p>
+              ) : (
+                <p className={`text-lg font-semibold font-mono ${totales.pctVsRef <= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                  {totales.pctVsRef > 0 ? '+' : ''}{(totales.pctVsRef * 100).toFixed(1)}%
+                  <span className="text-xs font-normal text-muted-foreground ml-1">
+                    {totales.pctVsRef <= 0 ? 'bajo referencial' : 'sobre referencial'}
+                  </span>
+                </p>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Ambos se calculan de la pestaña <strong>Cotización</strong> (precio de entidad y precio ofertado por producto).
+            Se guardan al guardar la cotización.
+          </p>
+          {totales.sinProductos ? (
+            <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5" /> Aún no hay productos en la cotización.
+            </p>
+          ) : totales.faltanEntidad && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5" /> Algunos productos no tienen cargado el precio de entidad — el referencial puede estar incompleto.
+            </p>
+          )}
         </div>
       </div>
 
