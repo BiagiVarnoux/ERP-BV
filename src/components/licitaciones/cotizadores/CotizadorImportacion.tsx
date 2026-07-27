@@ -145,10 +145,10 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   const handleSave = async () => {
     try {
       setSaving(true);
-      // El precio referencial de la licitación se deriva del presupuesto de la
-      // entidad (Σ precio_entidad × cantidad), calculado en el resumen — se
-      // persiste acá para que la lista lo muestre al día sin depender del tab General.
-      const nuevoRef = resumen.total_entidad;
+      // En la lista de licitaciones se muestra SIEMPRE el total ofertado por
+      // nosotros (Σ precio_ofertado × cantidad). El referencial de la entidad
+      // vive aparte en la pestaña General.
+      const nuevoRef = resumen.total_ofertado;
       const refDirty = nuevoRef !== (licitacion.precio_referencial ?? 0);
       // Persistir los defaults y los costos de la licitación si cambiaron
       if (tcOficial !== (licitacion.tc_oficial ?? TC_OFICIAL)
