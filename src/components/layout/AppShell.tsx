@@ -48,6 +48,26 @@ function RefreshButton({ className }: { className?: string }) {
   );
 }
 
+// Botón "Actualizar" con texto para el footer del menú (visible y claro en escritorio).
+function FooterActualizar({ collapsed }: { collapsed?: boolean }) {
+  const [spinning, setSpinning] = useState(false);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      title={collapsed ? 'Actualizar datos' : undefined}
+      onClick={() => { setSpinning(true); window.location.reload(); }}
+      className={cn(
+        'w-full gap-2 text-muted-foreground hover:text-foreground',
+        collapsed ? 'justify-center px-0' : 'justify-start',
+      )}
+    >
+      <RotateCw className={cn('h-4 w-4 shrink-0', spinning && 'animate-spin')} />
+      {!collapsed && 'Actualizar'}
+    </Button>
+  );
+}
+
 function NavItem({ path, label, currentPath, onClick }: {
   path: string;
   label: string;
@@ -180,48 +200,31 @@ function SidebarContent({ onClose, collapsed = false, onSetCollapsed }: {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Logo + nombre ERP + acciones (actualizar / minimizar) */}
+      {/* Logo + nombre ERP + botón minimizar */}
       <div className="px-4 pt-4 pb-2 shrink-0">
-        {collapsed ? (
-          <div className="flex flex-col items-center gap-1">
-            {onSetCollapsed && (
-              <button
-                type="button"
-                onClick={() => onSetCollapsed(false)}
-                title="Expandir menú"
-                aria-label="Expandir menú"
-                className="hidden md:flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              >
-                <PanelLeftOpen className="h-4 w-4" />
-              </button>
-            )}
-            <RefreshButton />
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-base leading-tight">ERP BV</span>
-            {isReadOnly && (
-              <span className="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 rounded-full">
-                <Eye className="w-3 h-3" />
-                Solo lectura
-              </span>
-            )}
-            <div className="ml-auto flex items-center gap-1">
-              <RefreshButton />
-              {onSetCollapsed && (
-                <button
-                  type="button"
-                  onClick={() => onSetCollapsed(true)}
-                  title="Minimizar menú"
-                  aria-label="Minimizar menú"
-                  className="hidden md:flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                >
-                  <PanelLeftClose className="h-4 w-4" />
-                </button>
+        <div className="flex items-center gap-2">
+          {!collapsed && <span className="font-bold text-base leading-tight">ERP BV</span>}
+          {!collapsed && isReadOnly && (
+            <span className="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 rounded-full">
+              <Eye className="w-3 h-3" />
+              Solo lectura
+            </span>
+          )}
+          {onSetCollapsed && (
+            <button
+              type="button"
+              onClick={() => onSetCollapsed(!collapsed)}
+              title={collapsed ? 'Expandir menú' : 'Minimizar menú'}
+              aria-label={collapsed ? 'Expandir menú' : 'Minimizar menú'}
+              className={cn(
+                'hidden md:flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors',
+                collapsed ? 'mx-auto' : 'ml-auto',
               )}
-            </div>
-          </div>
-        )}
+            >
+              {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </button>
+          )}
+        </div>
       </div>
       {/* Company switcher (oculto en modo minimizado) */}
       {!collapsed && <CompanySwitcher />}
@@ -336,7 +339,8 @@ function SidebarContent({ onClose, collapsed = false, onSetCollapsed }: {
         )}
       </nav>
 
-      <div className="border-t px-3 py-3 shrink-0">
+      <div className="border-t px-3 py-3 shrink-0 space-y-1">
+        <FooterActualizar collapsed={collapsed} />
         <Button
           variant="ghost"
           size="sm"
