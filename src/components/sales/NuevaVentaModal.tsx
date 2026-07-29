@@ -34,7 +34,6 @@ interface VendedorOption {
   member_id: string;
   display_name: string;
   email: string;
-  role: string;
 }
 
 interface ProductOption {
@@ -93,9 +92,12 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     loadProductsAndStock();
     if (activeCompanyId) {
       loadPaymentMethods(activeCompanyId).then(setPaymentMethods).catch(() => {});
-      // El builder de Supabase es un thenable, no una Promise: sin envolverlo no tiene .catch
-      Promise.resolve(supabase.rpc('get_company_members_detail', { p_company_id: activeCompanyId }))
-        .then(({ data }) => setVendedores(((data ?? []) as unknown as VendedorOption[]).filter(m => m.role === 'custom')))
+      // Vendedores (miembros con rol 'custom') vía RPC dedicado accesible a
+      // cualquier miembro de la empresa — no solo al owner. El filtro por rol se
+      // hace en el servidor. El builder de Supabase es un thenable, no una
+      // Promise: sin envolverlo no tiene .catch.
+      Promise.resolve(supabase.rpc('get_company_vendedores', { p_company_id: activeCompanyId }))
+        .then(({ data }) => setVendedores((data ?? []) as unknown as VendedorOption[]))
         .catch(() => setVendedores([]));
     }
   }, [isOpen]);

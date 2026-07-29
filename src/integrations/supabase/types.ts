@@ -2842,6 +2842,14 @@ export type Database = {
           submodule: string
         }[]
       }
+      get_company_vendedores: {
+        Args: { p_company_id: string }
+        Returns: {
+          display_name: string
+          email: string
+          member_id: string
+        }[]
+      }
       get_holding_summary: {
         Args: { p_year?: number }
         Returns: {
