@@ -2842,12 +2842,14 @@ export type Database = {
           submodule: string
         }[]
       }
-      get_company_vendedores: {
+      get_company_members_basic: {
         Args: { p_company_id: string }
         Returns: {
           display_name: string
           email: string
           member_id: string
+          role: string
+          user_id: string
         }[]
       }
       get_holding_summary: {

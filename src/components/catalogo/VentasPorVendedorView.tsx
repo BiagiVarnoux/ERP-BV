@@ -60,7 +60,11 @@ export function VentasPorVendedorView() {
       const [ventasRes, productsRes, membersRes] = await Promise.all([
         supabase.rpc('get_ventas_por_vendedor', { p_company_id: companyId }),
         supabase.from('products').select('id, comision_bs').eq('company_id', companyId),
-        supabase.rpc('get_company_members_detail', { p_company_id: companyId }),
+        // get_company_members_basic (no get_company_members_detail): este último
+        // está restringido a owners, así que para un no-owner el mapa de nombres
+        // quedaba vacío y todo salía como "Vendedor desconocido". El resolector
+        // general es accesible a cualquier miembro de la empresa.
+        supabase.rpc('get_company_members_basic', { p_company_id: companyId }),
       ]);
       if (ventasRes.error) throw ventasRes.error;
       if (productsRes.error) throw productsRes.error;
