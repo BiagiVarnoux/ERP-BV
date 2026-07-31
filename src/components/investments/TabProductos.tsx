@@ -261,6 +261,9 @@ function ItemRow({ item: p, calc, tcOficialDefault, fleteCifPctDefault, expanded
                 </Tooltip>
               )}
             </div>
+            {p.especificacion && (
+              <div className="text-xs text-muted-foreground truncate">{p.especificacion}</div>
+            )}
             <div className="text-xs text-muted-foreground">
               Q: {p.cantidad} · USD {fmt(p.precio_usd ?? 0)} · T/C {p.tc}
             </div>

@@ -564,6 +564,9 @@ function ProductoRow({ producto: p, index, calc, tcOficialDefault, fleteCifPctDe
                 </Tooltip>
               )}
             </div>
+            {p.especificacion && (
+              <div className="text-xs text-muted-foreground truncate">{p.especificacion}</div>
+            )}
             <div className="text-xs text-muted-foreground">
               {p.origen === 'local' ? <>Q: {p.cantidad}</> : <>Q: {p.cantidad} · T/C {p.tc}</>}
             </div>

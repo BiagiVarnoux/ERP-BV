@@ -1855,6 +1855,9 @@ function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean
                     {p.cantidad > 1 && (
                       <span className="text-muted-foreground font-normal"> ×{p.cantidad}</span>
                     )}
+                    {p.especificacion && (
+                      <div className="text-xs text-muted-foreground font-normal">{p.especificacion}</div>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     {canEditTributos ? (
@@ -2069,6 +2072,9 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
                 <TableCell className="font-medium text-sm">
                   {p.nombre} {p.tiene_bateria && <Badge variant="outline" className="ml-1 text-[10px]">🔋</Badge>}
                   <span className="text-muted-foreground font-normal"> ×{p.cantidad}</span>
+                  {p.especificacion && (
+                    <div className="text-xs text-muted-foreground font-normal">{p.especificacion}</div>
+                  )}
                 </TableCell>
                 {(['m1', 'm2', 'm3'] as const).map(dim => (
                   <TableCell key={dim} className="text-right">
@@ -2195,6 +2201,9 @@ function CostosFinalesTab({ s }: { s: Shipment }) {
                 <TableCell>
                   <div>
                     <p className="font-medium text-sm">{p.nombre}</p>
+                    {p.especificacion && (
+                      <p className="text-xs text-muted-foreground">{p.especificacion}</p>
+                    )}
                     <p className="text-xs text-muted-foreground">{p.categoria}</p>
                   </div>
                 </TableCell>
