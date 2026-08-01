@@ -290,16 +290,16 @@ function CatalogCard({ item, unidades, publicado, onTogglePublicado }: { item: C
               <span className="font-semibold">Bs {fmt(item.precio_lista ?? 0)}</span>
             </span>
           </div>
-          {item.precio_con_factura != null && (
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Precio con factura</span>
-              <span>Bs {fmt(item.precio_con_factura)}</span>
-            </div>
-          )}
           {item.precio_minimo_negociacion != null && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Puedes negociar hasta</span>
               <span>Bs {fmt(item.precio_minimo_negociacion)}</span>
+            </div>
+          )}
+          {item.precio_con_factura != null && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Precio con factura</span>
+              <span>Bs {fmt(item.precio_con_factura)}</span>
             </div>
           )}
           {item.comision_bs != null && (
