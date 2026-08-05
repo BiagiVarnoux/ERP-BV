@@ -747,10 +747,15 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
                       </Badge>
                     </div>
                     {/* Sin factura: el IVA importado no se recupera → ganancia real gerencial */}
-                    {!conFactura && extendedTotals.ivaImportadoNoRecuperable > 0 && (
+                    {!conFactura && (
                       <div className="pt-2 mt-1 border-t space-y-1">
                         <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">− IVA importado no recuperable (s/f)</span>
+                          <span className="text-muted-foreground">
+                            − IVA importado no recuperable (s/f)
+                            {extendedTotals.ivaImportadoNoRecuperable === 0 && (
+                              <span className="ml-1 opacity-70">· sin IVA importado registrado</span>
+                            )}
+                          </span>
                           <span className="font-mono text-amber-600 dark:text-amber-400">
                             Bs {fmt(extendedTotals.ivaImportadoNoRecuperable)}
                           </span>
