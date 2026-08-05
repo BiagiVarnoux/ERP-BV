@@ -49,6 +49,7 @@ interface ProductOption {
   metodo_valuacion: MetodoValuacion;
   precio_minimo: number | null;
   condicion: string | null;
+  iva_importado_bs: number | null;
 }
 
 interface Props {
@@ -152,7 +153,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     try {
       const { data } = await supabase
         .from('products')
-        .select('id, codigo, nombre, descripcion, categoria, especificacion, unidad_medida, cuenta_inventario_id, metodo_valuacion, precio_minimo, condicion')
+        .select('id, codigo, nombre, descripcion, categoria, especificacion, unidad_medida, cuenta_inventario_id, metodo_valuacion, precio_minimo, condicion, iva_importado_bs')
         .eq('company_id', activeCompanyId)
         .eq('status', 'activo')
         .order('nombre');
@@ -267,8 +268,14 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     const margenPct = taxes.precio_neto_total > 0
       ? round2((margenBruto / taxes.precio_neto_total) * 100)
       : 0;
-    return { ...taxes, costoTotal, margenBruto, margenPct, tieneEstimados };
-  }, [items, conFactura]);
+    // Ganancia gerencial para ventas SIN factura: el IVA importado no se recupera
+    // como crédito fiscal, así que ahí sí es un costo real (solo gerencial, no contable).
+    const ivaImportadoMap = new Map(products.map(p => [p.id, p.iva_importado_bs ?? 0]));
+    const ivaImportadoNoRecuperable = round2(items.reduce(
+      (sum, it) => sum + (ivaImportadoMap.get(it.product_id) ?? 0) * it.cantidad, 0));
+    const margenGerencial = round2(margenBruto - ivaImportadoNoRecuperable);
+    return { ...taxes, costoTotal, margenBruto, margenPct, tieneEstimados, ivaImportadoNoRecuperable, margenGerencial };
+  }, [items, conFactura, products]);
 
   function canSubmit() {
     if (items.length === 0) return false;
@@ -739,6 +746,25 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
                         {extendedTotals.margenPct.toFixed(1)}%
                       </Badge>
                     </div>
+                    {/* Sin factura: el IVA importado no se recupera → ganancia real gerencial */}
+                    {!conFactura && extendedTotals.ivaImportadoNoRecuperable > 0 && (
+                      <div className="pt-2 mt-1 border-t space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">− IVA importado no recuperable (s/f)</span>
+                          <span className="font-mono text-amber-600 dark:text-amber-400">
+                            Bs {fmt(extendedTotals.ivaImportadoNoRecuperable)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground" title="Ganancia gerencial: descuenta el IVA importado que no recuperas al no emitir factura. No es un gasto contable.">
+                            Ganancia real (gerencial){extendedTotals.tieneEstimados ? ' ~' : ''}
+                          </span>
+                          <span className={`font-mono font-semibold ${extendedTotals.margenGerencial >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                            Bs {fmt(extendedTotals.margenGerencial)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

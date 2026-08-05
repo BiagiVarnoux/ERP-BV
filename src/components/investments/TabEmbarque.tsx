@@ -14,6 +14,7 @@ import { ShipmentStorage } from '@/accounting/shipment-storage';
 import { InvestmentStorage, ShipmentRealizedRow, ShipmentRealizedDetailRow } from '@/accounting/investment-storage';
 import { Shipment, ShipmentProduct, SHIPMENT_STATUS_LABELS } from '@/accounting/shipment-types';
 import { calcResultadoReal, calcResumenReal, ItemResultadoReal } from '@/accounting/investment-utils';
+import { calcCostoFinalPorProducto } from '@/accounting/shipment-utils';
 import { fmt, round2 } from '@/accounting/utils';
 import { StatCard, Pct } from './ui-helpers';
 
@@ -77,6 +78,19 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
     return m;
   }, [shipment]);
 
+  // IVA importado por unidad de cada producto del embarque (mismo cálculo que el
+  // costeo final). Se usa para la ganancia "gerencial": el IVA de las unidades
+  // vendidas SIN factura no se recupera como crédito fiscal, así que ahí sí es un
+  // costo real (solo en esta vista gerencial, nunca en los libros).
+  const ivaUnitBySp = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!shipment || !isCerrado) return m;
+    for (const { product, detalle } of calcCostoFinalPorProducto(shipment)) {
+      m.set(product.id, detalle.iva);
+    }
+    return m;
+  }, [shipment, isCerrado]);
+
   const toggleMap = useCallback((item: InvestmentItem, productId: string) => {
     const cur = item.mapped_shipment_product_ids ?? [];
     const next = cur.includes(productId)
@@ -93,17 +107,20 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
     const out: Record<string, {
       unidades: number; ingreso: number; costo: number; precioReal: number; margen: number; roiReal: number;
       conF: number; sinF: number; ultima: string; diasVenta: number | null;
+      ivaNoRecuperable: number; margenGerencial: number;
     }> = {};
     if (!shipment || !isCerrado) return out;
 
     for (const it of items) {
-      let unidades = 0, ingreso = 0, costo = 0, conF = 0, sinF = 0;
+      let unidades = 0, ingreso = 0, costo = 0, conF = 0, sinF = 0, ivaNoRecuperable = 0;
       let ultima = '', primera = '';
       for (const spid of it.mapped_shipment_product_ids ?? []) {
         const r = realized[spid];
         if (!r) continue;
         unidades += r.unidades; ingreso += r.ingreso_neto; costo += r.costo;
         conF += r.con_factura; sinF += r.sin_factura;
+        // IVA importado de las unidades vendidas SIN factura = costo real gerencial.
+        ivaNoRecuperable += (ivaUnitBySp.get(spid) ?? 0) * r.sin_factura;
         if (r.ultima_venta && (!ultima || r.ultima_venta > ultima)) ultima = r.ultima_venta;
         if (r.primera_entrada && (!primera || r.primera_entrada < primera)) primera = r.primera_entrada;
       }
@@ -117,19 +134,23 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
         roiReal: costo > 0 ? margen / costo : 0,
         conF, sinF, ultima,
         diasVenta: primera && ultima ? daysBetween(primera, ultima) : null,
+        ivaNoRecuperable: round2(ivaNoRecuperable),
+        margenGerencial: round2(margen - ivaNoRecuperable),
       };
     }
     return out;
-  }, [items, shipment, realized, isCerrado]);
+  }, [items, shipment, realized, isCerrado, ivaUnitBySp]);
 
   // ── Ganancia: estimada (plan total) vs realizada (lo ya vendido, Bs reales) ──
   const gananciaResumen = useMemo(() => {
     const gananciaEstimada = round2(calcs.reduce((s, c) => s + c.costeo.ganancia, 0));
-    let gananciaRealizada = 0, ingresoRealizado = 0, unidadesVendidas = 0;
+    let gananciaRealizada = 0, gananciaRealizadaGerencial = 0, ivaNoRecuperableTotal = 0, ingresoRealizado = 0, unidadesVendidas = 0;
     for (const it of items) {
       const r = realizedByItem[it.id];
       if (!r) continue;
       gananciaRealizada += r.margen;
+      gananciaRealizadaGerencial += r.margenGerencial;
+      ivaNoRecuperableTotal += r.ivaNoRecuperable;
       ingresoRealizado += r.ingreso;
       unidadesVendidas += r.unidades;
     }
@@ -137,6 +158,8 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
     return {
       gananciaEstimada,
       gananciaRealizada: round2(gananciaRealizada),
+      gananciaRealizadaGerencial: round2(gananciaRealizadaGerencial),
+      ivaNoRecuperableTotal: round2(ivaNoRecuperableTotal),
       ingresoRealizado: round2(ingresoRealizado),
       unidadesVendidas: round2(unidadesVendidas),
       unidadesTotales: round2(unidadesTotales),
@@ -437,6 +460,13 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
                       hint="Ganancia real de las unidades ya vendidas (ingreso neto real − costo real del lote)"
                     />
                     <StatCard
+                      label="Ganancia realizada gerencial"
+                      value={gananciaResumen.gananciaRealizadaGerencial}
+                      bold
+                      color="text-amber-600 dark:text-amber-400"
+                      hint={`Resta el IVA importado no recuperable de las ventas sin factura (Bs ${fmt(gananciaResumen.ivaNoRecuperableTotal)}). Vista gerencial, no contable.`}
+                    />
+                    <StatCard
                       label="% del plan realizado"
                       value={gananciaResumen.cumplimientoPct}
                       isPct
@@ -490,6 +520,7 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
                           <th className="text-right px-2 font-medium">Vendidas</th>
                           <th className="text-right px-2 font-medium" title="Ganancia que esperabas de las unidades ya vendidas (ganancia plan por unidad × vendidas)">Gan. plan (vend.)</th>
                           <th className="text-right px-2 font-medium" title="Ganancia real de las unidades ya vendidas (ingreso neto real − costo real del lote)">Gan. real</th>
+                          <th className="text-right px-2 font-medium" title="Ganancia gerencial: resta el IVA importado de las unidades vendidas SIN factura (no se recupera como crédito fiscal). Solo vista gerencial, no contable.">Gan. real (gerencial)</th>
                           <th className="text-right px-2 font-medium">ROI plan</th>
                           <th className="text-right px-2 font-medium">ROI real</th>
                           <th className="text-right px-2 font-medium">Días en vender</th>
@@ -525,6 +556,12 @@ export function TabEmbarque({ items, calcs, companyId, costoCapitalAnual, embarq
                               <td className="text-right px-2 font-mono">{sold ? `Bs ${fmt(gananciaPlanVendidas)}` : '—'}</td>
                               <td className={`text-right px-2 font-mono font-semibold ${ganColor}`}>
                                 {sold ? `Bs ${fmt(r.margen)}` : '—'}
+                              </td>
+                              <td
+                                className={`text-right px-2 font-mono font-semibold ${sold && r.sinF > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}
+                                title={sold && r.sinF > 0 ? `Menos IVA importado no recuperable (s/f): Bs ${fmt(r.ivaNoRecuperable)}` : undefined}
+                              >
+                                {sold ? `Bs ${fmt(r.margenGerencial)}` : '—'}
                               </td>
                               <td className="text-right px-2 font-mono"><Pct v={planRoi} /></td>
                               <td className={`text-right px-2 font-mono font-semibold ${roiColor}`}>
