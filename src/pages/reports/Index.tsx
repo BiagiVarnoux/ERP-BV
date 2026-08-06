@@ -9,6 +9,7 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 
 // Report components
 import { TrialBalanceReport } from '@/components/reports/TrialBalanceReport';
+import { AccountSumPanel } from '@/components/reports/AccountSumPanel';
 import { IncomeStatementReport } from '@/components/reports/IncomeStatementReport';
 import { BalanceSheetReport } from '@/components/reports/BalanceSheetReport';
 import { CashFlowReport } from '@/components/reports/CashFlowReport';
@@ -54,6 +55,19 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl sm:text-2xl font-semibold">Reportes Financieros</h1>
+
+      {/* Sumadora de cuentas — disponible en todos los reportes salvo el Balance de
+          Comprobación, que ya trae su propia selección en-tabla. */}
+      {activeTab !== 'trial-balance' && (
+        <AccountSumPanel
+          accounts={accounts}
+          entries={entries}
+          periodType={period.periodType}
+          currentQuarter={currentQuarter}
+          selectedYear={period.year}
+          selectedMonth={period.month}
+        />
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
