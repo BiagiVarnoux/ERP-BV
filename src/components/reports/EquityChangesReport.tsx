@@ -13,6 +13,7 @@ import { exportEquityChangesToPDF } from '@/services/pdfService';
 import { computeIncomeStatement } from './IncomeStatementReport';
 import { computePeriodResult, findUtilidadesAcumuladasAccount } from '@/accounting/fiscal-year-utils';
 import { useReportSettings } from '@/hooks/useReportSettings';
+import { useReportSum, SumToggleButton, RowCheck, SumBar } from './useReportSum';
 
 interface EquityChangesReportProps {
   accounts: Account[];
@@ -296,6 +297,16 @@ export function EquityChangesReport({
     );
   }, [accounts, entries, periodStart, periodEnd, isInPeriod, netIncome]);
 
+  // ── Selección y suma en tabla (inline, sin popup) ──
+  // La tabla es una matriz (conceptos × cuentas); se seleccionan filas (conceptos)
+  // y se suma su columna Total.
+  const sel = useReportSum();
+  const selectableRows = useMemo(
+    () => data.rows.map((r, i) => ({ id: String(i), value: r.total })),
+    [data.rows]
+  );
+  const resumenSel = sel.sumOf(selectableRows);
+
   const handleExportPDF = () => {
     exportEquityChangesToPDF({ ...data, periodLabel }, periodLabel);
   };
@@ -324,10 +335,13 @@ export function EquityChangesReport({
             Variaciones en el patrimonio neto del período
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleExportPDF}>
-          <FileDown className="h-4 w-4 mr-2" />
-          PDF
-        </Button>
+        <div className="flex items-center gap-2">
+          <SumToggleButton active={sel.active} onToggle={() => (sel.active ? sel.close() : sel.setActive(true))} />
+          <Button variant="outline" size="sm" onClick={handleExportPDF}>
+            <FileDown className="h-4 w-4 mr-2" />
+            PDF
+          </Button>
+        </div>
       </CardHeader>
 
       <CardContent className="space-y-6">
@@ -378,9 +392,19 @@ export function EquityChangesReport({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.rows.map((row, idx) => (
-                  <TableRow key={idx} className={getRowClass(row)}>
-                    <TableCell className="font-medium">{row.label}</TableCell>
+                {data.rows.map((row, idx) => {
+                  const rowId = String(idx);
+                  const s = sel.isSel(rowId);
+                  return (
+                  <TableRow
+                    key={idx}
+                    className={`${s ? 'bg-primary/10 font-semibold' : getRowClass(row)} ${sel.active ? 'cursor-pointer' : ''}`}
+                    onClick={sel.active ? () => sel.toggle(rowId) : undefined}
+                  >
+                    <TableCell className="font-medium">
+                      {sel.active && <RowCheck checked={s} onToggle={() => sel.toggle(rowId)} label={row.label} />}
+                      {row.label}
+                    </TableCell>
                     {data.columns.map(col => {
                       const val = row.values[col.accountId];
                       return (
@@ -396,10 +420,16 @@ export function EquityChangesReport({
                       {row.total !== 0 ? `${row.total > 0 ? '+' : ''}${fmt(row.total)}` : '—'}
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
+        )}
+
+        {/* Barra de suma de las filas seleccionadas (inline, sin popup) */}
+        {sel.active && data.columns.length > 0 && (
+          <SumBar count={resumenSel.count} sum={resumenSel.sum} onClear={sel.clear} label="Suma de totales" />
         )}
 
         {/* Note */}

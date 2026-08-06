@@ -11,6 +11,7 @@ import { Quarter, isDateInQuarter, getPreviousQuarter, parseQuarterString } from
 import { parseMonthString, isDateInMonth, MonthPeriod } from '@/accounting/period-utils';
 import { exportIncomeStatementNIIFToPDF } from '@/services/pdfService';
 import { useReportSettings } from '@/hooks/useReportSettings';
+import { useReportSum, SumToggleButton, RowCheck, SumBar } from './useReportSum';
 
 interface IncomeStatementReportProps {
   accounts: Account[];
@@ -359,6 +360,22 @@ export function IncomeStatementReport({
 
   const hasPreviousData = previous.totalIngresosOperativos !== 0 || previous.totalCostoVentas !== 0 || previous.totalGastosOperativos !== 0;
 
+  // ── Selección y suma en tabla (inline, sin popup) ──
+  const sel = useReportSum();
+  const selectableRows = useMemo(() => [
+    ...current.ingresosOperativos,
+    ...current.devoluciones,
+    ...current.otrosIngresosOperativos,
+    ...current.costoVentas,
+    ...current.gastosOperativos,
+    ...current.depreciacionAmortizacion,
+    ...current.ingresosFinancieros,
+    ...current.gastosFinancieros,
+    ...current.extraordinarios,
+    ...current.impuestosCuentas,
+  ].map(x => ({ id: x.id, value: x.amount })), [current]);
+  const resumenSel = sel.sumOf(selectableRows);
+
   const handleExportPDF = () => {
     const periodLabel = periodType === 'monthly' ? selectedMonth
       : periodType === 'quarterly' ? selectedQuarter
@@ -384,10 +401,18 @@ export function IncomeStatementReport({
   const renderDetailRows = (items: AccountDetail[], prevItems?: AccountDetail[], isExpense = false) =>
     items.map(item => {
       const prevItem = prevItems?.find(p => p.id === item.id);
+      const s = sel.isSel(item.id);
       return (
-        <TableRow key={item.id}>
+        <TableRow
+          key={item.id}
+          className={`${sel.active ? 'cursor-pointer' : ''} ${s ? 'bg-primary/10' : ''}`}
+          onClick={sel.active ? () => sel.toggle(item.id) : undefined}
+        >
           <TableCell className="font-mono text-xs">{item.id}</TableCell>
-          <TableCell>{item.name}</TableCell>
+          <TableCell>
+            {sel.active && <RowCheck checked={s} onToggle={() => sel.toggle(item.id)} label={item.name} />}
+            {item.name}
+          </TableCell>
           <TableCell className={`text-right ${isExpense ? 'text-red-600' : ''}`}>
             {isExpense ? `(${fmt(item.amount)})` : fmt(item.amount)}
           </TableCell>
@@ -447,10 +472,13 @@ export function IncomeStatementReport({
     <Card className="shadow-sm">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Estado de Resultados (NIIF)</CardTitle>
-        <Button variant="outline" size="sm" onClick={handleExportPDF}>
-          <FileDown className="h-4 w-4 mr-2" />
-          Exportar PDF
-        </Button>
+        <div className="flex items-center gap-2">
+          <SumToggleButton active={sel.active} onToggle={() => (sel.active ? sel.close() : sel.setActive(true))} />
+          <Button variant="outline" size="sm" onClick={handleExportPDF}>
+            <FileDown className="h-4 w-4 mr-2" />
+            Exportar PDF
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <PeriodSelector
@@ -642,6 +670,11 @@ export function IncomeStatementReport({
             </TableBody>
           </Table>
         </div>
+
+        {/* Barra de suma de las cuentas seleccionadas (inline, sin popup) */}
+        {sel.active && (
+          <SumBar count={resumenSel.count} sum={resumenSel.sum} onClear={sel.clear} label="Suma de valores" />
+        )}
 
         {/* Resumen de Márgenes */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">

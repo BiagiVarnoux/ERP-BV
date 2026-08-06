@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { FileDown, TrendingUp, TrendingDown } from 'lucide-react';
 import { Account, JournalEntry } from '@/accounting/types';
 import { signedBalanceFor, fmt, round2 } from '@/accounting/utils';
+import { useReportSum, SumToggleButton, RowCheck, SumBar } from './useReportSum';
 import { getFiscalYearBounds, computePeriodResult, findUtilidadesAcumuladasAccount } from '@/accounting/fiscal-year-utils';
 import { exportBalanceSheetNIIFToPDF, BalanceSheetNIIFData } from '@/services/pdfService';
 
@@ -214,6 +215,18 @@ export function BalanceSheetReport({
     };
   }, [accounts, entries, bsDate]);
 
+  // ── Selección y suma en tabla (inline, sin popup) ──
+  const sel = useReportSum();
+  const selectableRows = useMemo(() => [
+    ...balanceSheet.activosCorrientes,
+    ...balanceSheet.activosNoCorrientes,
+    ...balanceSheet.pasivosCorrientes,
+    ...balanceSheet.pasivosNoCorrientes,
+    ...balanceSheet.patrimonioDetalle,
+    { id: 'Pn.2', name: 'Utilidades Acumuladas', balance: balanceSheet.utilidadesAcumuladasDesplegado },
+  ].map(r => ({ id: r.id, value: r.balance })), [balanceSheet]);
+  const resumenSel = sel.sumOf(selectableRows);
+
   const handleExportPDF = () => {
     const pdfData: BalanceSheetNIIFData = {
       activosCorrientes: balanceSheet.activosCorrientes,
@@ -252,13 +265,23 @@ export function BalanceSheetReport({
           {title}
         </TableCell>
       </TableRow>
-      {accounts.map(acc => (
-        <TableRow key={acc.id}>
-          <TableCell className="font-mono text-xs">{acc.id}</TableCell>
-          <TableCell className="text-sm">{acc.name}</TableCell>
-          <TableCell className="text-right text-sm">{fmt(acc.balance)}</TableCell>
-        </TableRow>
-      ))}
+      {accounts.map(acc => {
+        const s = sel.isSel(acc.id);
+        return (
+          <TableRow
+            key={acc.id}
+            className={`${sel.active ? 'cursor-pointer' : ''} ${s ? 'bg-primary/10' : ''}`}
+            onClick={sel.active ? () => sel.toggle(acc.id) : undefined}
+          >
+            <TableCell className="font-mono text-xs">{acc.id}</TableCell>
+            <TableCell className="text-sm">
+              {sel.active && <RowCheck checked={s} onToggle={() => sel.toggle(acc.id)} label={acc.name} />}
+              {acc.name}
+            </TableCell>
+            <TableCell className="text-right text-sm">{fmt(acc.balance)}</TableCell>
+          </TableRow>
+        );
+      })}
       {showSubtotal && accounts.length > 0 && (
         <TableRow className="bg-muted/30">
           <TableCell colSpan={2} className="text-right font-medium text-sm">
@@ -277,10 +300,13 @@ export function BalanceSheetReport({
           <CardTitle>Balance General (NIIF)</CardTitle>
           <p className="text-sm text-muted-foreground mt-1">Estado de Situación Financiera</p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleExportPDF}>
-          <FileDown className="h-4 w-4 mr-2" />
-          Exportar PDF
-        </Button>
+        <div className="flex items-center gap-2">
+          <SumToggleButton active={sel.active} onToggle={() => (sel.active ? sel.close() : sel.setActive(true))} />
+          <Button variant="outline" size="sm" onClick={handleExportPDF}>
+            <FileDown className="h-4 w-4 mr-2" />
+            Exportar PDF
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="w-full max-w-xs">
@@ -364,17 +390,33 @@ export function BalanceSheetReport({
                     PATRIMONIO
                   </TableCell>
                 </TableRow>
-                {balanceSheet.patrimonioDetalle.map(pat => (
-                  <TableRow key={pat.id}>
-                    <TableCell className="font-mono text-xs">{pat.id}</TableCell>
-                    <TableCell className="text-sm">{pat.name}</TableCell>
-                    <TableCell className="text-right text-sm">{fmt(pat.balance)}</TableCell>
-                  </TableRow>
-                ))}
+                {balanceSheet.patrimonioDetalle.map(pat => {
+                  const s = sel.isSel(pat.id);
+                  return (
+                    <TableRow
+                      key={pat.id}
+                      className={`${sel.active ? 'cursor-pointer' : ''} ${s ? 'bg-primary/10' : ''}`}
+                      onClick={sel.active ? () => sel.toggle(pat.id) : undefined}
+                    >
+                      <TableCell className="font-mono text-xs">{pat.id}</TableCell>
+                      <TableCell className="text-sm">
+                        {sel.active && <RowCheck checked={s} onToggle={() => sel.toggle(pat.id)} label={pat.name} />}
+                        {pat.name}
+                      </TableCell>
+                      <TableCell className="text-right text-sm">{fmt(pat.balance)}</TableCell>
+                    </TableRow>
+                  );
+                })}
                 {/* Utilidades Acumuladas (saldo Pn.2 + resultados I-G de años anteriores) */}
-                <TableRow>
+                <TableRow
+                  className={`${sel.active ? 'cursor-pointer' : ''} ${sel.isSel('Pn.2') ? 'bg-primary/10' : ''}`}
+                  onClick={sel.active ? () => sel.toggle('Pn.2') : undefined}
+                >
                   <TableCell className="font-mono text-xs">Pn.2</TableCell>
-                  <TableCell className="font-medium text-sm">Utilidades Acumuladas</TableCell>
+                  <TableCell className="font-medium text-sm">
+                    {sel.active && <RowCheck checked={sel.isSel('Pn.2')} onToggle={() => sel.toggle('Pn.2')} label="Utilidades Acumuladas" />}
+                    Utilidades Acumuladas
+                  </TableCell>
                   <TableCell className={`text-right font-medium text-sm ${balanceSheet.utilidadesAcumuladasDesplegado >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {fmt(balanceSheet.utilidadesAcumuladasDesplegado)}
                   </TableCell>
@@ -408,6 +450,11 @@ export function BalanceSheetReport({
             </Table>
           </div>
         </div>
+
+        {/* Barra de suma de las cuentas seleccionadas (inline, sin popup) */}
+        {sel.active && (
+          <SumBar count={resumenSel.count} sum={resumenSel.sum} onClear={sel.clear} label="Suma de saldos" />
+        )}
 
         {/* Verification */}
         <div

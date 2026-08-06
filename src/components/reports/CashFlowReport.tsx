@@ -14,6 +14,7 @@ import { parseMonthString, isDateInMonth, MonthPeriod } from '@/accounting/perio
 import { exportCashFlowNIIFToPDF, CashFlowNIIFData } from '@/services/pdfService';
 import { computeIncomeStatement } from './IncomeStatementReport';
 import { useReportSettings } from '@/hooks/useReportSettings';
+import { useReportSum, SumToggleButton, RowCheck, SumBar } from './useReportSum';
 
 interface CashFlowReportProps {
   accounts: Account[];
@@ -365,6 +366,16 @@ export function CashFlowReport({
   const finalCashBalance = round2(sharedData.initialCashBalance + flujoNeto);
   const ratioCobertura = sharedData.totalLiabilities > 0 ? flujoOperacion / sharedData.totalLiabilities : null;
 
+  // ── Selección y suma en tabla (inline, sin popup) ──
+  const sel = useReportSum();
+  const selectableRows = useMemo(() => {
+    const base = [...directData.inversionDetalle, ...directData.financiacionDetalle];
+    if (metodo === 'directo') base.push(...directData.operacionDetalle);
+    else base.push(...indirectData.ajustesNoMonetarios, ...indirectData.variacionesCapitalTrabajo);
+    return base.map(x => ({ id: x.id, value: x.amount }));
+  }, [directData, indirectData, metodo]);
+  const resumenSel = sel.sumOf(selectableRows);
+
   const handleExportPDF = () => {
     const periodLabel = periodType === 'monthly' ? selectedMonth
       : periodType === 'quarterly' ? selectedQuarter
@@ -408,15 +419,25 @@ export function CashFlowReport({
       {items.length > 0 ? (
         <Table>
           <TableBody>
-            {items.map((item, idx) => (
-              <TableRow key={`${item.id}-${idx}`}>
-                <TableCell className="font-mono text-xs w-20">{item.id}</TableCell>
-                <TableCell>{item.name}</TableCell>
-                <TableCell className={`text-right ${item.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {item.amount >= 0 ? '+' : ''}{fmt(item.amount)}
-                </TableCell>
-              </TableRow>
-            ))}
+            {items.map((item, idx) => {
+              const s = sel.isSel(item.id);
+              return (
+                <TableRow
+                  key={`${item.id}-${idx}`}
+                  className={`${sel.active ? 'cursor-pointer' : ''} ${s ? 'bg-primary/10' : ''}`}
+                  onClick={sel.active ? () => sel.toggle(item.id) : undefined}
+                >
+                  <TableCell className="font-mono text-xs w-20">{item.id}</TableCell>
+                  <TableCell>
+                    {sel.active && <RowCheck checked={s} onToggle={() => sel.toggle(item.id)} label={item.name} />}
+                    {item.name}
+                  </TableCell>
+                  <TableCell className={`text-right ${item.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {item.amount >= 0 ? '+' : ''}{fmt(item.amount)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
             <TableRow className="bg-muted/30">
               <TableCell colSpan={2} className="font-medium text-right">Flujo Neto</TableCell>
               <TableCell className={`text-right font-semibold ${total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -455,15 +476,25 @@ export function CashFlowReport({
                   (+) Ajustes por partidas no monetarias
                 </TableCell>
               </TableRow>
-              {indirectData.ajustesNoMonetarios.map((item, idx) => (
-                <TableRow key={`nm-${item.id}-${idx}`}>
-                  <TableCell className="font-mono text-xs w-20">{item.id}</TableCell>
-                  <TableCell>{item.name}</TableCell>
-                  <TableCell className={`text-right ${item.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {item.amount >= 0 ? '+' : ''}{fmt(item.amount)}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {indirectData.ajustesNoMonetarios.map((item, idx) => {
+                const s = sel.isSel(item.id);
+                return (
+                  <TableRow
+                    key={`nm-${item.id}-${idx}`}
+                    className={`${sel.active ? 'cursor-pointer' : ''} ${s ? 'bg-primary/10' : ''}`}
+                    onClick={sel.active ? () => sel.toggle(item.id) : undefined}
+                  >
+                    <TableCell className="font-mono text-xs w-20">{item.id}</TableCell>
+                    <TableCell>
+                      {sel.active && <RowCheck checked={s} onToggle={() => sel.toggle(item.id)} label={item.name} />}
+                      {item.name}
+                    </TableCell>
+                    <TableCell className={`text-right ${item.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {item.amount >= 0 ? '+' : ''}{fmt(item.amount)}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               <TableRow className="bg-muted/10">
                 <TableCell colSpan={2} className="text-right text-sm">Subtotal Ajustes No Monetarios</TableCell>
                 <TableCell className={`text-right font-medium ${indirectData.totalAjustesNoMonetarios >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -481,20 +512,28 @@ export function CashFlowReport({
                   (+/-) Variaciones en Capital de Trabajo
                 </TableCell>
               </TableRow>
-              {indirectData.variacionesCapitalTrabajo.map((item, idx) => (
-                <TableRow key={`wc-${item.id}-${idx}`}>
-                  <TableCell className="font-mono text-xs w-20">{item.id}</TableCell>
-                  <TableCell>
-                    {item.amount >= 0
-                      ? `Disminución en ${item.name}`
-                      : `(Aumento) en ${item.name}`
-                    }
-                  </TableCell>
-                  <TableCell className={`text-right ${item.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {item.amount >= 0 ? '+' : ''}{fmt(item.amount)}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {indirectData.variacionesCapitalTrabajo.map((item, idx) => {
+                const s = sel.isSel(item.id);
+                return (
+                  <TableRow
+                    key={`wc-${item.id}-${idx}`}
+                    className={`${sel.active ? 'cursor-pointer' : ''} ${s ? 'bg-primary/10' : ''}`}
+                    onClick={sel.active ? () => sel.toggle(item.id) : undefined}
+                  >
+                    <TableCell className="font-mono text-xs w-20">{item.id}</TableCell>
+                    <TableCell>
+                      {sel.active && <RowCheck checked={s} onToggle={() => sel.toggle(item.id)} label={item.name} />}
+                      {item.amount >= 0
+                        ? `Disminución en ${item.name}`
+                        : `(Aumento) en ${item.name}`
+                      }
+                    </TableCell>
+                    <TableCell className={`text-right ${item.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {item.amount >= 0 ? '+' : ''}{fmt(item.amount)}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               <TableRow className="bg-muted/10">
                 <TableCell colSpan={2} className="text-right text-sm">Subtotal Variaciones C.T.</TableCell>
                 <TableCell className={`text-right font-medium ${indirectData.totalVariacionesCT >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -538,6 +577,7 @@ export function CashFlowReport({
             />
             <Label htmlFor="metodo-toggle" className="text-xs text-muted-foreground">Indirecto</Label>
           </div>
+          <SumToggleButton active={sel.active} onToggle={() => (sel.active ? sel.close() : sel.setActive(true))} />
           <Button variant="outline" size="sm" onClick={handleExportPDF}>
             <FileDown className="h-4 w-4 mr-2" />
             PDF
@@ -607,6 +647,11 @@ export function CashFlowReport({
           flujoFinanciacion,
           'text-orange-700 dark:text-orange-400',
           'bg-orange-50 dark:bg-orange-950/30'
+        )}
+
+        {/* Barra de suma de las cuentas seleccionadas (inline, sin popup) */}
+        {sel.active && (
+          <SumBar count={resumenSel.count} sum={resumenSel.sum} onClear={sel.clear} label="Suma de flujos" />
         )}
 
         {/* Net Cash Flow */}
