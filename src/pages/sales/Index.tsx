@@ -9,7 +9,7 @@ import { Plus, ShoppingCart, Ban, DollarSign, TrendingUp, Percent, Loader2 } fro
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { useUserAccess } from '@/contexts/UserAccessContext';
+import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { fmt, round2 } from '@/accounting/utils';
 import { listSales, voidSale, CANAL_LABELS, type SaleRow } from '@/domain/sales';
@@ -45,6 +45,7 @@ interface SaleItem {
 
 export default function SalesPage() {
   const { can } = useUserAccess();
+  const activeCompanyId = useActiveCompanyId();
   const canCreate = can('sales', 'create');
   const canEdit   = can('sales', 'edit');
   const canDelete = can('sales', 'delete');
@@ -53,6 +54,9 @@ export default function SalesPage() {
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [itemsMap, setItemsMap] = useState<Record<string, string[]>>({});
+  // IVA importado por venta (Σ ítems × iva_importado_bs del producto) — para la
+  // ganancia real gerencial de las ventas SIN factura (ese IVA no se recupera).
+  const [ivaImportadoBySale, setIvaImportadoBySale] = useState<Record<string, number>>({});
 
   // Filtros
   const [period, setPeriod] = usePersistedState<PeriodFilterValue>('sales:period', getDefaultPeriodFilterValue());
@@ -84,14 +88,33 @@ export default function SalesPage() {
         const saleIds = data.map(s => s.id);
         const { data: items } = await supabase
           .from('sale_items')
-          .select('sale_id, product_nombre')
+          .select('sale_id, product_nombre, product_id, cantidad')
           .in('sale_id', saleIds);
         const map: Record<string, string[]> = {};
+        const productIds = new Set<string>();
         for (const it of items ?? []) {
           if (!map[it.sale_id]) map[it.sale_id] = [];
           map[it.sale_id].push(it.product_nombre);
+          if (it.product_id) productIds.add(it.product_id);
         }
         setItemsMap(map);
+
+        // IVA importado por producto → total por venta (para la ganancia gerencial)
+        const ivaByProduct: Record<string, number> = {};
+        if (productIds.size > 0) {
+          const { data: prods } = await supabase
+            .from('products')
+            .select('id, iva_importado_bs')
+            .eq('company_id', activeCompanyId)
+            .in('id', [...productIds]);
+          for (const p of prods ?? []) ivaByProduct[p.id] = Number(p.iva_importado_bs ?? 0);
+        }
+        const ivaBySale: Record<string, number> = {};
+        for (const it of items ?? []) {
+          const iva = (ivaByProduct[it.product_id ?? ''] ?? 0) * Number(it.cantidad ?? 0);
+          ivaBySale[it.sale_id] = round2((ivaBySale[it.sale_id] ?? 0) + iva);
+        }
+        setIvaImportadoBySale(ivaBySale);
       }
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Error cargando ventas');
@@ -117,8 +140,14 @@ export default function SalesPage() {
     const margenBruto = round2(withCost.reduce((sum, s) => sum + (s.precio_neto_total - (s.total_costo ?? 0)), 0));
     const subtotalNeto = round2(withCost.reduce((sum, s) => sum + s.precio_neto_total, 0));
     const margenPct = subtotalNeto > 0 ? round2((margenBruto / subtotalNeto) * 100) : 0;
-    return { ventas, transactions, margenBruto, margenPct };
-  }, [confirmedFiltered]);
+    // Ganancia real (gerencial): en ventas sin factura resta el IVA importado no recuperable.
+    const gananciaGerencial = round2(withCost.reduce((sum, s) => {
+      const m = s.precio_neto_total - (s.total_costo ?? 0);
+      const ivaNoRecup = s.con_factura ? 0 : (ivaImportadoBySale[s.id] ?? 0);
+      return sum + m - ivaNoRecup;
+    }, 0));
+    return { ventas, transactions, margenBruto, margenPct, gananciaGerencial };
+  }, [confirmedFiltered, ivaImportadoBySale]);
 
   const tableTotals = useMemo(() => {
     const confirmed = filtered.filter(s => s.estado === 'confirmed');
@@ -133,8 +162,13 @@ export default function SalesPage() {
                .reduce((sum, s) => sum + s.precio_neto_total, 0)
     );
     const margen = round2(netoTotal - costo);
-    return { cobrado, costo, margen };
-  }, [filtered]);
+    const gerencial = round2(confirmed.filter(s => s.total_costo !== null).reduce((sum, s) => {
+      const m = s.precio_neto_total - (s.total_costo ?? 0);
+      const ivaNoRecup = s.con_factura ? 0 : (ivaImportadoBySale[s.id] ?? 0);
+      return sum + m - ivaNoRecup;
+    }, 0));
+    return { cobrado, costo, margen, gerencial };
+  }, [filtered, ivaImportadoBySale]);
 
   async function openDetail(sale: SaleRow) {
     setDetailSale(sale);
@@ -214,7 +248,7 @@ export default function SalesPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         <div className="rounded-lg border bg-card p-4 space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <DollarSign className="w-4 h-4" /> Ventas
@@ -226,6 +260,12 @@ export default function SalesPage() {
             <TrendingUp className="w-4 h-4" /> Margen bruto
           </div>
           <div className="text-xl sm:text-2xl font-bold">Bs {fmt(kpis.margenBruto)}</div>
+        </div>
+        <div className="rounded-lg border bg-card p-4 space-y-1" title="Descuenta el IVA importado no recuperable de las ventas sin factura. Vista gerencial, no contable.">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <TrendingUp className="w-4 h-4 text-amber-600" /> Ganancia real (gerencial)
+          </div>
+          <div className="text-xl sm:text-2xl font-bold text-amber-600 dark:text-amber-400">Bs {fmt(kpis.gananciaGerencial)}</div>
         </div>
         <div className="rounded-lg border bg-card p-4 space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -275,6 +315,7 @@ export default function SalesPage() {
                 <TableHead className="text-right">Total Cobrado</TableHead>
                 <TableHead className="text-right">Costo Total</TableHead>
                 <TableHead className="text-right">Margen Bruto</TableHead>
+                <TableHead className="text-right" title="Ganancia real gerencial: en ventas sin factura descuenta el IVA importado no recuperable. No es contable.">Gan. real (gerencial)</TableHead>
                 <TableHead className="text-right">% Margen</TableHead>
                 <TableHead className="text-center">Estado</TableHead>
               </TableRow>
@@ -287,6 +328,9 @@ export default function SalesPage() {
                 const margenPct = s.total_costo !== null && s.precio_neto_total > 0
                   ? round2((margen! / s.precio_neto_total) * 100)
                   : null;
+                // Ganancia gerencial: sin factura descuenta el IVA importado no recuperable.
+                const ivaNoRecup = s.con_factura ? 0 : (ivaImportadoBySale[s.id] ?? 0);
+                const gerencial = margen !== null ? round2(margen - ivaNoRecup) : null;
                 return (
                   <TableRow key={s.id} className={s.estado === 'voided' ? 'opacity-60' : ''}>
                     <TableCell>
@@ -338,6 +382,10 @@ export default function SalesPage() {
                     <TableCell className="text-right font-medium">
                       {margen !== null ? `Bs ${fmt(margen)}` : '—'}
                     </TableCell>
+                    <TableCell className={`text-right font-medium ${ivaNoRecup > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}
+                      title={ivaNoRecup > 0 ? `Menos IVA importado no recuperable (s/f): Bs ${fmt(ivaNoRecup)}` : undefined}>
+                      {gerencial !== null ? `Bs ${fmt(gerencial)}` : '—'}
+                    </TableCell>
                     <TableCell className="text-right">
                       {margenPct !== null ? (
                         <Badge variant="outline" className={`text-xs ${margenBadgeClass(margenPct)}`}>
@@ -363,6 +411,7 @@ export default function SalesPage() {
                 <TableCell className="text-right">Bs {fmt(tableTotals.cobrado)}</TableCell>
                 <TableCell className="text-right text-muted-foreground">Bs {fmt(tableTotals.costo)}</TableCell>
                 <TableCell className="text-right">Bs {fmt(tableTotals.margen)}</TableCell>
+                <TableCell className="text-right text-amber-600 dark:text-amber-400">Bs {fmt(tableTotals.gerencial)}</TableCell>
                 <TableCell colSpan={2}></TableCell>
               </TableRow>
             </TableFooter>
