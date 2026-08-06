@@ -1,9 +1,10 @@
 // src/components/reports/TrialBalanceReport.tsx
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { FileDown } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { FileDown, ListChecks } from 'lucide-react';
 import { PeriodSelector, PeriodType } from './PeriodSelector';
 import { Account, JournalEntry, AccountType, Side } from '@/accounting/types';
 import { fmt, nowInAppTZ } from '@/accounting/utils';
@@ -92,6 +93,36 @@ export function TrialBalanceReport({
     return { rows, totals };
   }, [accounts, entries, isInPeriod]);
 
+  // ── Modo selección: sumar los saldos de las cuentas elegidas (inline, sin popup) ──
+  const [seleccionando, setSeleccionando] = useState(false);
+  const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
+
+  const toggleSel = (id: string) => setSeleccionadas(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+
+  const todasSeleccionadas = trialRows.rows.length > 0 && trialRows.rows.every(r => seleccionadas.has(r.id));
+  const toggleTodas = () => setSeleccionadas(
+    todasSeleccionadas ? new Set() : new Set(trialRows.rows.map(r => r.id))
+  );
+
+  const resumenSel = useMemo(() => {
+    let debit = 0, credit = 0, saldo = 0, count = 0;
+    for (const r of trialRows.rows) {
+      if (!seleccionadas.has(r.id)) continue;
+      count++;
+      debit += r.debit;
+      credit += r.credit;
+      saldo += r.side === 'DEBE' ? r.debit - r.credit : r.credit - r.debit;
+    }
+    return { debit, credit, saldo, count };
+  }, [trialRows.rows, seleccionadas]);
+
+  const cerrarSeleccion = () => { setSeleccionando(false); setSeleccionadas(new Set()); };
+
   const handleExportPDF = () => {
     const pdfRows = trialRows.rows.map(r => ({
       id: r.id, name: r.name, debit: r.debit, credit: r.credit,
@@ -104,10 +135,20 @@ export function TrialBalanceReport({
     <Card className="shadow-sm">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Balance de Comprobación</CardTitle>
-        <Button variant="outline" size="sm" onClick={handleExportPDF}>
-          <FileDown className="h-4 w-4 mr-2" />
-          Exportar PDF
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={seleccionando ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => (seleccionando ? cerrarSeleccion() : setSeleccionando(true))}
+          >
+            <ListChecks className="h-4 w-4 mr-2" />
+            {seleccionando ? 'Cerrar selección' : 'Seleccionar y sumar'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportPDF}>
+            <FileDown className="h-4 w-4 mr-2" />
+            Exportar PDF
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <PeriodSelector
@@ -127,6 +168,15 @@ export function TrialBalanceReport({
           <Table>
             <TableHeader>
               <TableRow>
+                {seleccionando && (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={todasSeleccionadas}
+                      onCheckedChange={toggleTodas}
+                      aria-label="Seleccionar todas"
+                    />
+                  </TableHead>
+                )}
                 <TableHead>Código</TableHead>
                 <TableHead>Cuenta</TableHead>
                 <TableHead className="text-right">Debe</TableHead>
@@ -137,8 +187,18 @@ export function TrialBalanceReport({
             <TableBody>
               {trialRows.rows.map(r => {
                 const saldo = r.side === 'DEBE' ? r.debit - r.credit : r.credit - r.debit;
+                const sel = seleccionadas.has(r.id);
                 return (
-                  <TableRow key={r.id}>
+                  <TableRow
+                    key={r.id}
+                    className={`${seleccionando ? 'cursor-pointer' : ''} ${sel ? 'bg-primary/10' : ''}`}
+                    onClick={seleccionando ? () => toggleSel(r.id) : undefined}
+                  >
+                    {seleccionando && (
+                      <TableCell onClick={e => e.stopPropagation()}>
+                        <Checkbox checked={sel} onCheckedChange={() => toggleSel(r.id)} aria-label={`Seleccionar ${r.name}`} />
+                      </TableCell>
+                    )}
                     <TableCell className="font-mono">{r.id}</TableCell>
                     <TableCell>{r.name}</TableCell>
                     <TableCell className="text-right">{r.debit ? fmt(r.debit) : ''}</TableCell>
@@ -148,7 +208,7 @@ export function TrialBalanceReport({
                 );
               })}
               <TableRow className="bg-muted/50">
-                <TableCell colSpan={2} className="text-right font-semibold">Totales</TableCell>
+                <TableCell colSpan={seleccionando ? 3 : 2} className="text-right font-semibold">Totales</TableCell>
                 <TableCell className="text-right font-semibold">{fmt(trialRows.totals.debit)}</TableCell>
                 <TableCell className="text-right font-semibold">{fmt(trialRows.totals.credit)}</TableCell>
                 <TableCell className="text-right font-semibold">
@@ -158,6 +218,27 @@ export function TrialBalanceReport({
             </TableBody>
           </Table>
         </div>
+
+        {/* Barra de suma de las cuentas seleccionadas (inline, sin popup) */}
+        {seleccionando && (
+          <div className="rounded-lg border bg-muted/40 px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-1">
+            <span className="text-sm font-semibold">
+              {resumenSel.count} cuenta{resumenSel.count !== 1 ? 's' : ''} seleccionada{resumenSel.count !== 1 ? 's' : ''}
+            </span>
+            <span className="text-sm text-muted-foreground">Debe: <span className="font-mono font-medium text-foreground">Bs {fmt(resumenSel.debit)}</span></span>
+            <span className="text-sm text-muted-foreground">Haber: <span className="font-mono font-medium text-foreground">Bs {fmt(resumenSel.credit)}</span></span>
+            <span className="text-sm">Suma de saldos: <span className="font-mono font-bold text-primary">Bs {fmt(resumenSel.saldo)}</span></span>
+            {resumenSel.count > 0 && (
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:text-foreground hover:underline ml-auto"
+                onClick={() => setSeleccionadas(new Set())}
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -229,8 +229,11 @@ export default function SalesPage() {
     const margenNetoPct = detailSale.precio_neto_total > 0
       ? round2((margenNeto / detailSale.precio_neto_total) * 100)
       : 0;
-    return { costo, margenBruto, margenBrutoPct, it, margenNeto, margenNetoPct };
-  }, [detailSale, saleItems]);
+    // Ganancia real (gerencial): sin factura descuenta el IVA importado no recuperable.
+    const ivaImportado = detailSale.con_factura ? 0 : (ivaImportadoBySale[detailSale.id] ?? 0);
+    const gananciaGerencial = round2(margenBruto - ivaImportado);
+    return { costo, margenBruto, margenBrutoPct, it, margenNeto, margenNetoPct, ivaImportado, gananciaGerencial };
+  }, [detailSale, saleItems, ivaImportadoBySale]);
 
   return (
     <div className="space-y-6">
@@ -529,6 +532,22 @@ export default function SalesPage() {
                         {detailTotals.margenNetoPct.toFixed(1)}%
                       </Badge>
                     </span>
+                    {/* Sin factura: ganancia real gerencial (IVA importado no recuperable) */}
+                    {!detailSale.con_factura && (
+                      <>
+                        <span className="text-muted-foreground text-xs pt-1">
+                          − IVA importado no recuperable (s/f)
+                          {detailTotals.ivaImportado === 0 && <span className="ml-1 opacity-70">· sin IVA importado registrado</span>}
+                        </span>
+                        <span className="text-right text-amber-600 dark:text-amber-400 text-xs pt-1">− Bs {fmt(detailTotals.ivaImportado)}</span>
+                        <span className="font-medium" title="Ganancia gerencial: descuenta el IVA importado que no recuperas al no emitir factura. No es contable.">
+                          Ganancia real (gerencial)
+                        </span>
+                        <span className={`text-right font-bold ${detailTotals.gananciaGerencial >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+                          Bs {fmt(detailTotals.gananciaGerencial)}
+                        </span>
+                      </>
+                    )}
                   </div>
 
                   {/* Estado de cobro */}
