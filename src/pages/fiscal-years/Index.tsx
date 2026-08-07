@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { Lock, LockOpen, Plus, AlertTriangle } from 'lucide-react';
+import { DataCard, DataCardHeader, DataCardGrid, DataCardField, DataCardActions, DataCardList } from '@/components/ui/data-card';
 
 const COMPANY_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -220,6 +221,37 @@ export default function FiscalYearsPage() {
               No hay gestiones registradas. El sistema trata todos los períodos como abiertos.
             </p>
           ) : (
+            <>
+            {/* Móvil: tarjetas apiladas */}
+            <DataCardList>
+              {sorted.map(fy => (
+                <DataCard key={fy.id}>
+                  <DataCardHeader
+                    title={<span className="text-base font-semibold">{fy.year}</span>}
+                    subtitle={<span className="font-mono text-xs">{fy.start_date} → {fy.end_date}</span>}
+                    right={statusBadge(fy.status)}
+                  />
+                  <DataCardGrid className="mt-3">
+                    <DataCardField label="Resultado neto">
+                      <span className={`font-mono ${getNetResult(fy) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(getNetResult(fy))}</span>
+                      {fy.net_result_snapshot !== null && <span className="ml-1 text-[10px] text-muted-foreground">(snapshot)</span>}
+                    </DataCardField>
+                    <DataCardField label="Cerrada el">{fy.closed_at ? new Date(fy.closed_at).toLocaleDateString('es-BO') : '—'}</DataCardField>
+                  </DataCardGrid>
+                  {fy.notes && <div className="mt-1 text-xs text-muted-foreground">{fy.notes}</div>}
+                  <DataCardActions className="mt-2 pt-2 border-t">
+                    {fy.status === 'OPEN' ? (
+                      <Button size="sm" variant="outline" className="flex-1 text-red-600 border-red-300 hover:bg-red-50" onClick={() => openCloseDialog(fy)}><Lock className="h-3.5 w-3.5 mr-1" />Cerrar</Button>
+                    ) : (
+                      <Button size="sm" variant="outline" className="flex-1 text-amber-600 border-amber-300 hover:bg-amber-50" onClick={() => openReopenDialog(fy)}><LockOpen className="h-3.5 w-3.5 mr-1" />Reabrir</Button>
+                    )}
+                  </DataCardActions>
+                </DataCard>
+              ))}
+            </DataCardList>
+
+            {/* Escritorio: tabla */}
+            <div className="hidden sm:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -279,6 +311,8 @@ export default function FiscalYearsPage() {
                 ))}
               </TableBody>
             </Table>
+            </div>
+            </>
           )}
         </CardContent>
       </Card>

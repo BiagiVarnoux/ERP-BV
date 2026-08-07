@@ -15,6 +15,7 @@ import {
 import { UserPlus, ShieldCheck, UserMinus, Loader2, Users } from 'lucide-react';
 import { UserPermissionsModal, type MemberDetail } from '@/components/users/UserPermissionsModal';
 import { InviteUserModal } from '@/components/users/InviteUserModal';
+import { DataCard, DataCardHeader, DataCardActions, DataCardList } from '@/components/ui/data-card';
 
 // ─── Helpers visuales ─────────────────────────────────────────────────────────
 
@@ -165,6 +166,32 @@ export default function UsersPage() {
               <p className="text-sm">Invita a un usuario para comenzar.</p>
             </div>
           ) : (
+            <>
+            {/* Móvil: tarjetas apiladas */}
+            <DataCardList>
+              {members.map(member => (
+                <DataCard key={member.member_id} onClick={() => openPermissions(member)}>
+                  <DataCardHeader
+                    title={member.display_name || member.email || '—'}
+                    subtitle={member.display_name && member.email ? member.email : undefined}
+                    right={<Badge className={`text-xs ${ROLE_COLORS[member.role] ?? ''}`}>{ROLE_LABELS[member.role] ?? member.role}</Badge>}
+                  />
+                  <div className="mt-2 pt-2 border-t flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{member.role === 'owner' ? 'Acceso completo' : `Módulos: ${member.modules_with_view} / ${member.modules_total}`}</span>
+                    <span>Desde {new Date(member.joined_at).toLocaleDateString('es-BO')}</span>
+                  </div>
+                  <DataCardActions className="mt-2">
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => openPermissions(member)}><ShieldCheck className="h-3.5 w-3.5 mr-1" />Permisos</Button>
+                    {member.role !== 'owner' && (
+                      <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setRemoveTarget(member)}><UserMinus className="h-3.5 w-3.5" /></Button>
+                    )}
+                  </DataCardActions>
+                </DataCard>
+              ))}
+            </DataCardList>
+
+            {/* Escritorio: tabla */}
+            <div className="hidden sm:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -235,6 +262,8 @@ export default function UsersPage() {
                 ))}
               </TableBody>
             </Table>
+            </div>
+            </>
           )}
         </CardContent>
       </Card>
