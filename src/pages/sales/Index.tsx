@@ -16,6 +16,7 @@ import { listSales, voidSale, CANAL_LABELS, type SaleRow } from '@/domain/sales'
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { NuevaVentaModal } from '@/components/sales/NuevaVentaModal';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { DataCard, DataCardHeader, DataCardGrid, DataCardField, DataCardList } from '@/components/ui/data-card';
 import {
   PeriodFilterBar,
   PeriodFilterValue,
@@ -285,10 +286,10 @@ export default function SalesPage() {
       </div>
 
       {/* Filtros */}
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:flex-wrap">
         <PeriodFilterBar value={period} onChange={setPeriod} />
         <Input
-          className="max-w-xs"
+          className="w-full sm:max-w-xs"
           placeholder="Buscar por número, cliente, glosa..."
           value={search}
           onChange={e => setSearch(e.target.value)}
@@ -305,7 +306,51 @@ export default function SalesPage() {
           <p>No hay ventas en el período seleccionado.</p>
         </div>
       ) : (
-        <div className="rounded-md border">
+        <>
+        {/* Móvil: tarjetas apiladas */}
+        <DataCardList>
+          {filtered.map(s => {
+            const margen = s.total_costo !== null ? round2(s.precio_neto_total - s.total_costo) : null;
+            const margenPct = s.total_costo !== null && s.precio_neto_total > 0
+              ? round2((margen! / s.precio_neto_total) * 100) : null;
+            const ivaNoRecup = s.con_factura ? 0 : (ivaImportadoBySale[s.id] ?? 0);
+            const gerencial = margen !== null ? round2(margen - ivaNoRecup) : null;
+            const prods = itemsMap[s.id] ?? [];
+            return (
+              <DataCard key={s.id} onClick={() => openDetail(s)} className={s.estado === 'voided' ? 'opacity-60' : ''}>
+                <DataCardHeader
+                  title={<span className="font-mono text-sm text-primary">{s.numero}</span>}
+                  subtitle={`${s.fecha} · ${s.cliente_nombre || 'Sin cliente'}`}
+                  right={s.estado === 'confirmed'
+                    ? <Badge className="bg-green-600 hover:bg-green-700">Activa</Badge>
+                    : <Badge variant="destructive">Anulada</Badge>}
+                />
+                <DataCardGrid className="mt-3">
+                  <DataCardField label="Total cobrado"><span className="font-semibold">Bs {fmt(s.total_cobrado)}</span></DataCardField>
+                  <DataCardField label="Margen bruto">{margen !== null ? `Bs ${fmt(margen)}` : '—'}</DataCardField>
+                  <DataCardField label="Gan. gerencial">
+                    <span className={ivaNoRecup > 0 ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
+                      {gerencial !== null ? `Bs ${fmt(gerencial)}` : '—'}
+                    </span>
+                  </DataCardField>
+                  <DataCardField label="% Margen">
+                    {margenPct !== null
+                      ? <Badge variant="outline" className={`text-xs ${margenBadgeClass(margenPct)}`}>{margenPct.toFixed(1)}%</Badge>
+                      : '—'}
+                  </DataCardField>
+                </DataCardGrid>
+                <div className="mt-2 pt-2 border-t text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5">
+                  <span>{CANAL_LABELS[s.canal] ?? s.canal}</span>
+                  <span>Factura: {s.con_factura ? 'Sí' : 'No'}</span>
+                  {prods.length > 0 && <span className="truncate max-w-full">{prods[0]}{prods.length > 1 ? ` +${prods.length - 1}` : ''}</span>}
+                </div>
+              </DataCard>
+            );
+          })}
+        </DataCardList>
+
+        {/* Escritorio: tabla */}
+        <div className="rounded-md border hidden sm:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -420,6 +465,7 @@ export default function SalesPage() {
             </TableFooter>
           </Table>
         </div>
+        </>
       )}
 
       <NuevaVentaModal
