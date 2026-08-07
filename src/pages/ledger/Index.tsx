@@ -18,6 +18,7 @@ import {
 import { PeriodSelector } from '@/components/reports/PeriodSelector';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { exportLedgerToCSV, LedgerRow } from '@/services/exportService';
+import { DataCard, DataCardHeader, DataCardGrid, DataCardField, DataCardList } from '@/components/ui/data-card';
 
 export default function LedgerPage() {
   const { accounts, entries, adapter } = useAccounting();
@@ -127,7 +128,7 @@ export default function LedgerPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text- font-semibold">Libro Mayor</h1>
+        <h1 className="text-xl font-semibold">Libro Mayor</h1>
         <Button variant="outline" onClick={handleExport}>
           <Download className="w-4 h-4 mr-2" />
           Exportar Mayor
@@ -178,7 +179,38 @@ export default function LedgerPage() {
             currentQuarter={currentQuarter}
           />
 
-          <div className="border rounded-xl overflow-hidden">
+          {/* Móvil: tarjetas apiladas */}
+          <DataCardList>
+            <div className="rounded-xl border bg-muted/30 px-3 py-2 flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Saldo inicial</span>
+              <span className="font-semibold">{fmt(ledgerState.opening)}</span>
+            </div>
+            {ledgerState.rows.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8 text-sm">No hay movimientos en el período seleccionado</p>
+            ) : (
+              ledgerState.rows.map((r, i) => (
+                <DataCard key={i}>
+                  <DataCardHeader
+                    title={<span className="font-mono text-sm">{r.id}</span>}
+                    subtitle={r.date}
+                    right={<div><div className="text-[11px] uppercase tracking-wide text-muted-foreground">Saldo</div><div className="font-semibold">{fmt(r.balance)}</div></div>}
+                  />
+                  <DataCardGrid className="mt-2">
+                    <DataCardField label="Debe">{r.debit ? fmt(r.debit) : '—'}</DataCardField>
+                    <DataCardField label="Haber">{r.credit ? fmt(r.credit) : '—'}</DataCardField>
+                  </DataCardGrid>
+                  {r.memo && <div className="mt-1 text-xs text-muted-foreground">{r.memo}</div>}
+                </DataCard>
+              ))
+            )}
+            <div className="rounded-xl border bg-muted/50 px-3 py-2 flex items-center justify-between text-sm">
+              <span className="font-medium">Saldo final</span>
+              <span className="font-bold">{fmt(ledgerState.closing)}</span>
+            </div>
+          </DataCardList>
+
+          {/* Escritorio: tabla */}
+          <div className="border rounded-xl overflow-hidden hidden sm:block">
             <Table>
               <TableHeader>
                 <TableRow>

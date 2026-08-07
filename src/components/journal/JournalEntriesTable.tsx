@@ -8,6 +8,7 @@ import { AccountLabel } from './AccountLabel';
 import { JournalEntry, Account } from '@/accounting/types';
 import { fmt, round2, cmpEntryOrder } from '@/accounting/utils';
 import { Badge } from '@/components/ui/badge';
+import { DataCard, DataCardHeader, DataCardActions, DataCardList } from '@/components/ui/data-card';
 
 interface JournalEntriesTableProps {
   entries: JournalEntry[];
@@ -48,7 +49,52 @@ export function JournalEntriesTable({
         </div>
       </CardHeader>
       <CardContent>
-        <div className="border rounded-xl overflow-hidden">
+        {/* Móvil: tarjetas apiladas */}
+        <DataCardList>
+          {sortedEntries.filter(e => e.lines.length > 0).length === 0 ? (
+            <p className="text-center text-muted-foreground py-8 text-sm">No hay asientos registrados para {selectedQuarter}</p>
+          ) : (
+            sortedEntries.filter(e => e.lines.length > 0).map(e => {
+              const entryDiff = e.lines.reduce((sum, l) => sum + l.debit - l.credit, 0);
+              const isUnbalanced = Math.abs(round2(entryDiff)) >= 0.01;
+              return (
+                <DataCard key={e.id} className={isUnbalanced ? 'border-red-300 dark:border-red-800' : ''}>
+                  <DataCardHeader
+                    title={<span className="font-mono text-sm">{e.id}</span>}
+                    subtitle={<>{e.date}{e.entry_time ? ` ${e.entry_time}` : ''}</>}
+                    right={isUnbalanced
+                      ? <Badge variant="destructive" className="text-xs flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{fmt(round2(entryDiff))}</Badge>
+                      : undefined}
+                  />
+                  <div className="mt-2 pt-2 border-t text-sm space-y-1">
+                    {e.lines.map((l, i) => {
+                      const a = accounts.find(x => x.id === l.account_id);
+                      return (
+                        <div key={i} className="flex gap-2 items-center">
+                          <AccountLabel accountId={l.account_id} accounts={accounts} line={l} />
+                          <span className="flex-1 truncate text-xs">{a?.name}</span>
+                          <span className="w-20 text-right tabular-nums text-xs">{l.debit ? fmt(l.debit) : ''}</span>
+                          <span className="w-20 text-right tabular-nums text-xs">{l.credit ? fmt(l.credit) : ''}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {e.memo && <div className="mt-1 text-muted-foreground italic text-xs">{e.memo}</div>}
+                  {!isReadOnly && (
+                    <DataCardActions className="mt-2 pt-2 border-t">
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => onEdit(e)} disabled={!!e.void_of}><Pencil className="w-3.5 h-3.5 mr-1" />Editar</Button>
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => onVoid(e)}><Undo2 className="w-3.5 h-3.5 mr-1" />Anular</Button>
+                      <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => onDelete(e.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                    </DataCardActions>
+                  )}
+                </DataCard>
+              );
+            })
+          )}
+        </DataCardList>
+
+        {/* Escritorio: tabla */}
+        <div className="border rounded-xl overflow-hidden hidden sm:block">
           <Table>
             <TableHeader>
               <TableRow>
