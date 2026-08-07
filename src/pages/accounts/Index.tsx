@@ -19,6 +19,7 @@ import { RenameAccountCodeModal } from '@/components/accounts/RenameAccountCodeM
 import type { AccountClassificationSuggestion } from '@/services/accountAiService';
 import { exportChartOfAccountsToPDF } from '@/services/pdfService';
 import { downloadCSV } from '@/services/exportService';
+import { DataCard, DataCardHeader, DataCardActions, DataCardList } from '@/components/ui/data-card';
 import {
   Account, ACCOUNT_TYPES, SIDES,
   CLASIFICACION_RESULTADO, ClasificacionResultado, CLASIFICACION_RESULTADO_LABELS,
@@ -416,7 +417,40 @@ export default function AccountsPage() {
             </>
           )}
 
-          <div className="border rounded-xl overflow-hidden">
+          {/* Móvil: tarjetas apiladas */}
+          <DataCardList>
+            {accounts.map(a => (
+              <DataCard key={a.id} className={!a.is_active ? 'opacity-60' : ''}>
+                <DataCardHeader
+                  title={<span className="flex items-baseline gap-2"><span className="font-mono text-sm text-muted-foreground">{a.id}</span>{a.name}</span>}
+                  subtitle={<>{a.type} · {a.normal_side}</>}
+                  right={<Badge variant={a.is_active ? 'outline' : 'secondary'} className="text-xs">{a.is_active ? 'Activa' : 'Inactiva'}</Badge>}
+                />
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {a.clasificacion_resultado && <Badge variant="outline" className="text-xs">{CLASIFICACION_RESULTADO_LABELS[a.clasificacion_resultado]}</Badge>}
+                  {a.subclasificacion_resultado && <Badge variant="secondary" className="text-xs">{(SUBCLASIFICACION_RESULTADO_LABELS as any)[a.subclasificacion_resultado] || a.subclasificacion_resultado}</Badge>}
+                  {(a.type === 'ACTIVO' || a.type === 'PASIVO') && a.is_current !== null && a.is_current !== undefined && <Badge variant="outline" className="text-xs">{a.is_current ? 'Corriente' : 'No Corriente'}</Badge>}
+                  {a.clasificacion_flujo && a.clasificacion_flujo !== 'no_aplica' && <Badge variant="outline" className="text-xs">Flujo: {CLASIFICACION_FLUJO_LABELS[a.clasificacion_flujo]}</Badge>}
+                  {a.is_cash_equivalent && <Badge className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-0">Efectivo</Badge>}
+                  {a.es_partida_no_monetaria && <Badge variant="secondary" className="text-xs">No monetaria</Badge>}
+                  {a.es_capital_trabajo && <Badge variant="secondary" className="text-xs">Cap. trabajo</Badge>}
+                  {a.es_financiera && <Badge variant="secondary" className="text-xs">Financiera</Badge>}
+                  {a.es_extraordinaria && <Badge variant="secondary" className="text-xs">Extraordinaria</Badge>}
+                </div>
+                {!isReadOnly && (
+                  <DataCardActions className="mt-2 pt-2 border-t flex-wrap">
+                    <Button size="sm" variant="outline" onClick={() => editAccount(a)}><Pencil className="w-3.5 h-3.5 mr-1" />Editar</Button>
+                    <Button size="sm" variant="outline" onClick={() => setRenamingAccount(a)}><Hash className="w-3.5 h-3.5 mr-1" />Código</Button>
+                    <Button size="sm" variant="outline" onClick={() => toggleAccountStatus(a)}>{a.is_active ? 'Desactivar' : 'Activar'}</Button>
+                    <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => deleteAccount(a.id)} disabled={!canDeleteAccount(a.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                  </DataCardActions>
+                )}
+              </DataCard>
+            ))}
+          </DataCardList>
+
+          {/* Escritorio: tabla */}
+          <div className="border rounded-xl overflow-hidden hidden sm:block">
             <Table>
               <TableHeader>
                 <TableRow>

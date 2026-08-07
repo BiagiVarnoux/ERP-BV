@@ -17,6 +17,7 @@ import { calcularEstadoProducto, InventoryMovement } from '@/components/inventor
 import { ProductKardexModal } from '@/components/inventory/ProductKardexModal';
 import { FifoKardexModal } from '@/components/inventory/FifoKardexModal';
 import { NewProductModal, ProductData } from '@/components/inventory/NewProductModal';
+import { DataCard, DataCardHeader, DataCardGrid, DataCardField, DataCardActions, DataCardList } from '@/components/ui/data-card';
 import {
   Dialog,
   DialogContent,
@@ -259,6 +260,48 @@ export default function InventoryPage() {
               {selectedProducts.length === 0 ? (
                 <p className="text-center text-muted-foreground py-12">No hay productos activos en esta cuenta.</p>
               ) : (
+                <>
+                {/* Móvil: tarjetas apiladas */}
+                <DataCardList>
+                  {selectedProducts.map(p => {
+                    const s = getProductState(p.id);
+                    return (
+                      <DataCard key={p.id}>
+                        <DataCardHeader
+                          title={<span className="flex items-center gap-2"><Badge variant="outline" className="font-mono text-xs shrink-0">{p.codigo}</Badge><span className="break-words">{p.nombre}</span></span>}
+                          subtitle={p.especificacion || undefined}
+                          right={<div><div className="text-[11px] uppercase tracking-wide text-muted-foreground">Valor</div><div className="font-semibold">Bs {fmt(s.saldoValorado)}</div></div>}
+                        />
+                        <DataCardGrid className="mt-3">
+                          <DataCardField label="Saldo">{s.saldo} {p.unidad_medida}</DataCardField>
+                          <DataCardField label="C.U. CPP">Bs {fmt(s.costoUnitario)}</DataCardField>
+                          <DataCardField label="Condición">{p.condicion ? condicionLabel(p.condicion) : '—'}</DataCardField>
+                          <DataCardField label="Último mov.">{s.ultimaFecha || '—'}</DataCardField>
+                        </DataCardGrid>
+                        <DataCardActions className="mt-2 pt-2 border-t flex-wrap">
+                          <Button variant="outline" size="sm" onClick={() => setKardexProduct(p)}><Eye className="w-3.5 h-3.5 mr-1" />CPP</Button>
+                          <Button variant="outline" size="sm" onClick={() => setFifoProduct(p)}><Layers className="w-3.5 h-3.5 mr-1" />FIFO</Button>
+                          {(canEdit || canDelete) && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm"><Pencil className="w-3.5 h-3.5 mr-1" />Editar</Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => { setEditProduct(p); setShowNewProduct(true); }}><Pencil className="w-4 h-4 mr-2" /> Editar</DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => handleArchiveClick(p, 'archivado')}><Archive className="w-4 h-4 mr-2" /> Archivar</DropdownMenuItem>
+                                <DropdownMenuItem className="text-orange-600 focus:text-orange-600" onClick={() => handleArchiveClick(p, 'descontinuado')}><PackageX className="w-4 h-4 mr-2" /> Descontinuar</DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </DataCardActions>
+                      </DataCard>
+                    );
+                  })}
+                </DataCardList>
+
+                {/* Escritorio: tabla */}
+                <div className="hidden sm:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -336,6 +379,8 @@ export default function InventoryPage() {
                     })}
                   </TableBody>
                 </Table>
+                </div>
+                </>
               )}
 
               {/* Archivados contextuales a esta cuenta */}
