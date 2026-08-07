@@ -18,6 +18,7 @@ import { useAccounting } from '@/accounting/AccountingProvider';
 import { AccountCombobox } from '@/components/journal/AccountCombobox';
 import { listCustomers } from '@/domain/customers';
 import type { CustomerRow } from '@/domain/customers';
+import { DataCard, DataCardHeader, DataCardGrid, DataCardField, DataCardActions, DataCardList } from '@/components/ui/data-card';
 import {
   listReceivables,
   createReceivable,
@@ -389,20 +390,20 @@ export default function ReceivablesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
-        <div className="flex rounded-md border overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex rounded-md border overflow-hidden w-full sm:w-auto">
           {(['all', 'open', 'vencidos', 'paid'] as EstadoFilter[]).map(f => (
             <button
               key={f}
               onClick={() => setEstadoFilter(f)}
-              className={`px-3 py-1.5 text-sm transition-colors ${estadoFilter === f ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+              className={`flex-1 sm:flex-none px-3 py-1.5 text-sm transition-colors ${estadoFilter === f ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
             >
               {estadoFilterLabel(f)}
             </button>
           ))}
         </div>
         <Input
-          className="max-w-xs"
+          className="w-full sm:max-w-xs"
           placeholder="Buscar por Nº documento o cliente..."
           value={search}
           onChange={e => setSearch(e.target.value)}
@@ -420,7 +421,41 @@ export default function ReceivablesPage() {
           <p>No hay cuentas por cobrar{canalFilter !== 'all' ? ` para ${activeTab.label}` : ''} registradas.</p>
         </div>
       ) : (
-        <div className="rounded-md border">
+        <>
+        {/* Móvil: tarjetas apiladas */}
+        <DataCardList>
+          {filtered.map(row => {
+            const venc = isVencido(row);
+            const canPay = canEdit && row.estado !== 'paid' && row.estado !== 'voided';
+            return (
+              <DataCard key={row.id} className={row.estado === 'voided' ? 'opacity-60' : ''}>
+                <DataCardHeader
+                  title={<span className="font-mono text-sm">{row.numero_documento}</span>}
+                  subtitle={<span className="flex items-center gap-1.5">{row.customer_razon_social ?? 'Sin cliente'}{row.sale_canal && <CanalBadge canal={row.sale_canal} />}</span>}
+                  right={estadoBadge(row)}
+                />
+                <DataCardGrid className="mt-3">
+                  <DataCardField label="Monto original"><span className="font-mono text-[10px] mr-1 text-muted-foreground">{row.moneda}</span>{fmt(row.monto_original)}</DataCardField>
+                  <DataCardField label="Pendiente"><span className={row.monto_pendiente > 0 ? 'font-semibold' : ''}>{fmt(row.monto_pendiente)}</span></DataCardField>
+                  <DataCardField label="Emisión">{row.fecha_emision}</DataCardField>
+                  <DataCardField label="Vencimiento">
+                    {row.fecha_vencimiento
+                      ? <span className="flex items-center gap-1.5">{row.fecha_vencimiento}{venc && <Badge variant="destructive" className="text-[10px] px-1 py-0">VENCIDO</Badge>}</span>
+                      : <span className="text-muted-foreground">Sin fecha</span>}
+                  </DataCardField>
+                </DataCardGrid>
+                {canPay && (
+                  <DataCardActions className="mt-2 pt-2 border-t">
+                    <Button size="sm" variant="outline" className="w-full" onClick={() => openPayModal(row)}>Registrar cobro</Button>
+                  </DataCardActions>
+                )}
+              </DataCard>
+            );
+          })}
+        </DataCardList>
+
+        {/* Escritorio: tabla */}
+        <div className="rounded-md border hidden sm:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -498,6 +533,7 @@ export default function ReceivablesPage() {
             </TableBody>
           </Table>
         </div>
+        </>
       )}
 
       {/* ── Register payment modal ─────────────────────────────────────────── */}

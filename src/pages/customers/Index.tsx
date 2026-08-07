@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { updateCustomer } from '@/domain/customers';
 import type { CustomerRow } from '@/domain/customers';
 import { CustomerModal } from '@/components/customers/CustomerModal';
+import { DataCard, DataCardHeader, DataCardGrid, DataCardField, DataCardActions, DataCardList } from '@/components/ui/data-card';
 
 const TIPO_LABELS: Record<string, string> = {
   empresa: 'Empresa',
@@ -119,7 +120,7 @@ export default function CustomersPage() {
       <ReadOnlyBanner />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text- font-semibold flex items-center gap-2">
+        <h1 className="text-xl font-semibold flex items-center gap-2">
           <Users className="w-6 h-6" /> Clientes
         </h1>
         {canCreate && (
@@ -129,9 +130,9 @@ export default function CustomersPage() {
         )}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <Input
-          className="max-w-xs"
+          className="w-full sm:max-w-xs"
           placeholder="Buscar por razón social, NIT o código..."
           value={search}
           onChange={e => setSearch(e.target.value)}
@@ -157,7 +158,41 @@ export default function CustomersPage() {
           <p>No hay clientes{search ? ' que coincidan con la búsqueda' : ''}.</p>
         </div>
       ) : (
-        <div className="rounded-md border">
+        <>
+        {/* Móvil: tarjetas apiladas */}
+        <DataCardList>
+          {filtered.map(c => (
+            <DataCard key={c.id} className={!c.activo ? 'opacity-60' : ''}>
+              <DataCardHeader
+                title={<span className="flex items-center gap-2">{c.razon_social}{!c.activo && <Badge variant="outline" className="text-xs text-muted-foreground">Inactivo</Badge>}</span>}
+                subtitle={<>{c.codigo ? <span className="font-mono">{c.codigo}</span> : null}{c.codigo ? ' · ' : ''}{TIPO_LABELS[c.tipo] ?? c.tipo}</>}
+                right={c.credito_autorizado > 0 ? <div><div className="text-[11px] uppercase tracking-wide text-muted-foreground">Crédito</div><div className="font-semibold">Bs {fmt(c.credito_autorizado)}</div></div> : undefined}
+              />
+              <DataCardGrid className="mt-3">
+                <DataCardField label="NIT"><span className="font-mono">{c.nit ?? '—'}</span></DataCardField>
+                <DataCardField label="Ciudad">{c.ciudad ?? '—'}</DataCardField>
+                <DataCardField label="Teléfono">{c.telefono ?? '—'}</DataCardField>
+              </DataCardGrid>
+              {(canEdit || canDelete) && (
+                <DataCardActions className="mt-2 pt-2 border-t">
+                  {canEdit && (
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => openEdit(c)}>
+                      <Pencil className="w-3.5 h-3.5 mr-1.5" /> Editar
+                    </Button>
+                  )}
+                  {canDelete && c.activo && (
+                    <Button variant="outline" size="sm" className="flex-1 text-destructive hover:text-destructive" onClick={() => startDeactivate(c)}>
+                      <UserMinus className="w-3.5 h-3.5 mr-1.5" /> Desactivar
+                    </Button>
+                  )}
+                </DataCardActions>
+              )}
+            </DataCard>
+          ))}
+        </DataCardList>
+
+        {/* Escritorio: tabla */}
+        <div className="rounded-md border hidden sm:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -219,6 +254,7 @@ export default function CustomersPage() {
             </TableBody>
           </Table>
         </div>
+        </>
       )}
 
       <CustomerModal
