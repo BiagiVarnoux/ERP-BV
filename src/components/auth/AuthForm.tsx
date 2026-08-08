@@ -4,9 +4,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from './AuthProvider';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { Check, X } from 'lucide-react';
+import { Check, X, ArrowLeft, MailCheck } from 'lucide-react';
+
+const emailSchema = z
+  .string()
+  .trim()
+  .email({ message: 'Email inválido' })
+  .max(255, { message: 'Email demasiado largo' });
 
 // ─── Password rules ───────────────────────────────────────────────────────────
 
@@ -61,11 +68,46 @@ function PasswordStrength({ password }: { password: string }) {
 
 export function AuthForm() {
   const [isLogin, setIsLogin] = useState(true);
+  const [forgot, setForgot] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [invitationCode, setInvitationCode] = useState('');
   const [loading, setLoading] = useState(false);
   const { signIn, signUp } = useAuth();
+
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const parsed = emailSchema.safeParse(email.trim());
+      if (!parsed.success) {
+        toast.error(parsed.error.errors[0].message);
+        return;
+      }
+      const { error } = await supabase.auth.resetPasswordForEmail(parsed.data, {
+        redirectTo: `${window.location.origin}/`,
+      });
+      if (error) throw error;
+      // Mensaje neutro: no revelar si el email existe o no.
+      setResetSent(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/rate limit/i.test(msg) || /too many requests/i.test(msg)) {
+        toast.error('Demasiados intentos. Espera unos minutos antes de volver a intentarlo.');
+      } else {
+        toast.error(`Error al enviar el enlace: ${msg}`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const backToLogin = () => {
+    setForgot(false);
+    setResetSent(false);
+    setPassword('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,8 +174,64 @@ export function AuthForm() {
     }
   };
 
+  // ── Vista: recuperar contraseña ────────────────────────────────────────────
+  if (forgot) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background to-muted p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-bold">Recuperar contraseña</CardTitle>
+            <CardDescription>
+              {resetSent
+                ? 'Revisa tu correo para continuar'
+                : 'Te enviaremos un enlace para restablecerla'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {resetSent ? (
+              <div className="space-y-4 text-center">
+                <div className="flex justify-center">
+                  <MailCheck className="h-12 w-12 text-green-600" />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Si <span className="font-medium text-foreground">{email.trim()}</span> tiene una cuenta,
+                  te enviamos un enlace para restablecer tu contraseña. Revisa tu bandeja de entrada
+                  (y la carpeta de spam).
+                </p>
+                <Button variant="outline" className="w-full" onClick={backToLogin}>
+                  <ArrowLeft className="h-4 w-4 mr-2" /> Volver a iniciar sesión
+                </Button>
+              </div>
+            ) : (
+              <form onSubmit={handleForgot} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="forgot-email">Email</Label>
+                  <Input
+                    id="forgot-email"
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    required
+                    autoFocus
+                    placeholder="tu@email.com"
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? 'Enviando...' : 'Enviar enlace de recuperación'}
+                </Button>
+                <Button type="button" variant="link" className="w-full text-sm" onClick={backToLogin}>
+                  <ArrowLeft className="h-4 w-4 mr-1" /> Volver a iniciar sesión
+                </Button>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background to-muted">
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background to-muted p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">
@@ -172,6 +270,17 @@ export function AuthForm() {
               />
               {/* Show strength indicator only on sign-up */}
               {!isLogin && <PasswordStrength password={password} />}
+              {isLogin && (
+                <div className="text-right">
+                  <button
+                    type="button"
+                    onClick={() => { setForgot(true); setResetSent(false); }}
+                    className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
+              )}
             </div>
 
             {!isLogin && (
