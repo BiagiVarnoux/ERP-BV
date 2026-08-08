@@ -1,0 +1,32 @@
+{
+  "name": "ERP - B&V",
+  "short_name": "ERP B&V",
+  "description": "Sistema contable Biagi & Varnoux: plan de cuentas, libro diario, mayor y reportes.",
+  "lang": "es-BO",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a1512",
+  "theme_color": "#0a1512",
+  "icons": [
+    {
+      "src": "/app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
