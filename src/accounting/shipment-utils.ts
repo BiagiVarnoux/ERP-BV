@@ -273,6 +273,100 @@ export interface CostoDetalle {
   bateria: number;
 }
 
+// ─── Desglose TOTAL por producto (reconciliado) ────────────────────────────────
+// El detalle por unidad, al redondearse a 2 decimales y multiplicarse por
+// cantidad, acumula un pequeño desfase (la suma no cuadra con lo pagado). Este
+// helper devuelve el TOTAL por producto de cada componente, ajustando el
+// residuo de redondeo del flete y el manipuleo al producto de mayor peso — así
+// la suma de cada columna cuadra exacto con lo realmente pagado. GA e IVA usan
+// los montos por producto (ga_monto/iva_monto), que ya son exactos.
+
+export interface DesgloseTotalProducto {
+  product: ShipmentProduct;
+  precioBsTotal: number;
+  fleteTotal: number;
+  gaTotal: number;
+  ivaTotal: number;
+  manipuleoTotal: number;
+  bateriaTotal: number;
+  costoSinIvaTotal: number;
+  costoConIvaTotal: number;
+}
+
+export interface DesgloseTotales {
+  precioBs: number; flete: number; ga: number; iva: number;
+  manipuleo: number; bateria: number; costoSinIva: number; costoConIva: number;
+}
+
+/** Reparte `total` entre productos según su valor exacto, redondea a 2 dec y
+ *  ajusta el residuo al producto de mayor valor, para que Σ = total. */
+function repartirReconciliado(
+  products: ShipmentProduct[],
+  exacto: Record<string, number>,
+  total: number,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  let suma = 0;
+  for (const p of products) { out[p.id] = round2(exacto[p.id] || 0); suma = round2(suma + out[p.id]); }
+  const residuo = round2(total - suma);
+  if (Math.abs(residuo) >= 0.01 && products.length > 0) {
+    const mayor = products.reduce((a, b) => (exacto[b.id] || 0) > (exacto[a.id] || 0) ? b : a);
+    out[mayor.id] = round2(out[mayor.id] + residuo);
+  }
+  return out;
+}
+
+export function calcDesgloseReconciliado(shipment: Shipment): {
+  filas: DesgloseTotalProducto[];
+  totales: DesgloseTotales;
+} {
+  const { products, tc_paralelo, tc_oficial, flete_total_bs = 0, gastos_aduana } = shipment;
+  const metodo = shipment.metodo_peso ?? 'automatico';
+  const pesoTotal = calcPesoTotalEmbarque(products, metodo);
+  const totalManipuleo = round2(gastos_aduana.reduce((s, g) => s + g.monto, 0));
+
+  const fleteExacto: Record<string, number> = {};
+  const manipExacto: Record<string, number> = {};
+  for (const p of products) {
+    const peso = getPesoEfectivoPorMetodo(p, metodo) ?? 0;
+    const part = pesoTotal > 0 ? peso / pesoTotal : 0;
+    fleteExacto[p.id] = (flete_total_bs || 0) * part;
+    manipExacto[p.id] = totalManipuleo * part;
+  }
+  const fleteMap = repartirReconciliado(products, fleteExacto, flete_total_bs || 0);
+  const manipMap = repartirReconciliado(products, manipExacto, totalManipuleo);
+
+  const filas: DesgloseTotalProducto[] = products.map(p => {
+    const cantidad = p.cantidad || 1;
+    const precioBsTotal   = round2(calcTotalBsProducto(p, tc_paralelo));
+    const fleteTotal      = fleteMap[p.id] ?? 0;
+    const manipuleoTotal  = manipMap[p.id] ?? 0;
+    const gaTotal = p.ga_monto != null
+      ? round2(p.ga_monto)
+      : round2(calcGAEstimado(p, tc_oficial, (fleteTotal / cantidad)) * cantidad);
+    const ivaTotal = p.iva_monto != null
+      ? round2(p.iva_monto)
+      : round2(calcIVAEstimado(p, tc_oficial, gaTotal / cantidad) * cantidad);
+    const bateriaTotal = round2((p.tiene_bateria ? p.costo_bateria : 0) * cantidad);
+    const costoSinIvaTotal = round2(precioBsTotal + fleteTotal + gaTotal + manipuleoTotal + bateriaTotal);
+    const costoConIvaTotal = round2(costoSinIvaTotal + ivaTotal);
+    return { product: p, precioBsTotal, fleteTotal, gaTotal, ivaTotal, manipuleoTotal, bateriaTotal, costoSinIvaTotal, costoConIvaTotal };
+  });
+
+  const sum = (f: (x: DesgloseTotalProducto) => number) => round2(filas.reduce((s, x) => s + f(x), 0));
+  const totales: DesgloseTotales = {
+    precioBs:    sum(x => x.precioBsTotal),
+    flete:       sum(x => x.fleteTotal),
+    ga:          sum(x => x.gaTotal),
+    iva:         sum(x => x.ivaTotal),
+    manipuleo:   sum(x => x.manipuleoTotal),
+    bateria:     sum(x => x.bateriaTotal),
+    costoSinIva: sum(x => x.costoSinIvaTotal),
+    costoConIva: sum(x => x.costoConIvaTotal),
+  };
+  return { filas, totales };
+}
+
 // ─── Generación de número de embarque ────────────────────────────────────────
 
 export function generateShipmentNumber(existing: Shipment[]): string {

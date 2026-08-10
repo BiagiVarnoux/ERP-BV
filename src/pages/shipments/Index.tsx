@@ -38,7 +38,7 @@ import { ShipmentStorage } from '@/accounting/shipment-storage';
 import {
   calcPrecioBs, calcPrecioBOB, calcPesoVolumen, calcPesoEfectivo, getPesoEfectivoPorMetodo,
   calcGAEstimado, calcIVAEstimado, calcTotalBsProducto,
-  calcCostoFinalPorProducto, generateShipmentNumber,
+  calcCostoFinalPorProducto, generateShipmentNumber, calcDesgloseReconciliado,
 } from '@/accounting/shipment-utils';
 import { ShipmentCloseModal, ProductLink } from '@/components/inventory/ShipmentCloseModal';
 import { FileAttachments } from '@/components/shipments/FileAttachments';
@@ -2126,6 +2126,8 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
 function CostosFinalesTab({ s }: { s: Shipment }) {
   const costos = calcCostoFinalPorProducto(s);
   const [showWithIVA, setShowWithIVA] = useState(false);
+  const [verTotales, setVerTotales] = useState(false);
+  const desglose = useMemo(() => calcDesgloseReconciliado(s), [s]);
 
   // Total por filas (suma de costos unitarios × cantidad) — valor del Kárdex
   const totalFilas = round2(costos.reduce((sum, { product, costo_unitario, detalle }) => {
@@ -2160,20 +2162,82 @@ function CostosFinalesTab({ s }: { s: Shipment }) {
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-xs text-muted-foreground">
-          {showWithIVA
-            ? 'Mostrando costo unitario + IVA (informativo — no es el costo contable registrado en Kárdex).'
-            : 'Costo contable registrado en Kárdex (sin IVA, ya que es Crédito Fiscal).'}
+          {verTotales
+            ? 'Total pagado por producto (todas sus unidades). La suma de cada columna cuadra exacto con lo pagado — útil para cargar cotizaciones.'
+            : showWithIVA
+              ? 'Mostrando costo unitario + IVA (informativo — no es el costo contable registrado en Kárdex).'
+              : 'Costo contable registrado en Kárdex (sin IVA, ya que es Crédito Fiscal).'}
         </p>
-        <Button
-          size="sm"
-          variant={showWithIVA ? 'default' : 'outline'}
-          onClick={() => setShowWithIVA(v => !v)}
-        >
-          {showWithIVA ? 'Ver costo sin IVA (contable)' : 'Ver costo + IVA'}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant={verTotales ? 'default' : 'outline'}
+            onClick={() => setVerTotales(v => !v)}
+          >
+            {verTotales ? 'Ver por unidad' : 'Ver total por producto'}
+          </Button>
+          {!verTotales && (
+            <Button
+              size="sm"
+              variant={showWithIVA ? 'default' : 'outline'}
+              onClick={() => setShowWithIVA(v => !v)}
+            >
+              {showWithIVA ? 'Ver costo sin IVA (contable)' : 'Ver costo + IVA'}
+            </Button>
+          )}
+        </div>
       </div>
+
+      {verTotales ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Producto</TableHead>
+              <TableHead className="text-right">Cant.</TableHead>
+              <TableHead className="text-right">Precio Bs</TableHead>
+              <TableHead className="text-right">Flete</TableHead>
+              <TableHead className="text-right">GA</TableHead>
+              <TableHead className="text-right">IVA aduana</TableHead>
+              <TableHead className="text-right">Manipuleo</TableHead>
+              <TableHead className="text-right font-semibold">Costo (sin IVA)</TableHead>
+              <TableHead className="text-right">Costo (con IVA)</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {desglose.filas.map(f => (
+              <TableRow key={f.product.id}>
+                <TableCell>
+                  <p className="font-medium text-sm">{f.product.nombre}</p>
+                  {f.product.especificacion && (
+                    <p className="text-xs text-muted-foreground">{f.product.especificacion}</p>
+                  )}
+                </TableCell>
+                <TableCell className="text-right">{f.product.cantidad}</TableCell>
+                <TableCell className="text-right">{fmt(f.precioBsTotal)}</TableCell>
+                <TableCell className="text-right">{fmt(f.fleteTotal)}</TableCell>
+                <TableCell className="text-right">{fmt(f.gaTotal)}</TableCell>
+                <TableCell className="text-right">{fmt(f.ivaTotal)}</TableCell>
+                <TableCell className="text-right">{fmt(f.manipuleoTotal)}</TableCell>
+                <TableCell className="text-right font-semibold text-primary">{fmt(f.costoSinIvaTotal)}</TableCell>
+                <TableCell className="text-right">{fmt(f.costoConIvaTotal)}</TableCell>
+              </TableRow>
+            ))}
+            <TableRow className="font-bold bg-muted/30">
+              <TableCell>TOTALES</TableCell>
+              <TableCell></TableCell>
+              <TableCell className="text-right">{fmt(desglose.totales.precioBs)}</TableCell>
+              <TableCell className="text-right">{fmt(desglose.totales.flete)}</TableCell>
+              <TableCell className="text-right">{fmt(desglose.totales.ga)}</TableCell>
+              <TableCell className="text-right">{fmt(desglose.totales.iva)}</TableCell>
+              <TableCell className="text-right">{fmt(desglose.totales.manipuleo)}</TableCell>
+              <TableCell className="text-right text-primary">{fmt(desglose.totales.costoSinIva)}</TableCell>
+              <TableCell className="text-right">{fmt(desglose.totales.costoConIva)}</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      ) : (
 
       <Table>
         <TableHeader>
@@ -2236,6 +2300,7 @@ function CostosFinalesTab({ s }: { s: Shipment }) {
           </TableRow>
         </TableBody>
       </Table>
+      )}
     </div>
   );
 }
