@@ -136,12 +136,14 @@ export interface LicitacionProducto {
 
   // Tributos aduaneros
   ga_pct: number;           // % gravamen arancelario (ej: 5)
-  ga_manual?: number;       // GA en Bs/unidad (override manual del calculado)
+  ga_manual?: number;       // GA manual (override del calculado); por unidad o total según el flag
   usa_ga_manual: boolean;   // true = usar ga_manual
+  ga_manual_es_total?: boolean;  // true = ga_manual es el total (todas las unidades); false/undefined = por unidad
 
   // Override de IVA aduana
-  iva_aduana_manual?: number;  // IVA aduana en Bs/unidad (override manual)
+  iva_aduana_manual?: number;  // IVA aduana manual (override); por unidad o total según el flag
   usa_iva_manual: boolean;     // true = usar iva_aduana_manual
+  iva_manual_es_total?: boolean; // true = iva_aduana_manual es el total; false/undefined = por unidad
 
   // Batería
   tiene_bateria: boolean;

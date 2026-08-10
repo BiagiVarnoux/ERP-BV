@@ -127,15 +127,17 @@ export function calcProducto(p: LicitacionProducto, defaults?: CalcDefaults): Pr
   const cif = round2(precio_bob + flete_cif + precio_bob * GA_CIF_EXTRA);
 
   // — GA (Gravamen Arancelario): CIF × ga% —
+  // El override manual puede venir por unidad o como total (todas las unidades);
+  // si es total, se divide entre la cantidad para obtener el valor por unidad.
   const ga_calculado = round2(cif * (p.ga_pct / 100));
   const ga           = (p.usa_ga_manual && p.ga_manual != null)
-    ? round2(p.ga_manual)
+    ? round2(p.ga_manual_es_total ? p.ga_manual / cantidad : p.ga_manual)
     : ga_calculado;
 
   // — IVA aduanero: (CIF + GA) × 14.94% —
   const iva_aduana_calculado = round2((cif + ga) * IVA_ADUANA_RATE);
   const iva_aduana           = (p.usa_iva_manual && p.iva_aduana_manual != null)
-    ? round2(p.iva_aduana_manual)
+    ? round2(p.iva_manual_es_total ? p.iva_aduana_manual / cantidad : p.iva_aduana_manual)
     : iva_aduana_calculado;
 
   const impuestos = round2(ga + iva_aduana);
@@ -393,8 +395,10 @@ export function emptyProducto(licitacion_id: string, orden: number): LicitacionP
     ga_pct:          5,
     ga_manual:       undefined,
     usa_ga_manual:   false,
+    ga_manual_es_total: false,
     iva_aduana_manual: undefined,
     usa_iva_manual:  false,
+    iva_manual_es_total: false,
     tiene_bateria:   false,
     costo_bateria:   0,
     precio_entidad:  undefined,

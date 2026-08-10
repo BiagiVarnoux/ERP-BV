@@ -968,17 +968,32 @@ function CostoImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefa
                 onChange={e => onChange({ usa_ga_manual: e.target.checked })}
                 className="rounded"
               />
-              GA manual (Bs/unidad)
+              GA manual {p.ga_manual_es_total ? '(Bs total)' : '(Bs/unidad)'}
             </label>
             {p.usa_ga_manual && (
-              <NumInput
-                value={p.ga_manual}
-                onChange={n('ga_manual')}
-                min="0"
-                step="0.01"
-                placeholder={`auto: ${fmt(calc.ga_calculado)}`}
-                className="w-28"
-              />
+              <>
+                <NumInput
+                  value={p.ga_manual}
+                  onChange={n('ga_manual')}
+                  min="0"
+                  step="0.01"
+                  placeholder={`auto: ${fmt(calc.ga_calculado)}`}
+                  className="w-28"
+                />
+                <div className="flex gap-1 text-[10px]">
+                  <button type="button" onClick={() => onChange({ ga_manual_es_total: false })}
+                    className={`px-1.5 py-0.5 rounded border ${!p.ga_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
+                    por unidad
+                  </button>
+                  <button type="button" onClick={() => onChange({ ga_manual_es_total: true })}
+                    className={`px-1.5 py-0.5 rounded border ${p.ga_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
+                    total
+                  </button>
+                </div>
+                {p.ga_manual_es_total && p.ga_manual != null && (p.cantidad || 0) > 0 && (
+                  <p className="text-[10px] text-muted-foreground">= {fmt(round2(p.ga_manual / p.cantidad))}/u</p>
+                )}
+              </>
             )}
             {!p.usa_ga_manual && (
               <p className="text-[10px] text-muted-foreground">Auto: Bs {fmt(calc.ga_calculado)}</p>
@@ -994,17 +1009,32 @@ function CostoImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefa
                 onChange={e => onChange({ usa_iva_manual: e.target.checked })}
                 className="rounded"
               />
-              IVA aduana manual (Bs/unidad)
+              IVA aduana manual {p.iva_manual_es_total ? '(Bs total)' : '(Bs/unidad)'}
             </label>
             {p.usa_iva_manual && (
-              <NumInput
-                value={p.iva_aduana_manual}
-                onChange={n('iva_aduana_manual')}
-                min="0"
-                step="0.01"
-                placeholder={`auto: ${fmt(calc.iva_aduana_calculado)}`}
-                className="w-28"
-              />
+              <>
+                <NumInput
+                  value={p.iva_aduana_manual}
+                  onChange={n('iva_aduana_manual')}
+                  min="0"
+                  step="0.01"
+                  placeholder={`auto: ${fmt(calc.iva_aduana_calculado)}`}
+                  className="w-28"
+                />
+                <div className="flex gap-1 text-[10px]">
+                  <button type="button" onClick={() => onChange({ iva_manual_es_total: false })}
+                    className={`px-1.5 py-0.5 rounded border ${!p.iva_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
+                    por unidad
+                  </button>
+                  <button type="button" onClick={() => onChange({ iva_manual_es_total: true })}
+                    className={`px-1.5 py-0.5 rounded border ${p.iva_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
+                    total
+                  </button>
+                </div>
+                {p.iva_manual_es_total && p.iva_aduana_manual != null && (p.cantidad || 0) > 0 && (
+                  <p className="text-[10px] text-muted-foreground">= {fmt(round2(p.iva_aduana_manual / p.cantidad))}/u</p>
+                )}
+              </>
             )}
             {!p.usa_iva_manual && (
               <p className="text-[10px] text-muted-foreground">Auto: Bs {fmt(calc.iva_aduana_calculado)}</p>
