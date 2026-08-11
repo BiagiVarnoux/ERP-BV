@@ -70,6 +70,7 @@ export function calcProducto(p: LicitacionProducto, defaults?: CalcDefaults): Pr
       peso_vol: 0,
       peso: 0,
       envio: 0,
+      envio_calculado: 0,
       flete_cif: 0,
       cif: 0,
       ga_calculado: 0,
@@ -78,6 +79,7 @@ export function calcProducto(p: LicitacionProducto, defaults?: CalcDefaults): Pr
       iva_aduana,
       impuestos: iva_aduana,
       manipuleo: 0,
+      manipuleo_calculado: 0,
       bateria,
       total_individual,
       total_import,
@@ -118,7 +120,12 @@ export function calcProducto(p: LicitacionProducto, defaults?: CalcDefaults): Pr
     : peso_vol;
 
   // — Envío por unidad: peso × tarifa_envio_USD × tc_envio —
-  const envio = round2(peso * (p.tarifa_envio || 0) * tcEnvio);
+  // El override manual (flete en Bs) reemplaza el cálculo por peso/tarifa;
+  // puede venir por unidad o como total (todas las unidades).
+  const envio_calculado = round2(peso * (p.tarifa_envio || 0) * tcEnvio);
+  const envio = (p.usa_flete_manual && p.flete_manual != null)
+    ? round2(p.flete_manual_es_total ? p.flete_manual / cantidad : p.flete_manual)
+    : envio_calculado;
 
   // — Flete computable en el CIF: solo una fracción del envío entra al valor aduanero —
   const flete_cif = round2(envio * (fleteCifPct / 100));
@@ -142,8 +149,11 @@ export function calcProducto(p: LicitacionProducto, defaults?: CalcDefaults): Pr
 
   const impuestos = round2(ga + iva_aduana);
 
-  // — Manipuleo: peso × tarifa_manipuleo —
-  const manipuleo = round2(peso * (p.tarifa_manipuleo || 0));
+  // — Manipuleo: peso × tarifa_manipuleo — con override manual opcional (Bs) —
+  const manipuleo_calculado = round2(peso * (p.tarifa_manipuleo || 0));
+  const manipuleo = (p.usa_manipuleo_manual && p.manipuleo_manual != null)
+    ? round2(p.manipuleo_manual_es_total ? p.manipuleo_manual / cantidad : p.manipuleo_manual)
+    : manipuleo_calculado;
 
   // — Batería —
   const bateria = p.tiene_bateria ? round2(p.costo_bateria) : 0;
@@ -188,6 +198,7 @@ export function calcProducto(p: LicitacionProducto, defaults?: CalcDefaults): Pr
     peso_vol,
     peso,
     envio,
+    envio_calculado,
     flete_cif,
     cif,
     ga_calculado,
@@ -196,6 +207,7 @@ export function calcProducto(p: LicitacionProducto, defaults?: CalcDefaults): Pr
     iva_aduana,
     impuestos,
     manipuleo,
+    manipuleo_calculado,
     bateria,
     total_individual,
     total_import,
@@ -393,6 +405,12 @@ export function emptyProducto(licitacion_id: string, orden: number): LicitacionP
     tarifa_envio:    12,
     tarifa_manipuleo: 25,
     ga_pct:          5,
+    flete_manual:       undefined,
+    usa_flete_manual:   false,
+    flete_manual_es_total: false,
+    manipuleo_manual:   undefined,
+    usa_manipuleo_manual: false,
+    manipuleo_manual_es_total: false,
     ga_manual:       undefined,
     usa_ga_manual:   false,
     ga_manual_es_total: false,

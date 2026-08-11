@@ -134,6 +134,16 @@ export interface LicitacionProducto {
   tarifa_envio: number;    // USD/kg tarifa aérea
   tarifa_manipuleo: number; // Bs/kg manipuleo
 
+  // Override de flete manual (Bs) — reemplaza el cálculo por peso/tarifa
+  flete_manual?: number;        // flete manual (Bs); por unidad o total según el flag
+  usa_flete_manual?: boolean;   // true = usar flete_manual en vez de peso × tarifa × tc_envio
+  flete_manual_es_total?: boolean; // true = flete_manual es el total (todas las unidades); false/undefined = por unidad
+
+  // Override de manipuleo manual (Bs) — reemplaza el cálculo por peso × tarifa_manipuleo
+  manipuleo_manual?: number;
+  usa_manipuleo_manual?: boolean;
+  manipuleo_manual_es_total?: boolean;
+
   // Tributos aduaneros
   ga_pct: number;           // % gravamen arancelario (ej: 5)
   ga_manual?: number;       // GA manual (override del calculado); por unidad o total según el flag
@@ -241,7 +251,8 @@ export interface ProductoCalc {
   precio_bob: number;          // precio_usd × 6.97 (para tributos aduaneros)
   peso_vol: number;            // (m1×m2×m3) / 5000 — siempre calculado para referencia
   peso: number;                // peso efectivo usado (volumétrico o bruto)
-  envio: number;               // peso × tarifa_envio × tc_envio (costo REAL, 100%)
+  envio: number;               // envío efectivo por unidad (calculado o manual en Bs)
+  envio_calculado: number;     // envío auto por peso/tarifa (referencia al usar override manual)
   flete_cif: number;           // porción del envío que entra a la base CIF (envio × flete_cif_pct%)
   cif: number;                 // base aduanera = precio_bob + flete_cif + precio_bob×2%
   ga_calculado: number;        // GA auto-calculado (para mostrar como referencia al usar override)
@@ -249,7 +260,8 @@ export interface ProductoCalc {
   iva_aduana_calculado: number; // IVA aduana auto-calculado (para referencia)
   iva_aduana: number;          // IVA aduana efectivo (calculado o manual)
   impuestos: number;           // ga + iva_aduana
-  manipuleo: number;           // peso × tarifa_manipuleo
+  manipuleo: number;           // manipuleo efectivo por unidad (calculado o manual)
+  manipuleo_calculado: number; // manipuleo auto por peso × tarifa (referencia al usar override)
   bateria: number;             // costo_bateria si tiene_bateria, si no 0
   total_individual: number;    // costo importación por unidad
 

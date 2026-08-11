@@ -959,6 +959,88 @@ function CostoImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefa
             <Input className="h-7 text-xs" value={p.hs_code || ''} onChange={s('hs_code')} placeholder="0000.00" />
           </div>
 
+          {/* Flete manual override (Bs) — reemplaza peso × tarifa × tc_envio */}
+          <div className="space-y-1">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={!!p.usa_flete_manual}
+                onChange={e => onChange({ usa_flete_manual: e.target.checked })}
+                className="rounded"
+              />
+              Flete manual {p.flete_manual_es_total ? '(Bs total)' : '(Bs/unidad)'}
+            </label>
+            {p.usa_flete_manual && (
+              <>
+                <NumInput
+                  value={p.flete_manual}
+                  onChange={n('flete_manual')}
+                  min="0"
+                  step="0.01"
+                  placeholder={`auto: ${fmt(calc.envio_calculado)}`}
+                  className="w-28"
+                />
+                <div className="flex gap-1 text-[10px]">
+                  <button type="button" onClick={() => onChange({ flete_manual_es_total: false })}
+                    className={`px-1.5 py-0.5 rounded border ${!p.flete_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
+                    por unidad
+                  </button>
+                  <button type="button" onClick={() => onChange({ flete_manual_es_total: true })}
+                    className={`px-1.5 py-0.5 rounded border ${p.flete_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
+                    total
+                  </button>
+                </div>
+                {p.flete_manual_es_total && p.flete_manual != null && (p.cantidad || 0) > 0 && (
+                  <p className="text-[10px] text-muted-foreground">= {fmt(round2(p.flete_manual / p.cantidad))}/u</p>
+                )}
+              </>
+            )}
+            {!p.usa_flete_manual && (
+              <p className="text-[10px] text-muted-foreground">Auto (peso × tarifa): Bs {fmt(calc.envio_calculado)}</p>
+            )}
+          </div>
+
+          {/* Manipuleo manual override (Bs) — reemplaza peso × tarifa_manipuleo */}
+          <div className="space-y-1">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={!!p.usa_manipuleo_manual}
+                onChange={e => onChange({ usa_manipuleo_manual: e.target.checked })}
+                className="rounded"
+              />
+              Manipuleo manual {p.manipuleo_manual_es_total ? '(Bs total)' : '(Bs/unidad)'}
+            </label>
+            {p.usa_manipuleo_manual && (
+              <>
+                <NumInput
+                  value={p.manipuleo_manual}
+                  onChange={n('manipuleo_manual')}
+                  min="0"
+                  step="0.01"
+                  placeholder={`auto: ${fmt(calc.manipuleo_calculado)}`}
+                  className="w-28"
+                />
+                <div className="flex gap-1 text-[10px]">
+                  <button type="button" onClick={() => onChange({ manipuleo_manual_es_total: false })}
+                    className={`px-1.5 py-0.5 rounded border ${!p.manipuleo_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
+                    por unidad
+                  </button>
+                  <button type="button" onClick={() => onChange({ manipuleo_manual_es_total: true })}
+                    className={`px-1.5 py-0.5 rounded border ${p.manipuleo_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
+                    total
+                  </button>
+                </div>
+                {p.manipuleo_manual_es_total && p.manipuleo_manual != null && (p.cantidad || 0) > 0 && (
+                  <p className="text-[10px] text-muted-foreground">= {fmt(round2(p.manipuleo_manual / p.cantidad))}/u</p>
+                )}
+              </>
+            )}
+            {!p.usa_manipuleo_manual && (
+              <p className="text-[10px] text-muted-foreground">Auto (peso × tarifa): Bs {fmt(calc.manipuleo_calculado)}</p>
+            )}
+          </div>
+
           {/* GA manual override */}
           <div className="space-y-1">
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
