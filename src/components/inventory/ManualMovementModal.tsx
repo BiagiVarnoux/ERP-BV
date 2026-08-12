@@ -136,21 +136,41 @@ export function ManualMovementModal({ isOpen, onClose, productId, productName, m
       return;
     }
 
-    // ── Entrada / Salida normal ────────────────────────────────────────────
+    // ── Entrada: crea lote FIFO (o movimiento CPP) vía RPC atómica ─────────
+    if (tipo === 'ENTRADA') {
+      const qty = parseFloat(cantidad);
+      if (!qty || qty <= 0) { toast.error('Cantidad inválida'); return; }
+      const cu = parseFloat(costoUnitario);
+      if (!cu || cu <= 0) { toast.error('Costo unitario requerido para entradas'); return; }
+
+      setSaving(true);
+      try {
+        const { error } = await supabase.rpc('registrar_entrada_inventario', {
+          p_company_id: activeCompanyId,
+          p_product_id: productId,
+          p_cantidad: qty,
+          p_costo_unitario: cu,
+          p_fecha: fecha,
+          p_referencia: referencia.trim() || concepto.trim() || 'Entrada manual',
+          p_journal_entry_id: asiento.trim() || null,
+        });
+        if (error) throw error;
+        toast.success('Entrada de inventario registrada');
+        onSaved();
+        resetAndClose();
+      } catch (e: any) {
+        toast.error(e.message || 'Error al guardar');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // ── Salida normal (movimiento) ──────────────────────────────────────────
     const qty = parseFloat(cantidad);
     if (!qty || qty <= 0) { toast.error('Cantidad inválida'); return; }
-
-    let costoTotal = 0;
-    let cu = 0;
-
-    if (tipo === 'ENTRADA') {
-      cu = parseFloat(costoUnitario);
-      if (!cu || cu <= 0) { toast.error('Costo unitario requerido para entradas'); return; }
-      costoTotal = qty * cu;
-    } else {
-      cu = state.costoUnitario;
-      costoTotal = qty * cu;
-    }
+    const cu = state.costoUnitario;
+    const costoTotal = qty * cu;
 
     setSaving(true);
     try {
@@ -278,10 +298,21 @@ export function ManualMovementModal({ isOpen, onClose, productId, productName, m
 
           {/* Costo unitario — solo para ENTRADA */}
           {tipo === 'ENTRADA' && (
-            <div className="space-y-2">
-              <Label>Costo unitario (Bs)</Label>
-              <Input type="number" min="0" step="0.01" value={costoUnitario} onChange={e => setCostoUnitario(e.target.value)} />
-            </div>
+            <>
+              <div className="space-y-2">
+                <Label>Costo unitario (Bs)</Label>
+                <Input type="number" min="0" step="0.01" value={costoUnitario} onChange={e => setCostoUnitario(e.target.value)} />
+              </div>
+              <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
+                Ingresa stock al inventario{isFifo ? ' (crea un lote FIFO nuevo)' : ''}. Úsalo, por ejemplo, para
+                mercadería comprada en el mercado local. <span className="font-semibold">No genera ningún asiento contable</span>
+                {' '}— si ya lo registraste en el Libro Diario, enlázalo abajo.
+              </div>
+              <div className="space-y-2">
+                <Label>Asiento del Libro Diario <span className="text-muted-foreground">(opcional)</span></Label>
+                <Input value={asiento} onChange={e => setAsiento(e.target.value)} placeholder="Ej: 121-Q3-26" />
+              </div>
+            </>
           )}
 
           {/* Monto de ajuste — solo para AJUSTE_COSTO */}

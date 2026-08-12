@@ -5,12 +5,13 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, TrendingDown, Layers } from 'lucide-react';
+import { Package, TrendingDown, TrendingUp, Layers } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { fmt, round2 } from '@/accounting/utils';
 import { InventoryLot, calcularEstadoFifo } from './fifo-utils';
 import { FifoExitModal } from './FifoExitModal';
+import { ManualMovementModal } from './ManualMovementModal';
 import type { InventoryMovement } from './inventory-utils';
 
 interface FifoKardexModalProps {
@@ -26,6 +27,7 @@ export function FifoKardexModal({ isOpen, onClose, product, isReadOnly, onSaved 
   const [movs, setMovs] = useState<InventoryMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [showExit, setShowExit] = useState(false);
+  const [showEntry, setShowEntry] = useState(false);
   const activeCompanyId = useActiveCompanyId();
 
   const loadData = useCallback(async () => {
@@ -88,10 +90,17 @@ export function FifoKardexModal({ isOpen, onClose, product, isReadOnly, onSaved 
               </Card>
             </div>
 
-            {!isReadOnly && state.saldo_total > 0 && (
-              <Button onClick={() => setShowExit(true)} variant="outline" size="sm">
-                <TrendingDown className="w-4 h-4 mr-2" /> Registrar Salida FIFO
-              </Button>
+            {!isReadOnly && (
+              <div className="flex gap-2 flex-wrap">
+                <Button onClick={() => setShowEntry(true)} variant="outline" size="sm">
+                  <TrendingUp className="w-4 h-4 mr-2" /> Registrar Entrada
+                </Button>
+                {state.saldo_total > 0 && (
+                  <Button onClick={() => setShowExit(true)} variant="outline" size="sm">
+                    <TrendingDown className="w-4 h-4 mr-2" /> Registrar Salida FIFO
+                  </Button>
+                )}
+              </div>
             )}
 
             <Tabs defaultValue="lotes">
@@ -197,6 +206,17 @@ export function FifoKardexModal({ isOpen, onClose, product, isReadOnly, onSaved 
             product={product}
             lots={lots}
             onSaved={handleExitSaved}
+          />
+        )}
+
+        {showEntry && (
+          <ManualMovementModal
+            isOpen={showEntry}
+            onClose={() => setShowEntry(false)}
+            productId={product.id}
+            productName={product.nombre}
+            movements={movs}
+            onSaved={() => { setShowEntry(false); loadData(); onSaved?.(); }}
           />
         )}
       </DialogContent>
