@@ -24,7 +24,8 @@ interface Props {
 }
 
 const ESTADOS_ACTIVOS: LicitacionEstado[] = ['BORRADOR', 'PRESENTADA', 'ADJUDICADA'];
-const ESTADOS_CERRADOS: LicitacionEstado[] = ['PERDIDA', 'DESIERTA', 'ENTREGADA', 'COBRADA'];
+const ESTADOS_COMPLETADAS: LicitacionEstado[] = ['ENTREGADA', 'COBRADA'];
+const ESTADOS_NO_GANADAS: LicitacionEstado[] = ['PERDIDA', 'DESIERTA'];
 
 export function LicitacionesLista({ licitaciones, loading, onCreated, onDelete, onOpen }: Props) {
   const [search, setSearch] = useState('');
@@ -57,8 +58,9 @@ export function LicitacionesLista({ licitaciones, loading, onCreated, onDelete, 
     return matchSearch && matchEstado;
   });
 
-  const activas  = filtered.filter(l => ESTADOS_ACTIVOS.includes(l.estado));
-  const cerradas = filtered.filter(l => ESTADOS_CERRADOS.includes(l.estado));
+  const activas     = filtered.filter(l => ESTADOS_ACTIVOS.includes(l.estado));
+  const completadas = filtered.filter(l => ESTADOS_COMPLETADAS.includes(l.estado));
+  const noGanadas   = filtered.filter(l => ESTADOS_NO_GANADAS.includes(l.estado));
 
   return (
     <div className="space-y-6">
@@ -119,10 +121,17 @@ export function LicitacionesLista({ licitaciones, loading, onCreated, onDelete, 
               selectMode={selectMode} selectedIds={selectedIds} onToggleSelected={toggleSelected}
             />
           )}
-          {/* Cerradas */}
-          {cerradas.length > 0 && (
+          {/* Completadas: entregadas / cobradas */}
+          {completadas.length > 0 && (
             <Section
-              titulo="Historial" items={cerradas} onOpen={onOpen} onDelete={setDeleteTarget} dimmed
+              titulo="Completadas" items={completadas} onOpen={onOpen} onDelete={setDeleteTarget} dimmed
+              selectMode={selectMode} selectedIds={selectedIds} onToggleSelected={toggleSelected}
+            />
+          )}
+          {/* No adjudicadas: perdidas / desiertas */}
+          {noGanadas.length > 0 && (
+            <Section
+              titulo="Perdidas / Desiertas" items={noGanadas} onOpen={onOpen} onDelete={setDeleteTarget} dimmed
               selectMode={selectMode} selectedIds={selectedIds} onToggleSelected={toggleSelected}
             />
           )}
