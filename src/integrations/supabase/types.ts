@@ -533,6 +533,56 @@ export type Database = {
           },
         ]
       }
+      company_sale_channel_config: {
+        Row: {
+          canal_key: string
+          cogs_account: string
+          company_id: string
+          created_at: string
+          cxc_tipo_pago: string | null
+          enabled: boolean
+          id: string
+          label: string
+          revenue_account: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          canal_key: string
+          cogs_account: string
+          company_id: string
+          created_at?: string
+          cxc_tipo_pago?: string | null
+          enabled?: boolean
+          id?: string
+          label: string
+          revenue_account: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          canal_key?: string
+          cogs_account?: string
+          company_id?: string
+          created_at?: string
+          cxc_tipo_pago?: string | null
+          enabled?: boolean
+          id?: string
+          label?: string
+          revenue_account?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_sale_channel_config_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cost_sheet_cells: {
         Row: {
           cell_type: string

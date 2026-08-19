@@ -18,13 +18,14 @@ import {
   calculateTaxes,
   createSale,
   loadPaymentMethods,
-  CANAL_LABELS,
-  type Canal,
+  loadChannels,
+  channelsToAccountMap,
   type TipoPago,
   type SaleItemInput,
   type MetodoValuacion,
   type SaleItemEnriched,
   type PaymentMethod,
+  type SaleChannel,
 } from '@/domain/sales';
 import { fetchProductsStockBatch, fetchLastPricesByCanal } from '@/domain/sales/stockService';
 import { condicionLabel } from '@/accounting/product-condicion';
@@ -68,10 +69,11 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [confirmStockOpen, setConfirmStockOpen] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [channels, setChannels] = useState<SaleChannel[]>([]);
 
   // Header
   const [fecha, setFecha] = useState(todayISO());
-  const [canal, setCanal] = useState<Canal>('electronica');
+  const [canal, setCanal] = useState<string>('electronica');
   const [conFactura, setConFactura] = useState(false);
   const [tipoPago, setTipoPago] = useState<string>('caja_mn');
   const [customerId, setCustomerId] = useState<string | null>(null);
@@ -94,6 +96,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     loadProductsAndStock();
     if (activeCompanyId) {
       loadPaymentMethods(activeCompanyId).then(setPaymentMethods).catch(() => {});
+      loadChannels(activeCompanyId).then(setChannels).catch(() => {});
       // Vendedores = miembros con rol 'custom'. Se resuelven con el resolector
       // de identidad general (accesible a cualquier miembro de la empresa, no
       // solo al owner). El builder de Supabase es un thenable, no una Promise:
@@ -110,28 +113,39 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     fetchLastPricesByCanal(products.map(p => p.id), canal).then(setSuggestedPrices);
   }, [canal, products]);
 
-  // CxC del sistema: cada canal muestra solo su CxC específica
-  const CXC_BY_CANAL: Record<Canal, string> = {
-    electronica: 'cxc_electronica',
-    pedido: 'cxc_pedido',
-    licitacion: 'cxc_licitaciones',
-    general: 'cxc',
-  };
-  const CXC_SISTEMA = new Set(['cxc', 'cxc_electronica', 'cxc_pedido', 'cxc_licitaciones']);
+  const enabledChannels = useMemo(() => channels.filter(c => c.enabled), [channels]);
+
+  // CxC por canal (configurable): cada canal muestra solo su CxC específica.
+  const cxcByCanal = useMemo<Record<string, string | null>>(
+    () => Object.fromEntries(channels.map(c => [c.canal_key, c.cxc_tipo_pago])),
+    [channels],
+  );
+  // Métodos CxC que son específicos de algún canal (para ocultar los de otros canales).
+  const cxcSistema = useMemo(
+    () => new Set(channels.map(c => c.cxc_tipo_pago).filter((v): v is string => !!v)),
+    [channels],
+  );
 
   const tipoPagoOptions = useMemo<PaymentMethod[]>(() => {
-    const cxcForCanal = CXC_BY_CANAL[canal];
+    const cxcForCanal = cxcByCanal[canal];
     return paymentMethods.filter(m =>
-      m.enabled && (!CXC_SISTEMA.has(m.tipo_pago) || m.tipo_pago === cxcForCanal)
+      m.enabled && (!cxcSistema.has(m.tipo_pago) || m.tipo_pago === cxcForCanal)
     );
-  }, [canal, paymentMethods]);
+  }, [canal, paymentMethods, cxcByCanal, cxcSistema]);
+
+  // Si el canal seleccionado ya no existe entre los habilitados, elegir el primero.
+  useEffect(() => {
+    if (enabledChannels.length && !enabledChannels.some(c => c.canal_key === canal)) {
+      setCanal(enabledChannels[0].canal_key);
+    }
+  }, [enabledChannels, canal]);
 
   // Resetear tipo_pago si ya no es válido para el nuevo canal
   useEffect(() => {
-    if (CXC_SISTEMA.has(tipoPago) && tipoPago !== CXC_BY_CANAL[canal]) {
+    if (cxcSistema.has(tipoPago) && tipoPago !== cxcByCanal[canal]) {
       setTipoPago('caja_mn');
     }
-  }, [canal]);
+  }, [canal, cxcSistema, cxcByCanal]);
 
   function resetForm() {
     setFecha(todayISO());
@@ -316,6 +330,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
         cleanItems,
         activeCompanyId,
         Object.fromEntries(paymentMethods.map(m => [m.tipo_pago, m.account_codigo])),
+        channelsToAccountMap(channels),
       );
       toast.success(`Venta ${result.numero} registrada`);
       await reloadEntries();
@@ -643,11 +658,11 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
 
                 <div>
                   <Label>Canal</Label>
-                  <Select value={canal} onValueChange={(v: Canal) => setCanal(v)}>
+                  <Select value={canal} onValueChange={setCanal}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {(Object.keys(CANAL_LABELS) as Canal[]).map(c => (
-                        <SelectItem key={c} value={c}>{CANAL_LABELS[c]}</SelectItem>
+                      {enabledChannels.map(c => (
+                        <SelectItem key={c.canal_key} value={c.canal_key}>{c.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

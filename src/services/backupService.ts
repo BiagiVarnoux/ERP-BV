@@ -210,6 +210,8 @@ export interface BackupData {
   investment_analysis_items?: any[];
   // v3.3 fields — configuración de cuentas de venta
   company_sale_account_config?: any[];
+  // v3.5 fields — canales de venta configurables
+  company_sale_channel_config?: any[];
   // v3.4 fields — Catálogo de Ventas (fotos de producto; los binarios en Storage no se respaldan)
   product_fotos?: any[];
   // v3.5 fields — marcas "publicado" por vendedor
@@ -257,6 +259,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     investment_analyses,
     investment_analysis_items,
     company_sale_account_config,
+    company_sale_channel_config,
     product_fotos,
     product_publicaciones,
   ] = await Promise.all([
@@ -308,6 +311,8 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     fetchAllInvestmentItems(companyId),
     // v3.3: configuración de cuentas de venta
     fetchAllCompanyRows('company_sale_account_config', companyId),
+    // v3.5: canales de venta configurables
+    fetchAllCompanyRows('company_sale_channel_config', companyId),
     // v3.4: fotos del Catálogo de Ventas
     fetchAllProductFotos(companyId),
     // v3.5: marcas "publicado" por vendedor
@@ -351,6 +356,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     investment_analyses,
     investment_analysis_items,
     company_sale_account_config,
+    company_sale_channel_config,
     product_fotos,
     product_publicaciones,
   };
@@ -449,6 +455,7 @@ async function _performRestoreInternal(
   // investment_analyses → cascades to investment_analysis_items
   await safeDeleteCompany('investment_analyses', companyId);
   await safeDeleteCompany('company_sale_account_config', companyId);
+  await safeDeleteCompany('company_sale_channel_config', companyId);
 
   await safeDeleteCompany('shipments', companyId);
   await safeDeleteCompany('debt_payments', companyId);
@@ -728,6 +735,17 @@ async function _performRestoreInternal(
       );
     if (error) throw new Error(`Error insertando en company_sale_account_config: ${error.message}`);
   }
+
+  // v3.5: canales de venta (UNIQUE company_id + canal_key → upsert)
+  if (backup.company_sale_channel_config?.length) {
+    const { error } = await supabase
+      .from('company_sale_channel_config')
+      .upsert(
+        backup.company_sale_channel_config.map((r: any) => ({ ...r, company_id: companyId })),
+        { onConflict: 'company_id,canal_key' }
+      );
+    if (error) throw new Error(`Error insertando en company_sale_channel_config: ${error.message}`);
+  }
 }
 
 // ─── Public API ────────────────────────────────────────────────────────────────
@@ -851,6 +869,7 @@ export function validateBackupFile(data: any): { valid: boolean; error?: string 
     'product_categories',
     'investment_analyses', 'investment_analysis_items',
     'company_sale_account_config',
+    'company_sale_channel_config',
     'product_fotos',
     'product_publicaciones',
   ];

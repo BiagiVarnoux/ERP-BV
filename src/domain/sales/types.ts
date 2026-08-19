@@ -30,7 +30,7 @@ export interface SaleItemInput {
 
 export interface SaleHeaderInput {
   fecha: string;            // YYYY-MM-DD
-  canal: Canal;
+  canal: Canal | string;    // string para canales personalizados por empresa
   con_factura: boolean;
   tipo_pago: TipoPago | string; // string para métodos personalizados
   cliente_nombre?: string | null;

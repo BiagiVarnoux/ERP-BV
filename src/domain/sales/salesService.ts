@@ -16,6 +16,7 @@ export async function createSale(
   items: SaleItemInput[],
   companyId: string = DEFAULT_COMPANY_ID,
   paymentConfig?: Partial<Record<TipoPago, string>>,
+  channelConfig?: Record<string, { revenue_account: string; cogs_account: string }>,
 ): Promise<CreateSaleResult> {
   if (items.length === 0) throw new Error('Agrega al menos un producto');
   for (const it of items) {
@@ -25,7 +26,7 @@ export async function createSale(
   }
 
   const totals = calculateTaxes(items, header.con_factura);
-  const accounts = resolveAccounts(header.canal, header.tipo_pago as TipoPago, paymentConfig);
+  const accounts = resolveAccounts(header.canal, header.tipo_pago as TipoPago, paymentConfig, channelConfig);
 
   const payload = {
     ...header,

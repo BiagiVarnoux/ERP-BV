@@ -55,13 +55,22 @@ export const CANAL_LABELS: Record<Canal, string> = {
 };
 
 export function resolveAccounts(
-  canal: Canal,
+  canal: Canal | string,
   tipoPago: TipoPago,
   paymentConfig?: Partial<Record<TipoPago, string>>,
+  channelConfig?: Record<string, { revenue_account: string; cogs_account: string }>,
 ): ResolvedAccounts {
+  // Canales configurables por empresa (channelConfig). Si no hay config para el
+  // canal, cae a los mapas de sistema (los 4 canales por defecto).
+  const fromConfig = channelConfig?.[canal];
+  const revenue = fromConfig?.revenue_account ?? REVENUE_ACCOUNTS[canal as Canal];
+  const cogs = fromConfig?.cogs_account ?? COGS_ACCOUNTS[canal as Canal];
+  if (!revenue || !cogs) {
+    throw new Error(`El canal "${canal}" no tiene cuentas de Ingreso/Costo configuradas`);
+  }
   return {
     payment_account: paymentConfig?.[tipoPago] ?? PAYMENT_ACCOUNTS[tipoPago],
-    revenue_account: REVENUE_ACCOUNTS[canal],
-    cogs_account: COGS_ACCOUNTS[canal],
+    revenue_account: revenue,
+    cogs_account: cogs,
   };
 }

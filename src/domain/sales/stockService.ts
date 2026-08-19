@@ -33,7 +33,7 @@ export async function fetchProductsStockBatch(
  */
 export async function fetchLastPricesByCanal(
   productIds: string[],
-  canal: Canal
+  canal: Canal | string
 ): Promise<Record<string, number>> {
   if (productIds.length === 0) return {};
 

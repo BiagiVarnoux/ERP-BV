@@ -13,6 +13,7 @@ import { Copy, Plus, Trash2, Database, History, LayoutGrid, ShieldCheck, Tag, Pe
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ModuleConfigTab } from '@/components/settings/ModuleConfigTab';
 import { SaleAccountsConfigTab } from '@/components/settings/SaleAccountsConfigTab';
+import { SaleChannelsConfigTab } from '@/components/settings/SaleChannelsConfigTab';
 import {
   Table,
   TableBody,
@@ -215,8 +216,15 @@ export default function SettingsPage() {
         </TabsContent>
 
         {/* ── Tab: Cuentas de Venta ── */}
-        <TabsContent value="cuentas_venta" className="mt-2">
-          <SaleAccountsConfigTab />
+        <TabsContent value="cuentas_venta" className="mt-2 space-y-8">
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">Canales de venta</h3>
+            <SaleChannelsConfigTab />
+          </section>
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">Métodos de pago</h3>
+            <SaleAccountsConfigTab />
+          </section>
         </TabsContent>
 
         {/* ── Tab: General (contenido existente) ── */}
