@@ -5,13 +5,14 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, TrendingDown, TrendingUp, Layers } from 'lucide-react';
+import { Package, TrendingDown, TrendingUp, Layers, ArrowRightLeft } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { fmt, round2 } from '@/accounting/utils';
 import { InventoryLot, calcularEstadoFifo } from './fifo-utils';
 import { FifoExitModal } from './FifoExitModal';
 import { ManualMovementModal } from './ManualMovementModal';
+import { InventoryTransferModal } from './InventoryTransferModal';
 import type { InventoryMovement } from './inventory-utils';
 
 interface FifoKardexModalProps {
@@ -28,6 +29,7 @@ export function FifoKardexModal({ isOpen, onClose, product, isReadOnly, onSaved 
   const [loading, setLoading] = useState(true);
   const [showExit, setShowExit] = useState(false);
   const [showEntry, setShowEntry] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
   const activeCompanyId = useActiveCompanyId();
 
   const loadData = useCallback(async () => {
@@ -98,6 +100,11 @@ export function FifoKardexModal({ isOpen, onClose, product, isReadOnly, onSaved 
                 {state.saldo_total > 0 && (
                   <Button onClick={() => setShowExit(true)} variant="outline" size="sm">
                     <TrendingDown className="w-4 h-4 mr-2" /> Registrar Salida FIFO
+                  </Button>
+                )}
+                {state.saldo_total > 0 && (
+                  <Button onClick={() => setShowTransfer(true)} variant="outline" size="sm">
+                    <ArrowRightLeft className="w-4 h-4 mr-2" /> Transferir entre cuentas
                   </Button>
                 )}
               </div>
@@ -217,6 +224,16 @@ export function FifoKardexModal({ isOpen, onClose, product, isReadOnly, onSaved 
             productName={product.nombre}
             movements={movs}
             onSaved={() => { setShowEntry(false); loadData(); onSaved?.(); }}
+          />
+        )}
+
+        {showTransfer && (
+          <InventoryTransferModal
+            isOpen={showTransfer}
+            onClose={() => setShowTransfer(false)}
+            product={product}
+            lots={lots}
+            onSaved={() => { setShowTransfer(false); loadData(); onSaved?.(); }}
           />
         )}
       </DialogContent>

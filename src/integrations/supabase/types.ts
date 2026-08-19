@@ -885,6 +885,7 @@ export type Database = {
           company_id: string
           costo_unitario: number
           created_at: string
+          cuenta_inventario_id: string | null
           fecha_ingreso: string
           id: string
           import_lot_id: string | null
@@ -899,6 +900,7 @@ export type Database = {
           company_id: string
           costo_unitario?: number
           created_at?: string
+          cuenta_inventario_id?: string | null
           fecha_ingreso?: string
           id?: string
           import_lot_id?: string | null
@@ -913,6 +915,7 @@ export type Database = {
           company_id?: string
           costo_unitario?: number
           created_at?: string
+          cuenta_inventario_id?: string | null
           fecha_ingreso?: string
           id?: string
           import_lot_id?: string | null
@@ -1551,18 +1554,24 @@ export type Database = {
           envio_local: number
           especificacion: string | null
           flete_cif_pct: number | null
+          flete_manual: number | null
+          flete_manual_es_total: boolean
           fuente: string
           ga_manual: number | null
+          ga_manual_es_total: boolean
           ga_pct: number
           garantia: number
           hs_code: string | null
           id: string
           iva_aduana_manual: number | null
+          iva_manual_es_total: boolean
           licitacion_id: string
           link_producto: string | null
           m1: number | null
           m2: number | null
           m3: number | null
+          manipuleo_manual: number | null
+          manipuleo_manual_es_total: boolean
           nombre: string
           orden: number
           origen: string
@@ -1582,8 +1591,10 @@ export type Database = {
           tiene_bateria: boolean
           tiene_factura: boolean
           updated_at: string
+          usa_flete_manual: boolean
           usa_ga_manual: boolean
           usa_iva_manual: boolean
+          usa_manipuleo_manual: boolean
           usa_peso_bruto: boolean
         }
         Insert: {
@@ -1593,18 +1604,24 @@ export type Database = {
           envio_local?: number
           especificacion?: string | null
           flete_cif_pct?: number | null
+          flete_manual?: number | null
+          flete_manual_es_total?: boolean
           fuente?: string
           ga_manual?: number | null
+          ga_manual_es_total?: boolean
           ga_pct?: number
           garantia?: number
           hs_code?: string | null
           id?: string
           iva_aduana_manual?: number | null
+          iva_manual_es_total?: boolean
           licitacion_id: string
           link_producto?: string | null
           m1?: number | null
           m2?: number | null
           m3?: number | null
+          manipuleo_manual?: number | null
+          manipuleo_manual_es_total?: boolean
           nombre?: string
           orden?: number
           origen?: string
@@ -1624,8 +1641,10 @@ export type Database = {
           tiene_bateria?: boolean
           tiene_factura?: boolean
           updated_at?: string
+          usa_flete_manual?: boolean
           usa_ga_manual?: boolean
           usa_iva_manual?: boolean
+          usa_manipuleo_manual?: boolean
           usa_peso_bruto?: boolean
         }
         Update: {
@@ -1635,18 +1654,24 @@ export type Database = {
           envio_local?: number
           especificacion?: string | null
           flete_cif_pct?: number | null
+          flete_manual?: number | null
+          flete_manual_es_total?: boolean
           fuente?: string
           ga_manual?: number | null
+          ga_manual_es_total?: boolean
           ga_pct?: number
           garantia?: number
           hs_code?: string | null
           id?: string
           iva_aduana_manual?: number | null
+          iva_manual_es_total?: boolean
           licitacion_id?: string
           link_producto?: string | null
           m1?: number | null
           m2?: number | null
           m3?: number | null
+          manipuleo_manual?: number | null
+          manipuleo_manual_es_total?: boolean
           nombre?: string
           orden?: number
           origen?: string
@@ -1666,8 +1691,10 @@ export type Database = {
           tiene_bateria?: boolean
           tiene_factura?: boolean
           updated_at?: string
+          usa_flete_manual?: boolean
           usa_ga_manual?: boolean
           usa_iva_manual?: boolean
+          usa_manipuleo_manual?: boolean
           usa_peso_bruto?: boolean
         }
         Relationships: [
@@ -2821,6 +2848,16 @@ export type Database = {
           total_ventas_mes: number
         }[]
       }
+      get_company_members_basic: {
+        Args: { p_company_id: string }
+        Returns: {
+          display_name: string
+          email: string
+          member_id: string
+          role: string
+          user_id: string
+        }[]
+      }
       get_company_members_detail: {
         Args: { p_company_id: string }
         Returns: {
@@ -2840,16 +2877,6 @@ export type Database = {
           config_value: string
           is_visible: boolean
           submodule: string
-        }[]
-      }
-      get_company_members_basic: {
-        Args: { p_company_id: string }
-        Returns: {
-          display_name: string
-          email: string
-          member_id: string
-          role: string
-          user_id: string
         }[]
       }
       get_holding_summary: {
@@ -3010,6 +3037,18 @@ export type Database = {
         Args: { payload: Json }
         Returns: Json
       }
+      registrar_entrada_inventario: {
+        Args: {
+          p_cantidad: number
+          p_company_id: string
+          p_costo_unitario: number
+          p_fecha: string
+          p_journal_entry_id?: string
+          p_product_id: string
+          p_referencia: string
+        }
+        Returns: Json
+      }
       remove_company_member: {
         Args: { p_member_id: string }
         Returns: undefined
@@ -3030,6 +3069,18 @@ export type Database = {
           p_submodule: string
         }
         Returns: undefined
+      }
+      transferir_inventario: {
+        Args: {
+          p_cantidad: number
+          p_company_id: string
+          p_cuenta_destino: string
+          p_cuenta_origen: string
+          p_fecha: string
+          p_glosa?: string
+          p_product_id: string
+        }
+        Returns: Json
       }
       update_member_module_permission: {
         Args: {

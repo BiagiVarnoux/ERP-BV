@@ -8,6 +8,7 @@ export interface InventoryLot {
   cantidad_inicial: number;
   cantidad_disponible: number;
   costo_unitario: number;
+  cuenta_inventario_id: string | null;
   user_id: string;
   created_at: string;
 }
