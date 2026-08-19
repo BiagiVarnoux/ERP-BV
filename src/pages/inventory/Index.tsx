@@ -12,8 +12,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
-import { fmt } from '@/accounting/utils';
+import { fmt, round2 } from '@/accounting/utils';
 import { calcularEstadoProducto, InventoryMovement } from '@/components/inventory/inventory-utils';
+import { InventoryLot } from '@/components/inventory/fifo-utils';
 import { ProductKardexModal } from '@/components/inventory/ProductKardexModal';
 import { FifoKardexModal } from '@/components/inventory/FifoKardexModal';
 import { NewProductModal, ProductData } from '@/components/inventory/NewProductModal';
@@ -45,6 +46,7 @@ export default function InventoryPage() {
   const activeCompanyId = useActiveCompanyId();
   const [products, setProducts] = useState<ProductData[]>([]);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
+  const [lots, setLots] = useState<InventoryLot[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [kardexProduct, setKardexProduct] = useState<ProductData | null>(null);
@@ -77,13 +79,15 @@ export default function InventoryPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { toast.error('No autenticado'); return; }
 
-      const [prodsRes, movsRes] = await Promise.all([
+      const [prodsRes, movsRes, lotsRes] = await Promise.all([
         supabase.from('products').select('*').eq('company_id', activeCompanyId).eq('status', 'activo'),
         supabase.from('inventory_movements').select('*').eq('company_id', activeCompanyId),
+        supabase.from('inventory_lots').select('*').eq('company_id', activeCompanyId),
       ]);
 
       setProducts((prodsRes.data || []) as ProductData[]);
       setMovements((movsRes.data || []) as InventoryMovement[]);
+      setLots((lotsRes.data || []) as InventoryLot[]);
     } catch {
       toast.error('Error cargando inventario');
     } finally {
@@ -123,30 +127,53 @@ export default function InventoryPage() {
     }
   }
 
+  // Un producto FIFO puede tener stock repartido en varias cuentas (por transferencias
+  // entre cuentas). Por eso la agrupación y valuación se hacen por LOTE, no por la
+  // cuenta del producto. Un producto FIFO aparece bajo cada cuenta donde tiene lotes
+  // con stock; si no tiene lotes activos (o es CPP), se ubica en la cuenta del producto.
   const accountGroups = useMemo(() => {
     const groups: Record<string, ProductData[]> = {};
-    for (const p of products) {
-      const key = p.cuenta_inventario_id || '__sin_cuenta__';
+    const push = (key: string, p: ProductData) => {
       if (!groups[key]) groups[key] = [];
       groups[key].push(p);
+    };
+    for (const p of products) {
+      const activeLots = lots.filter(l => l.product_id === p.id && l.cantidad_disponible > 0);
+      if (p.metodo_valuacion === 'FIFO' && activeLots.length > 0) {
+        const cuentas = new Set(activeLots.map(l => l.cuenta_inventario_id || '__sin_cuenta__'));
+        cuentas.forEach(key => push(key, p));
+      } else {
+        push(p.cuenta_inventario_id || '__sin_cuenta__', p);
+      }
     }
     return groups;
-  }, [products]);
-
-  function getGroupValue(prods: ProductData[]): number {
-    return prods.reduce((sum, p) => {
-      const productMovs = movements.filter(m => m.product_id === p.id);
-      const state = calcularEstadoProducto(productMovs);
-      return sum + state.saldoValorado;
-    }, 0);
-  }
-
-  const selectedProducts = selectedAccountId ? accountGroups[selectedAccountId] || [] : [];
+  }, [products, lots]);
 
   function getProductState(productId: string) {
     const productMovs = movements.filter(m => m.product_id === productId);
     return calcularEstadoProducto(productMovs);
   }
+
+  // Estado del producto ACOTADO a una cuenta. Para FIFO usa los lotes de esa cuenta
+  // (saldo y valor por lote); para CPP usa el estado global por movimientos.
+  function getScopedState(p: ProductData, accountKey: string) {
+    const base = getProductState(p.id);
+    if (p.metodo_valuacion !== 'FIFO') return base;
+    const ls = lots.filter(
+      l => l.product_id === p.id && (l.cuenta_inventario_id || '__sin_cuenta__') === accountKey
+    );
+    const saldo = round2(ls.reduce((s, l) => s + Number(l.cantidad_disponible), 0));
+    const saldoValorado = round2(
+      ls.reduce((s, l) => round2(s + round2(Number(l.cantidad_disponible) * Number(l.costo_unitario))), 0)
+    );
+    return { ...base, saldo, saldoValorado };
+  }
+
+  function getGroupValue(accountKey: string, prods: ProductData[]): number {
+    return round2(prods.reduce((sum, p) => round2(sum + getScopedState(p, accountKey).saldoValorado), 0));
+  }
+
+  const selectedProducts = selectedAccountId ? accountGroups[selectedAccountId] || [] : [];
 
   function handleArchiveClick(product: ProductData, action: ArchiveAction) {
     setArchiveTarget(product);
@@ -226,7 +253,7 @@ export default function InventoryPage() {
           {Object.entries(accountGroups).map(([accountId, prods]) => {
             const account = accounts.find(a => a.id === accountId);
             const label = account ? `${account.id} — ${account.name}` : (accountId === '__sin_cuenta__' ? 'Sin cuenta asignada' : accountId);
-            const totalValue = getGroupValue(prods);
+            const totalValue = getGroupValue(accountId, prods);
             const isSelected = selectedAccountId === accountId;
 
             return (
@@ -264,7 +291,7 @@ export default function InventoryPage() {
                 {/* Móvil: tarjetas apiladas */}
                 <DataCardList>
                   {selectedProducts.map(p => {
-                    const s = getProductState(p.id);
+                    const s = getScopedState(p, selectedAccountId!);
                     return (
                       <DataCard key={p.id}>
                         <DataCardHeader
@@ -317,7 +344,7 @@ export default function InventoryPage() {
                   </TableHeader>
                   <TableBody>
                     {selectedProducts.map(p => {
-                      const s = getProductState(p.id);
+                      const s = getScopedState(p, selectedAccountId!);
                       return (
                         <TableRow key={p.id}>
                           <TableCell><Badge variant="outline" className="font-mono text-xs">{p.codigo}</Badge></TableCell>
