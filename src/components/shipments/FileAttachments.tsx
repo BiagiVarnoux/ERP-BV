@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ShipmentFile } from '@/accounting/shipment-types';
 import { todayISO } from '@/accounting/utils';
 import { FilePreviewModal, isPreviewable } from '@/components/shared/FilePreviewModal';
+import { openExternalUrl } from '@/lib/open-url';
 
 const BUCKET = 'shipment-docs';
 
@@ -82,8 +83,9 @@ export function FileAttachments({ storagePath, files, onChange, disabled, label 
       if (error) throw error;
       if (ext === 'pdf') {
         // Los navegadores modernos no permiten embeber PDFs de origen externo.
-        // La URL firmada de Supabase abre el PDF directamente en el visor nativo del navegador.
-        window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+        // La URL firmada de Supabase abre el PDF en el visor nativo del navegador
+        // (y en la PWA instalada, en el visor in-app de iOS).
+        openExternalUrl(data.signedUrl);
       } else {
         setPreview({ url: data.signedUrl, name: f.name });
       }
@@ -97,14 +99,13 @@ export function FileAttachments({ storagePath, files, onChange, disabled, label 
   async function handleDownload(f: ShipmentFile) {
     setDownloading(f.id);
     try {
-      const { data, error } = await supabase.storage.from(BUCKET).download(f.path);
+      // URL firmada con Content-Disposition: attachment → descarga con nombre.
+      // Evita el patrón blob + <a download>, que iOS (PWA) bloquea.
+      const { data, error } = await supabase.storage
+        .from(BUCKET)
+        .createSignedUrl(f.path, 3600, { download: f.name });
       if (error) throw error;
-      const url = URL.createObjectURL(data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = f.name;
-      a.click();
-      URL.revokeObjectURL(url);
+      openExternalUrl(data.signedUrl);
     } catch (err: any) {
       toast.error(`Error al descargar: ${err.message}`);
     } finally {

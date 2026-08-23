@@ -17,6 +17,7 @@ import {
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
 import { DbcAnalyzerDialog } from '../DbcAnalyzerDialog';
 import { FilePreviewModal, isPreviewable } from '@/components/shared/FilePreviewModal';
+import { openExternalUrl } from '@/lib/open-url';
 
 interface Props {
   licitacion: Licitacion;
@@ -118,8 +119,9 @@ export function TabDocumentos({ licitacion, onReload, onUpdated }: Props) {
       const url = await LicitacionStorage.getDocUrl(doc.path);
       if (ext === 'pdf') {
         // Los navegadores modernos no permiten embeber PDFs de origen externo.
-        // La URL firmada de Supabase abre el PDF en el visor nativo del navegador.
-        window.open(url, '_blank', 'noopener,noreferrer');
+        // La URL firmada de Supabase abre el PDF en el visor nativo del navegador
+        // (y en la PWA instalada, en el visor in-app de iOS).
+        openExternalUrl(url);
       } else {
         setPreview({ url, doc });
       }
@@ -132,8 +134,9 @@ export function TabDocumentos({ licitacion, onReload, onUpdated }: Props) {
 
   const handleDownload = async (doc: LicitacionDoc) => {
     try {
-      const url = await LicitacionStorage.getDocUrl(doc.path);
-      window.open(url, '_blank');
+      // URL firmada con Content-Disposition: attachment → fuerza descarga con nombre.
+      const url = await LicitacionStorage.getDocUrl(doc.path, { download: doc.nombre });
+      openExternalUrl(url);
     } catch {
       toast.error('Error al abrir el archivo');
     }

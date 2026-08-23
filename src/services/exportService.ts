@@ -1,5 +1,6 @@
 // src/services/exportService.ts
 import { JournalEntry } from '@/accounting/types';
+import { downloadBlob } from '@/lib/open-url';
 
 export interface ExportColumn<T> {
   header: string;
@@ -30,13 +31,9 @@ export function generateCSV<T>(columns: ExportColumn<T>[], data: T[]): string {
  * Download CSV content as a file
  */
 export function downloadCSV(content: string, filename: string): void {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  // BOM para que Excel abra bien los acentos; descarga robusta también en PWA iOS.
+  const blob = new Blob(['﻿', content], { type: 'text/csv;charset=utf-8;' });
+  downloadBlob(blob, filename);
 }
 
 /**

@@ -325,10 +325,10 @@ export const LicitacionStorage = {
     if (error) throw error;
   },
 
-  async getDocUrl(path: string): Promise<string> {
+  async getDocUrl(path: string, opts?: { download?: string }): Promise<string> {
     const { data } = await supabase.storage
       .from('licitacion-files')
-      .createSignedUrl(path, 3600);
+      .createSignedUrl(path, 3600, opts?.download ? { download: opts.download } : undefined);
     return data?.signedUrl ?? '';
   },
 };

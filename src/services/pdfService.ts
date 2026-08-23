@@ -2,6 +2,13 @@
 import jsPDF from 'jspdf';
 import autoTable, { RowInput } from 'jspdf-autotable';
 import { fmt } from '@/accounting/utils';
+import { downloadBlob } from '@/lib/open-url';
+
+// Guarda el PDF de forma robusta también en la PWA de iOS (donde jsPDF `.save()`,
+// que usa <a download>, no hace nada). Genera el Blob y lo enruta por downloadBlob.
+function savePdf(doc: jsPDF, filename: string): void {
+  downloadBlob(doc.output('blob'), filename);
+}
 
 interface ReportHeader {
   title: string;
@@ -110,7 +117,7 @@ export function exportTrialBalanceToPDF(
   });
 
   addFooter(doc);
-  doc.save(`balance-comprobacion-${period.replace(/\s/g, '-')}.pdf`);
+  savePdf(doc, `balance-comprobacion-${period.replace(/\s/g, '-')}.pdf`);
 }
 
 export interface IncomeStatementData {
@@ -289,7 +296,7 @@ export function exportIncomeStatementNIIFToPDF(data: NIIFIncomeStatementData, pe
 
   autoTable(doc, { startY, head, body, styles: { fontSize: 9 }, headStyles: { fillColor: [66, 66, 66] }, columnStyles: colStyles });
   addFooter(doc);
-  doc.save(`estado-resultados-niif-${period.replace(/\s/g, '-')}.pdf`);
+  savePdf(doc, `estado-resultados-niif-${period.replace(/\s/g, '-')}.pdf`);
 }
 
 export interface BalanceSheetData {
@@ -359,7 +366,7 @@ export function exportBalanceSheetNIIFToPDF(data: BalanceSheetNIIFData, date: st
   ], head: [['Indicador', 'Valor']], styles: { fontSize: 10 }, headStyles: { fillColor: [100, 100, 100] }, columnStyles: { 1: { halign: 'right' } } });
 
   addFooter(doc);
-  doc.save(`balance-general-niif-${date}.pdf`);
+  savePdf(doc, `balance-general-niif-${date}.pdf`);
 }
 
 export interface CashFlowNIIFData {
@@ -463,7 +470,7 @@ export function exportCashFlowNIIFToPDF(data: CashFlowNIIFData, period: string):
   }
 
   addFooter(doc);
-  doc.save(`flujo-efectivo-nic7-${data.metodo}-${period.replace(/\s/g, '-')}.pdf`);
+  savePdf(doc, `flujo-efectivo-nic7-${data.metodo}-${period.replace(/\s/g, '-')}.pdf`);
 }
 
 export interface JournalEntryPDF {
@@ -537,7 +544,7 @@ export function exportJournalToPDF(
   });
 
   addFooter(doc);
-  doc.save(`libro-diario-${period.replace(/\s/g, '-')}.pdf`);
+  savePdf(doc, `libro-diario-${period.replace(/\s/g, '-')}.pdf`);
 }
 
 export interface CashFlowData {
@@ -648,7 +655,7 @@ export function exportCashFlowToPDF(data: CashFlowData, period: string): void {
   });
 
   addFooter(doc);
-  doc.save(`flujo-caja-${period.replace(/\s/g, '-')}.pdf`);
+  savePdf(doc, `flujo-caja-${period.replace(/\s/g, '-')}.pdf`);
 }
 
 export interface ChartOfAccountsRow {
@@ -700,7 +707,7 @@ export function exportChartOfAccountsToPDF(accounts: ChartOfAccountsRow[]): void
   });
 
   addFooter(doc);
-  doc.save('plan-de-cuentas.pdf');
+  savePdf(doc, 'plan-de-cuentas.pdf');
 }
 
 // ─── Estado de Cambios en el Patrimonio ──────────────────────────────────────
@@ -778,7 +785,7 @@ export function exportEquityChangesToPDF(data: EquityChangesPDFData, period: str
   });
 
   addFooter(doc);
-  doc.save(`estado-cambios-patrimonio-${period.replace(/\s/g, '-').toLowerCase()}.pdf`);
+  savePdf(doc, `estado-cambios-patrimonio-${period.replace(/\s/g, '-').toLowerCase()}.pdf`);
 }
 
 // ─── Exportar Embarque a PDF ──────────────────────────────────────────────────
@@ -1218,7 +1225,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     doc.setTextColor(0, 0, 0);
   }
 
-  doc.save(`embarque-${data.numero.toLowerCase()}${includeIVA ? '-con-iva' : ''}.pdf`);
+  savePdf(doc, `embarque-${data.numero.toLowerCase()}${includeIVA ? '-con-iva' : ''}.pdf`);
 }
 
 // ─── Exportar Cotización de Licitación a PDF ──────────────────────────────────
@@ -1451,7 +1458,7 @@ export function exportCotizacionToPDF(data: CotizacionPDFData): void {
   const slug = data.licitacion.numero_sicoes
     ? data.licitacion.numero_sicoes.toLowerCase().replace(/\s+/g, '-')
     : 'cotizacion';
-  doc.save(`cotizacion-${slug}-${new Date().toISOString().split('T')[0]}.pdf`);
+  savePdf(doc, `cotizacion-${slug}-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
 // ─── Análisis de Inversión ──────────────────────────────────────────────────────
@@ -1673,5 +1680,5 @@ export function exportInvestmentAnalysisToPDF(data: InvestmentPDFData): void {
   }
 
   const slug = (data.analysis.nombre || 'analisis').toLowerCase().replace(/\s+/g, '-').slice(0, 40);
-  doc.save(`analisis-inversion-${slug}-${new Date().toISOString().split('T')[0]}.pdf`);
+  savePdf(doc, `analisis-inversion-${slug}-${new Date().toISOString().split('T')[0]}.pdf`);
 }
