@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -25,7 +24,10 @@ import { toDecimal } from '@/accounting/utils';
 import { exportCotizacionToPDF, previewNextPdf } from '@/services/pdfService';
 import { ShareButton } from '@/components/shared/ShareButton';
 import { useShareTarget } from '@/hooks/useShareTarget';
+import { FormSection } from '@/components/shared/FormSection';
+import { ManualOverride } from '@/components/shared/ManualOverride';
 import { TIPO_PROCESO_LABELS } from '@/accounting/licitacion-types';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 interface Props {
   licitacion: Licitacion;
@@ -48,10 +50,12 @@ function NumInput({
   return (
     <Input
       type="number"
+      // Teclado numérico en celular; alto mayor en móvil para que sea táctil.
+      inputMode="decimal"
       min={min}
       max={max}
       step={step}
-      className={`h-7 text-xs px-1.5 text-right ${className}`}
+      className={`h-9 sm:h-7 text-xs px-1.5 text-right ${className}`}
       value={value ?? ''}
       placeholder={placeholder}
       onChange={e => {
@@ -69,6 +73,7 @@ function Pct({ v, decimals = 1 }: { v: number; decimals?: number }) {
 // ─── Componente principal ──────────────────────────────────────────────────────
 
 export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
+  const companyId = useActiveCompanyId();
   const [productos, setProductos] = useState<LicitacionProducto[]>(licitacion.productos);
   const [tcOficial, setTcOficial] = useState<number>(licitacion.tc_oficial ?? TC_OFICIAL);
   const [fleteCifPct, setFleteCifPct] = useState<number>(licitacion.flete_cif_pct ?? FLETE_CIF_PCT_AEREO);
@@ -216,7 +221,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
       if (tcOficial !== (licitacion.tc_oficial ?? TC_OFICIAL)
         || fleteCifPct !== (licitacion.flete_cif_pct ?? FLETE_CIF_PCT_AEREO)
         || costosLicitacionDirty || refDirty) {
-        await LicitacionStorage.update(licitacion.id, {
+        await LicitacionStorage.update(licitacion.id, companyId, {
           tc_oficial: tcOficial,
           flete_cif_pct: fleteCifPct,
           garantia_licitacion: garantiaLic,
@@ -227,7 +232,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
         });
       }
       // Upsert todos los productos actuales
-      await LicitacionStorage.upsertProductos(productos);
+      await LicitacionStorage.upsertProductos(companyId, productos);
       // Eliminar los que fueron quitados (están en licitacion.productos pero no en productos)
       const idsActuales = new Set(productos.map(p => p.id));
       for (const p of licitacion.productos) {
@@ -303,13 +308,11 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
     <TooltipProvider>
       <div className="space-y-5">
         {/* Tipos de cambio de la licitación — se aplican a todos los productos */}
-        <div className="rounded-lg border bg-muted/30 px-4 py-3 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold">Tipos de cambio de la licitación</span>
-            <span className="text-[11px] text-muted-foreground hidden sm:block">
-              Compra y envío se aplican a todos los productos
-            </span>
-          </div>
+        <FormSection
+          title="Tipos de cambio"
+          hint="compra y envío se aplican a todos los productos"
+          summary={`compra ${headerTcCompra} · aduana ${tcOficial} · CIF ${fleteCifPct}%`}
+        >
           <div className="flex flex-wrap gap-x-6 gap-y-3">
             {/* T/C compra */}
             <div className="space-y-1">
@@ -381,16 +384,14 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
               </p>
             </div>
           </div>
-        </div>
+        </FormSection>
 
         {/* Costos de TODA la licitación (no por producto) */}
-        <div className="rounded-lg border bg-muted/30 px-4 py-3 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold">Costos de la licitación</span>
-            <span className="text-[11px] text-muted-foreground hidden sm:block">
-              Se suman una sola vez al total, no se reparten entre productos
-            </span>
-          </div>
+        <FormSection
+          title="Costos de la licitación"
+          hint="se suman una sola vez al total, no se reparten entre productos"
+          summary={`Bs ${fmt(costosLicitacionTotal)}`}
+        >
           <div className="flex flex-wrap gap-x-6 gap-y-3">
             <Field label="Garantía (Bs)">
               <NumInput value={garantiaLic || undefined} onChange={v => setGarantiaLic(v ?? 0)} min="0" className="w-28" />
@@ -409,7 +410,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
               <span className="text-sm font-mono font-semibold">Bs {fmt(costosLicitacionTotal)}</span>
             </div>
           </div>
-        </div>
+        </FormSection>
 
         {/* Tabla de productos */}
         <div className="space-y-3">
@@ -725,7 +726,7 @@ function ProductoRow({ producto: p, index, calc, tcOficialDefault, fleteCifPctDe
 
       {/* Formulario expandido */}
       <CollapsibleContent>
-        <div className="px-4 pb-5 pt-1 bg-muted/20 border-t space-y-5">
+        <div className="px-2 sm:px-4 pb-4 pt-2 bg-muted/20 border-t">
           <ProductoForm producto={p} calc={calc} tcOficialDefault={tcOficialDefault} fleteCifPctDefault={fleteCifPctDefault} onChange={onChange} />
         </div>
       </CollapsibleContent>
@@ -747,120 +748,95 @@ function ProductoForm({ producto: p, calc, tcOficialDefault, fleteCifPctDefault,
   const s = (k: keyof LicitacionProducto) => (e: React.ChangeEvent<HTMLInputElement>) =>
     onChange({ [k]: e.target.value });
 
+  const esLocal = p.origen === 'local';
+  const bajoPiso = p.precio_ofertado > 0 && p.precio_ofertado < calc.precio_piso;
+  const extras = round2((p.garantia || 0) + (p.pasaje || 0) + (p.envio_local || 0) + (p.otros_costos || 0));
+  const manualesActivos = [
+    p.usa_flete_manual, p.usa_manipuleo_manual, p.usa_ga_manual, p.usa_iva_manual,
+  ].filter(Boolean).length;
+
   return (
-    <div className="space-y-5">
-      {/* Descripción */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Nombre del producto</label>
-          <Input className="h-7 text-xs" value={p.nombre} onChange={s('nombre')} placeholder="Ej: SSD Timetec 512GB" />
+    <div className="space-y-2.5">
+      {/* Nombre y origen: siempre visibles */}
+      <div className="flex flex-col sm:flex-row sm:items-end gap-2.5">
+        <div className="space-y-1 flex-1 min-w-0">
+          <label className="text-[11px] text-muted-foreground">Nombre del producto</label>
+          <Input className="h-9 sm:h-8 text-xs" value={p.nombre} onChange={s('nombre')} placeholder="Ej: SSD Timetec 512GB" />
         </div>
         <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Especificación</label>
-          <Input className="h-7 text-xs" value={p.especificacion || ''} onChange={s('especificacion')} placeholder="Ej: 256GB / WiFi" />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Link del producto</label>
-          <Input className="h-7 text-xs" value={p.link_producto || ''} onChange={s('link_producto')} placeholder="https://..." />
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Origen del producto: importado (default) o compra local en Bolivia */}
-      <div className="flex items-center gap-3">
-        <label className="text-xs text-muted-foreground">Origen del producto</label>
-        <div className="flex gap-1">
-          <Button
-            type="button"
-            size="sm"
-            variant={p.origen !== 'local' ? 'default' : 'outline'}
-            className="h-7 text-xs px-3"
-            onClick={() => onChange({ origen: 'importado' })}
-          >
-            Importado
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={p.origen === 'local' ? 'default' : 'outline'}
-            className="h-7 text-xs px-3"
-            onClick={() => onChange({ origen: 'local' })}
-          >
-            Compra local
-          </Button>
-        </div>
-      </div>
-
-      <Separator />
-
-      {p.origen === 'local' ? (
-        <CostoLocal producto={p} calc={calc} onChange={onChange} />
-      ) : (
-        <CostoImportacion producto={p} calc={calc} tcOficialDefault={tcOficialDefault} fleteCifPctDefault={fleteCifPctDefault} onChange={onChange} />
-      )}
-
-      <Separator />
-
-      {/* Sección LICITACIÓN */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Cotización licitación</p>
-
-        {/* Precio ofertado — campo principal */}
-        <div className="flex items-end gap-4 mb-4 flex-wrap">
-          <div className="space-y-1 w-44">
-            <label className="text-xs font-semibold">
-              Precio entidad (referencial)
-              <span className="ml-1 text-muted-foreground font-normal">— Bs/unidad</span>
-            </label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              className="h-9 font-mono text-base"
-              value={p.precio_entidad ?? ''}
-              placeholder="0.00"
-              onChange={e => onChange({ precio_entidad: e.target.value === '' ? undefined : (toDecimal(e.target.value) || 0) })}
-            />
+          <label className="text-[11px] text-muted-foreground">Origen</label>
+          <div className="flex gap-1">
+            <Button type="button" size="sm" variant={!esLocal ? 'default' : 'outline'} className="h-9 sm:h-8 text-xs px-3" onClick={() => onChange({ origen: 'importado' })}>
+              Importado
+            </Button>
+            <Button type="button" size="sm" variant={esLocal ? 'default' : 'outline'} className="h-9 sm:h-8 text-xs px-3" onClick={() => onChange({ origen: 'local' })}>
+              Compra local
+            </Button>
           </div>
-          <div className="space-y-1 w-44">
-            <label className="text-xs font-semibold">
-              Precio ofertado (Bs/unidad)
-              <span className="ml-1 text-muted-foreground font-normal">— editable</span>
-            </label>
+        </div>
+      </div>
+
+      {/* Precio ofertado: el campo que más se toca, siempre a la vista */}
+      <div className="rounded-lg border bg-background/60 px-3 py-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[11px] font-semibold">Precio ofertado <span className="text-muted-foreground font-normal">Bs/u</span></label>
             <Input
-              type="number"
-              min="0"
-              step="0.01"
-              className="h-9 font-mono font-semibold text-base"
+              type="number" inputMode="decimal" min="0" step="0.01"
+              className={`h-9 font-mono font-semibold text-sm ${bajoPiso ? 'border-amber-400' : ''}`}
               value={p.precio_ofertado || ''}
               placeholder="0.00"
               onChange={e => onChange({ precio_ofertado: toDecimal(e.target.value) || 0 })}
             />
           </div>
           <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Precio piso</p>
-            <p className={`text-sm font-mono font-semibold ${p.precio_ofertado > 0 && p.precio_ofertado < calc.precio_piso ? 'text-amber-500' : 'text-muted-foreground'}`}>
-              Bs {fmt(calc.precio_piso)}
-            </p>
-          </div>
-          {p.precio_entidad != null && p.precio_entidad > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Vs. entidad</p>
-              <p className={`text-sm font-mono font-semibold ${p.precio_ofertado > p.precio_entidad ? 'text-amber-600' : 'text-green-600 dark:text-green-400'}`}>
-                {p.precio_ofertado > p.precio_entidad ? '+' : ''}{fmt(p.precio_ofertado - p.precio_entidad)}
-                <span className="ml-1 font-normal">({((p.precio_ofertado / p.precio_entidad - 1) * 100).toFixed(1)}%)</span>
-              </p>
-            </div>
-          )}
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Total ofertado</p>
-            <p className="text-sm font-mono">Bs {fmt(calc.total_ofertado)}</p>
+            <label className="text-[11px] font-semibold">Precio entidad <span className="text-muted-foreground font-normal">referencial</span></label>
+            <Input
+              type="number" inputMode="decimal" min="0" step="0.01"
+              className="h-9 font-mono text-sm"
+              value={p.precio_entidad ?? ''}
+              placeholder="0.00"
+              onChange={e => onChange({ precio_entidad: e.target.value === '' ? undefined : (toDecimal(e.target.value) || 0) })}
+            />
           </div>
         </div>
 
-        {/* Costos adicionales */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+          <ResultCard label="Precio piso" value={calc.precio_piso} hint="Venta mínima por unidad para no perder" color={bajoPiso ? 'text-amber-500' : undefined} />
+          <ResultCard label="Costo unit." value={calc.total_individual} hint="Costo puesto en almacén por unidad" />
+          <ResultCard label="Ganancia" value={calc.ganancia} bold hint="Total ofertado − Costos" color={calc.ganancia < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
+          <ResultCard label="ROI" value={calc.roi} isPct bold hint="Ganancia / Costos" color={calc.roi < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
+        </div>
+
+        {p.precio_entidad != null && p.precio_entidad > 0 && (
+          <p className="text-[11px] text-muted-foreground mt-2">
+            Vs. entidad:{' '}
+            <span className={`font-mono font-semibold ${p.precio_ofertado > p.precio_entidad ? 'text-amber-600' : 'text-green-600 dark:text-green-400'}`}>
+              {p.precio_ofertado > p.precio_entidad ? '+' : ''}{fmt(p.precio_ofertado - p.precio_entidad)}
+              {' '}({((p.precio_ofertado / p.precio_entidad - 1) * 100).toFixed(1)}%)
+            </span>
+            {' · '}Total ofertado: <span className="font-mono">Bs {fmt(calc.total_ofertado)}</span>
+          </p>
+        )}
+      </div>
+
+      {esLocal ? (
+        <FormSection title="Compra local" defaultOpen summary={`Bs ${fmt(p.precio_local || 0)} · Q ${p.cantidad}`}>
+          <CostoLocal producto={p} calc={calc} onChange={onChange} />
+        </FormSection>
+      ) : (
+        <CostoImportacion
+          producto={p}
+          calc={calc}
+          tcOficialDefault={tcOficialDefault}
+          fleteCifPctDefault={fleteCifPctDefault}
+          onChange={onChange}
+          manualesActivos={manualesActivos}
+        />
+      )}
+
+      <FormSection title="Costos adicionales" hint="se suman al costo de este producto" summary={`Bs ${fmt(extras)}`}>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-2.5">
           <Field label="Garantía (Bs total)">
             <NumInput value={p.garantia || undefined} onChange={n('garantia')} min="0" placeholder="0" />
           </Field>
@@ -874,11 +850,13 @@ function ProductoForm({ producto: p, calc, tcOficialDefault, fleteCifPctDefault,
             <NumInput value={p.otros_costos || undefined} onChange={n('otros_costos')} min="0" placeholder="0" />
           </Field>
         </div>
+      </FormSection>
 
-        {/* Resultados licitación */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mt-4">
+      <FormSection title="Impuestos y resultado" summary={`costos Bs ${fmt(calc.costos)}`}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
           <ResultCard label="IVA a pagar"  value={calc.iva_pagar}      hint="13% ofertado − crédito fiscal" />
           <ResultCard label="IT a pagar"   value={calc.it_pagar}       hint="3% del total ofertado" />
+          <ResultCard label="Total ofertado" value={calc.total_ofertado} hint="Precio ofertado × cantidad" />
           <ResultCard label="Costos total" value={calc.costos}         hint="Costo del producto + IVA + IT + extras" bold />
           <ResultCard
             label="Ganancia"
@@ -887,37 +865,47 @@ function ProductoForm({ producto: p, calc, tcOficialDefault, fleteCifPctDefault,
             bold
             color={calc.ganancia < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'}
           />
-          <ResultCard
-            label="ROI"
-            value={calc.roi}
-            isPct
-            hint="Ganancia / Costos"
-            color={calc.roi < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'}
-          />
         </div>
-      </div>
+      </FormSection>
+
+      <FormSection title="Descripción y enlace" summary={p.especificacion || (p.link_producto ? 'con enlace' : '—')}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">Especificación</label>
+            <Input className="h-9 sm:h-8 text-xs" value={p.especificacion || ''} onChange={s('especificacion')} placeholder="Ej: 256GB / WiFi" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">Link del producto</label>
+            <Input className="h-9 sm:h-8 text-xs" value={p.link_producto || ''} onChange={s('link_producto')} placeholder="https://..." />
+          </div>
+        </div>
+      </FormSection>
     </div>
   );
 }
 
-// ─── Costo de importación (sección del formulario, origen='importado') ───────
+// ─── Costo de importación (secciones del formulario, origen='importado') ─────
 
-function CostoImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefault, onChange }: {
+function CostoImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefault, onChange, manualesActivos }: {
   producto: LicitacionProducto;
   calc: ReturnType<typeof calcProducto>;
   tcOficialDefault: number;
   fleteCifPctDefault: number;
   onChange: (c: Partial<LicitacionProducto>) => void;
+  manualesActivos: number;
 }) {
   const n = (k: keyof LicitacionProducto) => (v: number | undefined) => onChange({ [k]: v });
   const s = (k: keyof LicitacionProducto) => (e: React.ChangeEvent<HTMLInputElement>) =>
     onChange({ [k]: e.target.value });
 
   return (
-    <div className="space-y-4">
-      <div>
-      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Costo de importación</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-3">
+    <>
+      <FormSection
+        title="Compra e impuestos"
+        defaultOpen
+        summary={`USD ${fmt(p.precio_usd ?? 0)} · Q ${p.cantidad} · GA ${p.ga_pct}%`}
+      >
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2.5">
           <Field label="Cantidad">
             <NumInput value={p.cantidad} onChange={n('cantidad')} min="1" step="1" />
           </Field>
@@ -927,25 +915,35 @@ function CostoImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefa
           <Field label="Tax proveedor %">
             <NumInput value={p.tax_pct} onChange={n('tax_pct')} min="0" />
           </Field>
+          <Field label="GA %" hint="Gravamen Arancelario">
+            <NumInput value={p.ga_pct} onChange={n('ga_pct')} min="0" />
+          </Field>
           <Field label="T/C compra">
             <NumInput value={p.tc} onChange={n('tc')} min="0" step="0.01" />
           </Field>
           <Field label="T/C envío">
-            <NumInput value={p.tc_envio} onChange={n('tc_envio')} min="0" step="0.01" placeholder="= T/C compra" />
+            <NumInput value={p.tc_envio} onChange={n('tc_envio')} min="0" step="0.01" placeholder="= compra" />
           </Field>
-          <Field label="T/C aduana" hint="tributos GA + IVA">
-            <NumInput value={p.tc_oficial} onChange={n('tc_oficial')} min="0" step="0.01" placeholder={`= cotiz. (${tcOficialDefault})`} />
-          </Field>
-          <Field label="GA %" hint="Gravamen Arancelario">
-            <NumInput value={p.ga_pct} onChange={n('ga_pct')} min="0" />
+          <Field label="T/C aduana" hint="GA + IVA">
+            <NumInput value={p.tc_oficial} onChange={n('tc_oficial')} min="0" step="0.01" placeholder={`= ${tcOficialDefault}`} />
           </Field>
           <Field label="% flete en CIF" hint="10 aéreo / 25 marít.">
-            <NumInput value={p.flete_cif_pct} onChange={n('flete_cif_pct')} min="0" max="100" step="1" placeholder={`= cotiz. (${fleteCifPctDefault})`} />
+            <NumInput value={p.flete_cif_pct} onChange={n('flete_cif_pct')} min="0" max="100" step="1" placeholder={`= ${fleteCifPctDefault}`} />
           </Field>
         </div>
 
-        {/* Dimensiones + Peso */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-3 mt-3">
+        <div className="mt-3 w-32">
+          <Field label="HS Code">
+            <Input className="h-9 sm:h-7 text-xs" value={p.hs_code || ''} onChange={s('hs_code')} placeholder="0000.00" />
+          </Field>
+        </div>
+      </FormSection>
+
+      <FormSection
+        title="Peso y flete"
+        summary={`${p.usa_peso_bruto ? 'bruto' : 'vol.'} ${fmt(calc.peso)} kg · envío Bs ${fmt(calc.envio)}`}
+      >
+        <div className="grid grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-2.5">
           <Field label="M1 (cm)">
             <NumInput value={p.m1} onChange={n('m1')} min="0" step="0.1" />
           </Field>
@@ -955,39 +953,34 @@ function CostoImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefa
           <Field label="M3 (cm)">
             <NumInput value={p.m3} onChange={n('m3')} min="0" step="0.1" />
           </Field>
-          <Field label="Peso bruto (kg)" hint="alternativo al volumétrico">
+          <Field label="Peso (kg)" hint="bruto">
             <NumInput value={p.peso_bruto} onChange={n('peso_bruto')} min="0" step="0.001" />
           </Field>
-          <Field label="Tarifa envío (USD/kg)">
+          <Field label="Envío $/kg">
             <NumInput value={p.tarifa_envio} onChange={n('tarifa_envio')} min="0" step="0.5" />
           </Field>
-          <Field label="Tarifa manipuleo (Bs/kg)">
+          <Field label="Manip. Bs/kg">
             <NumInput value={p.tarifa_manipuleo} onChange={n('tarifa_manipuleo')} min="0" step="0.5" />
           </Field>
         </div>
 
-        {/* Toggle peso para flete + HS Code + overrides GA/IVA */}
-        <div className="flex flex-wrap items-start gap-x-6 gap-y-3 mt-3">
-
-          {/* Toggle peso volumétrico / bruto */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3 mt-3">
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Peso para flete</label>
+            <label className="text-[11px] text-muted-foreground">Peso para flete</label>
             <div className="flex gap-1">
               <Button
-                type="button"
-                size="sm"
+                type="button" size="sm"
                 variant={!p.usa_peso_bruto ? 'default' : 'outline'}
-                className="h-7 text-xs px-2 gap-1"
+                className="h-8 text-xs px-2 gap-1"
                 onClick={() => onChange({ usa_peso_bruto: false })}
               >
                 <Box className="h-3 w-3" />
                 Vol.{calc.peso_vol > 0 ? ` (${calc.peso_vol} kg)` : ''}
               </Button>
               <Button
-                type="button"
-                size="sm"
+                type="button" size="sm"
                 variant={p.usa_peso_bruto ? 'default' : 'outline'}
-                className="h-7 text-xs px-2 gap-1"
+                className="h-8 text-xs px-2 gap-1"
                 onClick={() => onChange({ usa_peso_bruto: true })}
               >
                 <Weight className="h-3 w-3" />
@@ -995,181 +988,7 @@ function CostoImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefa
               </Button>
             </div>
           </div>
-
-          {/* HS Code */}
-          <div className="space-y-1 w-28">
-            <label className="text-xs text-muted-foreground">HS Code</label>
-            <Input className="h-7 text-xs" value={p.hs_code || ''} onChange={s('hs_code')} placeholder="0000.00" />
-          </div>
-
-          {/* Flete manual override (Bs) — reemplaza peso × tarifa × tc_envio */}
-          <div className="space-y-1">
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={!!p.usa_flete_manual}
-                onChange={e => onChange({ usa_flete_manual: e.target.checked })}
-                className="rounded"
-              />
-              Flete manual {p.flete_manual_es_total ? '(Bs total)' : '(Bs/unidad)'}
-            </label>
-            {p.usa_flete_manual && (
-              <>
-                <NumInput
-                  value={p.flete_manual}
-                  onChange={n('flete_manual')}
-                  min="0"
-                  step="0.01"
-                  placeholder={`auto: ${fmt(calc.envio_calculado)}`}
-                  className="w-28"
-                />
-                <div className="flex gap-1 text-[10px]">
-                  <button type="button" onClick={() => onChange({ flete_manual_es_total: false })}
-                    className={`px-1.5 py-0.5 rounded border ${!p.flete_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
-                    por unidad
-                  </button>
-                  <button type="button" onClick={() => onChange({ flete_manual_es_total: true })}
-                    className={`px-1.5 py-0.5 rounded border ${p.flete_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
-                    total
-                  </button>
-                </div>
-                {p.flete_manual_es_total && p.flete_manual != null && (p.cantidad || 0) > 0 && (
-                  <p className="text-[10px] text-muted-foreground">= {fmt(round2(p.flete_manual / p.cantidad))}/u</p>
-                )}
-              </>
-            )}
-            {!p.usa_flete_manual && (
-              <p className="text-[10px] text-muted-foreground">Auto (peso × tarifa): Bs {fmt(calc.envio_calculado)}</p>
-            )}
-          </div>
-
-          {/* Manipuleo manual override (Bs) — reemplaza peso × tarifa_manipuleo */}
-          <div className="space-y-1">
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={!!p.usa_manipuleo_manual}
-                onChange={e => onChange({ usa_manipuleo_manual: e.target.checked })}
-                className="rounded"
-              />
-              Manipuleo manual {p.manipuleo_manual_es_total ? '(Bs total)' : '(Bs/unidad)'}
-            </label>
-            {p.usa_manipuleo_manual && (
-              <>
-                <NumInput
-                  value={p.manipuleo_manual}
-                  onChange={n('manipuleo_manual')}
-                  min="0"
-                  step="0.01"
-                  placeholder={`auto: ${fmt(calc.manipuleo_calculado)}`}
-                  className="w-28"
-                />
-                <div className="flex gap-1 text-[10px]">
-                  <button type="button" onClick={() => onChange({ manipuleo_manual_es_total: false })}
-                    className={`px-1.5 py-0.5 rounded border ${!p.manipuleo_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
-                    por unidad
-                  </button>
-                  <button type="button" onClick={() => onChange({ manipuleo_manual_es_total: true })}
-                    className={`px-1.5 py-0.5 rounded border ${p.manipuleo_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
-                    total
-                  </button>
-                </div>
-                {p.manipuleo_manual_es_total && p.manipuleo_manual != null && (p.cantidad || 0) > 0 && (
-                  <p className="text-[10px] text-muted-foreground">= {fmt(round2(p.manipuleo_manual / p.cantidad))}/u</p>
-                )}
-              </>
-            )}
-            {!p.usa_manipuleo_manual && (
-              <p className="text-[10px] text-muted-foreground">Auto (peso × tarifa): Bs {fmt(calc.manipuleo_calculado)}</p>
-            )}
-          </div>
-
-          {/* GA manual override */}
-          <div className="space-y-1">
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={p.usa_ga_manual}
-                onChange={e => onChange({ usa_ga_manual: e.target.checked })}
-                className="rounded"
-              />
-              GA manual {p.ga_manual_es_total ? '(Bs total)' : '(Bs/unidad)'}
-            </label>
-            {p.usa_ga_manual && (
-              <>
-                <NumInput
-                  value={p.ga_manual}
-                  onChange={n('ga_manual')}
-                  min="0"
-                  step="0.01"
-                  placeholder={`auto: ${fmt(calc.ga_calculado)}`}
-                  className="w-28"
-                />
-                <div className="flex gap-1 text-[10px]">
-                  <button type="button" onClick={() => onChange({ ga_manual_es_total: false })}
-                    className={`px-1.5 py-0.5 rounded border ${!p.ga_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
-                    por unidad
-                  </button>
-                  <button type="button" onClick={() => onChange({ ga_manual_es_total: true })}
-                    className={`px-1.5 py-0.5 rounded border ${p.ga_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
-                    total
-                  </button>
-                </div>
-                {p.ga_manual_es_total && p.ga_manual != null && (p.cantidad || 0) > 0 && (
-                  <p className="text-[10px] text-muted-foreground">= {fmt(round2(p.ga_manual / p.cantidad))}/u</p>
-                )}
-              </>
-            )}
-            {!p.usa_ga_manual && (
-              <p className="text-[10px] text-muted-foreground">Auto: Bs {fmt(calc.ga_calculado)}</p>
-            )}
-          </div>
-
-          {/* IVA aduana manual override */}
-          <div className="space-y-1">
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={p.usa_iva_manual}
-                onChange={e => onChange({ usa_iva_manual: e.target.checked })}
-                className="rounded"
-              />
-              IVA aduana manual {p.iva_manual_es_total ? '(Bs total)' : '(Bs/unidad)'}
-            </label>
-            {p.usa_iva_manual && (
-              <>
-                <NumInput
-                  value={p.iva_aduana_manual}
-                  onChange={n('iva_aduana_manual')}
-                  min="0"
-                  step="0.01"
-                  placeholder={`auto: ${fmt(calc.iva_aduana_calculado)}`}
-                  className="w-28"
-                />
-                <div className="flex gap-1 text-[10px]">
-                  <button type="button" onClick={() => onChange({ iva_manual_es_total: false })}
-                    className={`px-1.5 py-0.5 rounded border ${!p.iva_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
-                    por unidad
-                  </button>
-                  <button type="button" onClick={() => onChange({ iva_manual_es_total: true })}
-                    className={`px-1.5 py-0.5 rounded border ${p.iva_manual_es_total ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}>
-                    total
-                  </button>
-                </div>
-                {p.iva_manual_es_total && p.iva_aduana_manual != null && (p.cantidad || 0) > 0 && (
-                  <p className="text-[10px] text-muted-foreground">= {fmt(round2(p.iva_aduana_manual / p.cantidad))}/u</p>
-                )}
-              </>
-            )}
-            {!p.usa_iva_manual && (
-              <p className="text-[10px] text-muted-foreground">Auto: Bs {fmt(calc.iva_aduana_calculado)}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Batería */}
-        <div className="flex items-center gap-4 mt-3">
-          <label className="flex items-center gap-2 text-xs cursor-pointer">
+          <label className="flex items-center gap-2 text-xs cursor-pointer min-h-9">
             <input
               type="checkbox"
               checked={p.tiene_bateria}
@@ -1179,60 +998,114 @@ function CostoImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefa
             Tiene batería
           </label>
           {p.tiene_bateria && (
-            <Field label="Costo batería (Bs)" className="w-36">
+            <Field label="Costo batería (Bs)" className="w-32">
               <NumInput value={p.costo_bateria} onChange={n('costo_bateria')} min="0" />
             </Field>
           )}
         </div>
-      </div>
+      </FormSection>
 
-      {/* Resultados importación */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {[
-          { label: 'Precio Bs',   value: calc.precio_bs,       hint: '(USD + tax) × T/C' },
-          { label: 'Precio BOB',  value: calc.precio_bob,      hint: `USD × ${p.tc_oficial ?? tcOficialDefault} (T/C aduana)` },
-          {
-            label: p.usa_peso_bruto ? 'Peso bruto' : 'Peso vol.',
-            value: calc.peso,
-            hint: p.usa_peso_bruto
-              ? `kg bruto (vol. = ${calc.peso_vol} kg)`
-              : 'kg volumétrico — (M1×M2×M3)/5000',
-          },
-          { label: 'Envío',       value: calc.envio,           hint: 'Bs/unidad — costo real (100%)' },
-          {
-            label: 'Base CIF',
-            value: calc.cif,
-            hint: `Precio BOB + ${p.flete_cif_pct ?? fleteCifPctDefault}% del flete (${fmt(calc.flete_cif)}) + 2% — base de GA e IVA`,
-          },
-          {
-            label: p.usa_ga_manual ? 'GA (manual)' : 'GA',
-            value: calc.ga,
-            hint: p.usa_ga_manual
-              ? `Bs/unidad manual (auto = ${fmt(calc.ga_calculado)})`
-              : 'CIF × GA% — Bs/unidad',
-          },
-          {
-            label: p.usa_iva_manual ? 'IVA aduana (manual)' : 'IVA aduana',
-            value: calc.iva_aduana,
-            hint: p.usa_iva_manual
-              ? `Bs/unidad manual (auto = ${fmt(calc.iva_aduana_calculado)})`
-              : 'Bs/unidad — calculado',
-          },
-          { label: 'Manipuleo',   value: calc.manipuleo,       hint: 'Bs/unidad' },
-          { label: 'Costo unit.', value: calc.total_individual, hint: 'Bs — total importación/unidad', bold: true },
-        ].map(({ label, value, hint, bold }) => (
-          <Tooltip key={label}>
-            <TooltipTrigger asChild>
-              <div className="bg-muted/60 rounded px-2.5 py-2 cursor-default">
-                <p className="text-[10px] text-muted-foreground">{label}</p>
-                <p className={`text-xs font-mono ${bold ? 'font-semibold' : ''}`}>Bs {fmt(value)}</p>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>{hint}</TooltipContent>
-          </Tooltip>
-        ))}
-      </div>
-    </div>
+      <FormSection
+        title="Valores manuales"
+        hint="reemplazan al cálculo (ej. cifras de la DUI)"
+        summary={manualesActivos > 0 ? `${manualesActivos} activo${manualesActivos > 1 ? 's' : ''}` : 'automáticos'}
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-3">
+          <ManualOverride
+            label="Flete" cantidad={p.cantidad}
+            usa={!!p.usa_flete_manual} valor={p.flete_manual} esTotal={!!p.flete_manual_es_total}
+            calculado={calc.envio_calculado} calculadoHint="peso × tarifa × T/C envío"
+            onUsa={v => onChange({ usa_flete_manual: v })}
+            onValor={v => onChange({ flete_manual: v })}
+            onEsTotal={v => onChange({ flete_manual_es_total: v })}
+          />
+          <ManualOverride
+            label="Manipuleo" cantidad={p.cantidad}
+            usa={!!p.usa_manipuleo_manual} valor={p.manipuleo_manual} esTotal={!!p.manipuleo_manual_es_total}
+            calculado={calc.manipuleo_calculado} calculadoHint="peso × tarifa de manipuleo"
+            onUsa={v => onChange({ usa_manipuleo_manual: v })}
+            onValor={v => onChange({ manipuleo_manual: v })}
+            onEsTotal={v => onChange({ manipuleo_manual_es_total: v })}
+          />
+          <ManualOverride
+            label="GA (gravamen)" cantidad={p.cantidad}
+            usa={p.usa_ga_manual} valor={p.ga_manual} esTotal={!!p.ga_manual_es_total}
+            calculado={calc.ga_calculado} calculadoHint="CIF × GA%"
+            onUsa={v => onChange({ usa_ga_manual: v })}
+            onValor={v => onChange({ ga_manual: v })}
+            onEsTotal={v => onChange({ ga_manual_es_total: v })}
+          />
+          <ManualOverride
+            label="IVA aduana" cantidad={p.cantidad}
+            usa={p.usa_iva_manual} valor={p.iva_aduana_manual} esTotal={!!p.iva_manual_es_total}
+            calculado={calc.iva_aduana_calculado} calculadoHint="(CIF + GA) × 14,94%"
+            onUsa={v => onChange({ usa_iva_manual: v })}
+            onValor={v => onChange({ iva_aduana_manual: v })}
+            onEsTotal={v => onChange({ iva_manual_es_total: v })}
+          />
+        </div>
+      </FormSection>
+
+      <FormSection title="Detalle del costeo" summary={`costo unit. Bs ${fmt(calc.total_individual)}`}>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            { label: 'Precio Bs',   value: calc.precio_bs,       hint: '(USD + tax) × T/C' },
+            { label: 'Precio BOB',  value: calc.precio_bob,      hint: `USD × ${p.tc_oficial ?? tcOficialDefault} (T/C aduana)` },
+            {
+              label: p.usa_peso_bruto ? 'Peso bruto' : 'Peso vol.',
+              value: calc.peso,
+              hint: p.usa_peso_bruto
+                ? `kg bruto (vol. = ${calc.peso_vol} kg)`
+                : 'kg volumétrico — (M1×M2×M3)/5000',
+            },
+            {
+              label: p.usa_flete_manual ? 'Envío (manual)' : 'Envío',
+              value: calc.envio,
+              hint: p.usa_flete_manual
+                ? `Bs/unidad manual (auto = ${fmt(calc.envio_calculado)})`
+                : 'Bs/unidad — costo real (100%)',
+            },
+            {
+              label: 'Base CIF',
+              value: calc.cif,
+              hint: `Precio BOB + ${p.flete_cif_pct ?? fleteCifPctDefault}% del flete (${fmt(calc.flete_cif)}) + 2% — base de GA e IVA`,
+            },
+            {
+              label: p.usa_ga_manual ? 'GA (manual)' : 'GA',
+              value: calc.ga,
+              hint: p.usa_ga_manual
+                ? `Bs/unidad manual (auto = ${fmt(calc.ga_calculado)})`
+                : 'CIF × GA% — Bs/unidad',
+            },
+            {
+              label: p.usa_iva_manual ? 'IVA aduana (manual)' : 'IVA aduana',
+              value: calc.iva_aduana,
+              hint: p.usa_iva_manual
+                ? `Bs/unidad manual (auto = ${fmt(calc.iva_aduana_calculado)})`
+                : 'Bs/unidad — calculado',
+            },
+            {
+              label: p.usa_manipuleo_manual ? 'Manipuleo (manual)' : 'Manipuleo',
+              value: calc.manipuleo,
+              hint: p.usa_manipuleo_manual
+                ? `Bs/unidad manual (auto = ${fmt(calc.manipuleo_calculado)})`
+                : 'Bs/unidad',
+            },
+            { label: 'Costo unit.', value: calc.total_individual, hint: 'Bs — total importación/unidad', bold: true },
+          ].map(({ label, value, hint, bold }) => (
+            <Tooltip key={label}>
+              <TooltipTrigger asChild>
+                <div className="bg-muted/60 rounded px-2.5 py-2 cursor-default">
+                  <p className="text-[10px] text-muted-foreground">{label}</p>
+                  <p className={`text-xs font-mono ${bold ? 'font-semibold' : ''}`}>Bs {fmt(value)}</p>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>{hint}</TooltipContent>
+            </Tooltip>
+          ))}
+        </div>
+      </FormSection>
+    </>
   );
 }
 

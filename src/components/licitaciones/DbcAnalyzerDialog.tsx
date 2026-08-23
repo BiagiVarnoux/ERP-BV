@@ -20,6 +20,7 @@ import {
   extractTextFromDocx,
   analizarDbc,
 } from '@/services/licitacionAiService';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 interface Props {
   open: boolean;
@@ -31,6 +32,7 @@ interface Props {
 type Step = 'idle' | 'extracting' | 'text-ready' | 'analyzing' | 'review' | 'error';
 
 export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Props) {
+  const companyId = useActiveCompanyId();
   const fileRef = useRef<HTMLInputElement>(null);
   const [step, setStep]         = useState<Step>('idle');
   const [fileName, setFileName] = useState('');
@@ -148,7 +150,7 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
         changes.notas = `${prev}${sep}📋 REQUISITOS ADICIONALES (extraído por IA):\n${result.requisitos_adicionales}`;
       }
 
-      await LicitacionStorage.update(licitacion.id, changes);
+      await LicitacionStorage.update(licitacion.id, companyId, changes);
       onUpdated({ ...licitacion, ...changes });
       toast.success('Datos aplicados a la licitación');
       handleClose();

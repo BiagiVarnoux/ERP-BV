@@ -12,6 +12,7 @@ import { TabCotizacion } from './tabs/TabCotizacion';
 import { TabDocumentos } from './tabs/TabDocumentos';
 import { TabProceso } from './tabs/TabProceso';
 import { TabGeneral } from './tabs/TabGeneral';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 interface Props {
   licitacion: Licitacion;
@@ -25,12 +26,13 @@ const ESTADOS_ORDEN: LicitacionEstado[] = [
 ];
 
 export function LicitacionDetalle({ licitacion, onBack, onUpdated, onReload }: Props) {
+  const companyId = useActiveCompanyId();
   const [changingEstado, setChangingEstado] = useState(false);
 
   const handleEstadoChange = async (nuevoEstado: LicitacionEstado) => {
     try {
       setChangingEstado(true);
-      await LicitacionStorage.update(licitacion.id, { estado: nuevoEstado });
+      await LicitacionStorage.update(licitacion.id, companyId, { estado: nuevoEstado });
       onUpdated({ ...licitacion, estado: nuevoEstado });
       toast.success(`Estado actualizado a ${LICITACION_ESTADO_LABELS[nuevoEstado]}`);
     } catch {

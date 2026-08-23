@@ -4,6 +4,7 @@ import { Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
 import { Licitacion } from '@/accounting/licitacion-types';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { LicitacionesLista } from '@/components/licitaciones/LicitacionesLista';
 import { LicitacionDetalle } from '@/components/licitaciones/LicitacionDetalle';
 
@@ -20,13 +21,15 @@ export default function LicitacionesPage() {
 
 function ListaView() {
   const navigate = useNavigate();
+  const companyId = useActiveCompanyId();
   const [licitaciones, setLicitaciones] = useState<Licitacion[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
+    if (!companyId) return;
     try {
       setLoading(true);
-      const data = await LicitacionStorage.loadAll();
+      const data = await LicitacionStorage.loadAll(companyId);
       setLicitaciones(data);
     } catch (e) {
       toast.error('Error cargando licitaciones');
@@ -34,7 +37,7 @@ function ListaView() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [companyId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -44,7 +47,7 @@ function ListaView() {
 
   const handleDelete = async (id: string) => {
     try {
-      await LicitacionStorage.delete(id);
+      await LicitacionStorage.delete(id, companyId);
       setLicitaciones(prev => prev.filter(l => l.id !== id));
       toast.success('Licitación eliminada');
     } catch {

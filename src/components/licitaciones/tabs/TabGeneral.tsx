@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Licitacion, TipoProceso, TIPO_PROCESO_LABELS } from '@/accounting/licitacion-types';
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
 import { fmt, round2 } from '@/accounting/utils';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 interface Props {
   licitacion: Licitacion;
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export function TabGeneral({ licitacion: l, onUpdated }: Props) {
+  const companyId = useActiveCompanyId();
   const [form, setForm] = useState({
     nombre:            l.nombre,
     entidad:           l.entidad,
@@ -51,7 +53,7 @@ export function TabGeneral({ licitacion: l, onUpdated }: Props) {
         tipo_proceso:      form.tipo_proceso,
         embarque_id:       form.embarque_id.trim() || undefined,
       };
-      await LicitacionStorage.update(l.id, changes);
+      await LicitacionStorage.update(l.id, companyId, changes);
       onUpdated({ ...l, ...changes });
       toast.success('Datos actualizados');
     } catch {

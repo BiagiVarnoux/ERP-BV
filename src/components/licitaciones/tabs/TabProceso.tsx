@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { Licitacion, LicitacionEstado } from '@/accounting/licitacion-types';
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
 import { CalendarDays, CheckCircle2, Circle } from 'lucide-react';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 interface Props {
   licitacion: Licitacion;
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function TabProceso({ licitacion: l, onUpdated }: Props) {
+  const companyId = useActiveCompanyId();
   const [form, setForm] = useState({
     fecha_presentacion:     l.fecha_presentacion     || '',
     fecha_adjudicacion_est: l.fecha_adjudicacion_est || '',
@@ -43,7 +45,7 @@ export function TabProceso({ licitacion: l, onUpdated }: Props) {
         fecha_entrega_real:     form.fecha_entrega_real     || undefined,
         notas:                  form.notas                  || undefined,
       };
-      await LicitacionStorage.update(l.id, changes);
+      await LicitacionStorage.update(l.id, companyId, changes);
       onUpdated({ ...l, ...changes });
       toast.success('Proceso actualizado');
     } catch {

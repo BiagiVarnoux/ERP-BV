@@ -3,13 +3,21 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import type { Database, Json } from '@/integrations/supabase/types';
-import { resolveUserCompanyId } from '@/lib/resolveCompanyId';
 import {
   Licitacion, LicitacionProducto, LicitacionDoc,
   LicitacionEstado, TipoProceso,
 } from './licitacion-types';
 
 // ─── Helpers de autenticación ─────────────────────────────────────────────────
+
+// La empresa SIEMPRE llega desde la UI (useActiveCompanyId). Antes se resolvía
+// con la "primera membresía" del usuario, lo que rompía silenciosamente a los
+// usuarios multi-empresa: veían la licitación de su segunda empresa pero al
+// guardar el filtro .eq('company_id', ...) no coincidía y no se escribía nada.
+function requireCompany(companyId: string | null | undefined): string {
+  if (!companyId) throw new Error('No hay empresa activa');
+  return companyId;
+}
 
 async function getUser() {
   const { data: { user } } = await supabase.auth.getUser();
@@ -126,9 +134,8 @@ export const LicitacionStorage = {
 
   // ── Lista ──────────────────────────────────────────────────────────────────
 
-  async loadAll(): Promise<Licitacion[]> {
-    const user = await getUser();
-    const companyId = await resolveUserCompanyId();
+  async loadAll(activeCompanyId: string | null): Promise<Licitacion[]> {
+    const companyId = requireCompany(activeCompanyId);
 
     const { data, error } = await supabase
       .from('licitaciones')
@@ -161,9 +168,12 @@ export const LicitacionStorage = {
 
   // ── Crear ──────────────────────────────────────────────────────────────────
 
-  async create(lit: Omit<Licitacion, 'id' | 'company_id' | 'user_id' | 'created_at' | 'updated_at' | 'productos' | 'documentos'>): Promise<Licitacion> {
+  async create(
+    activeCompanyId: string | null,
+    lit: Omit<Licitacion, 'id' | 'company_id' | 'user_id' | 'created_at' | 'updated_at' | 'productos' | 'documentos'>,
+  ): Promise<Licitacion> {
     const user = await getUser();
-    const companyId = await resolveUserCompanyId();
+    const companyId = requireCompany(activeCompanyId);
 
     const { data, error } = await supabase
       .from('licitaciones')
@@ -185,29 +195,43 @@ export const LicitacionStorage = {
 
   // ── Actualizar cabecera ────────────────────────────────────────────────────
 
-  async update(id: string, changes: Partial<Omit<Licitacion, 'id' | 'company_id' | 'user_id' | 'productos' | 'documentos'>>): Promise<void> {
-    const companyId = await resolveUserCompanyId();
-    const { error } = await supabase
+  async update(
+    id: string,
+    activeCompanyId: string | null,
+    changes: Partial<Omit<Licitacion, 'id' | 'company_id' | 'user_id' | 'productos' | 'documentos'>>,
+  ): Promise<void> {
+    const companyId = requireCompany(activeCompanyId);
+    const { data, error } = await supabase
       .from('licitaciones')
       .update({ ...changes, updated_at: new Date().toISOString() } as Database["public"]["Tables"]["licitaciones"]["Update"])
       .eq('id', id)
-      .eq('company_id', companyId);
+      .eq('company_id', companyId)
+      .select('id');
     if (error) throw error;
+    // Sin filas afectadas = la licitación no es de la empresa activa. Sin este
+    // control el guardado se perdería en silencio.
+    if (!data || data.length === 0) {
+      throw new Error('La licitación no pertenece a la empresa activa');
+    }
   },
 
   // ── Eliminar ───────────────────────────────────────────────────────────────
 
-  async delete(id: string): Promise<void> {
-    const companyId = await resolveUserCompanyId();
-    const { error } = await supabase.from('licitaciones').delete().eq('id', id).eq('company_id', companyId);
+  async delete(id: string, activeCompanyId: string | null): Promise<void> {
+    const companyId = requireCompany(activeCompanyId);
+    const { data, error } = await supabase
+      .from('licitaciones').delete().eq('id', id).eq('company_id', companyId).select('id');
     if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error('La licitación no pertenece a la empresa activa');
+    }
   },
 
   // ─── Productos ─────────────────────────────────────────────────────────────
 
-  async upsertProductos(productos: LicitacionProducto[]): Promise<void> {
+  async upsertProductos(activeCompanyId: string | null, productos: LicitacionProducto[]): Promise<void> {
     if (productos.length === 0) return;
-    const companyId = await resolveUserCompanyId();
+    const companyId = requireCompany(activeCompanyId);
     // Verificar que todos los licitacion_id pertenecen a la empresa antes de upsertear (S2 IDOR)
     const licitacionIds = [...new Set(productos.map(p => p.licitacion_id))];
     const { data: owned, error: ownerErr } = await supabase
@@ -218,7 +242,9 @@ export const LicitacionStorage = {
     if (ownerErr) throw ownerErr;
     const ownedIds = new Set((owned ?? []).map((r: any) => r.id));
     const safe = productos.filter(p => ownedIds.has(p.licitacion_id));
-    if (safe.length === 0) return;
+    // Nada que guardar porque la licitación no es de la empresa activa: avisar
+    // en vez de descartar los cambios en silencio.
+    if (safe.length === 0) throw new Error('La licitación no pertenece a la empresa activa');
     const rows = safe.map(p => ({
       id:               p.id,
       licitacion_id:    p.licitacion_id,

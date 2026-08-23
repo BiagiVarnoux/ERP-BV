@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
 import { Licitacion, TipoProceso, TIPO_PROCESO_LABELS } from '@/accounting/licitacion-types';
+import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 interface Props {
   open: boolean;
@@ -24,6 +25,7 @@ const DEFAULT_FORM = {
 };
 
 export function NuevaLicitacionModal({ open, onClose, onCreated }: Props) {
+  const companyId = useActiveCompanyId();
   const [form, setForm] = useState(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
 
@@ -36,7 +38,7 @@ export function NuevaLicitacionModal({ open, onClose, onCreated }: Props) {
 
     try {
       setSaving(true);
-      const lit = await LicitacionStorage.create({
+      const lit = await LicitacionStorage.create(companyId, {
         nombre:            form.nombre.trim(),
         entidad:           form.entidad.trim(),
         numero_sicoes:     form.numero_sicoes.trim(),

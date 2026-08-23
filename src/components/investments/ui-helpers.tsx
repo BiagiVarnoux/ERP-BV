@@ -19,10 +19,12 @@ export function NumInput({
   return (
     <Input
       type="number"
+      // Teclado numérico en celular; alto mayor en móvil para que sea táctil.
+      inputMode="decimal"
       min={min}
       max={max}
       step={step}
-      className={`h-7 text-xs px-1.5 text-right ${className}`}
+      className={`h-9 sm:h-7 text-xs px-1.5 text-right ${className}`}
       value={value ?? ''}
       placeholder={placeholder}
       onChange={e => {

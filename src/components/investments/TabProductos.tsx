@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
@@ -15,6 +14,8 @@ import { fmt, toDecimal, round2 } from '@/accounting/utils';
 import { TC_OFICIAL, FLETE_CIF_PCT_AEREO, FLETE_CIF_PCT_MARITIMO } from '@/accounting/licitacion-utils';
 import { sumCostosExtra } from '@/accounting/investment-utils';
 import { ShareButton } from '@/components/shared/ShareButton';
+import { FormSection } from '@/components/shared/FormSection';
+import { ManualOverride } from '@/components/shared/ManualOverride';
 import { NumInput, Pct, Field, StatCard } from './ui-helpers';
 
 interface Props {
@@ -92,13 +93,11 @@ export function TabProductos({
     <TooltipProvider>
       <div className="space-y-5">
         {/* Tipos de cambio del análisis — se aplican a todos los productos */}
-        <div className="rounded-lg border bg-muted/30 px-4 py-3 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold">Tipos de cambio del análisis</span>
-            <span className="text-[11px] text-muted-foreground hidden sm:block">
-              Compra y envío se aplican a todos los productos
-            </span>
-          </div>
+        <FormSection
+          title="Tipos de cambio"
+          hint="compra y envío se aplican a todos los productos"
+          summary={`compra ${headerTcCompra} · aduana ${tcOficial} · CIF ${fleteCifPct}%`}
+        >
           <div className="flex flex-wrap gap-x-6 gap-y-3">
             {/* T/C compra */}
             <div className="space-y-1">
@@ -170,7 +169,7 @@ export function TabProductos({
               </p>
             </div>
           </div>
-        </div>
+        </FormSection>
 
         {items.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground border rounded-lg">
@@ -351,7 +350,7 @@ function ItemRow({ item: p, calc, tcOficialDefault, fleteCifPctDefault, expanded
       </CollapsibleTrigger>
 
       <CollapsibleContent>
-        <div className="px-4 pb-5 pt-1 bg-muted/20 border-t">
+        <div className="px-2 sm:px-4 pb-4 pt-1 bg-muted/20 border-t">
           <ItemForm item={p} calc={calc} tcOficialDefault={tcOficialDefault} fleteCifPctDefault={fleteCifPctDefault} onChange={onChange} />
         </div>
       </CollapsibleContent>
@@ -372,63 +371,70 @@ function ItemForm({ item: p, calc, tcOficialDefault, fleteCifPctDefault, onChang
   const n = (k: keyof InvestmentItem) => (v: number | undefined) => onChange({ [k]: v });
   const s = (k: keyof InvestmentItem) => (e: React.ChangeEvent<HTMLInputElement>) => onChange({ [k]: e.target.value });
 
+  const manualesActivos = [
+    p.usa_flete_manual, p.usa_manipuleo_manual, p.usa_ga_manual, p.usa_iva_manual,
+  ].filter(Boolean).length;
+  const sinFactura = p.modalidad_venta === 'sin_factura';
+
   return (
-    <div className="space-y-5 pt-3">
-      {/* Descripción */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Nombre del producto</label>
-          <Input className="h-7 text-xs" value={p.nombre} onChange={s('nombre')} placeholder="Ej: SSD 512GB" />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Especificación</label>
-          <Input className="h-7 text-xs" value={p.especificacion || ''} onChange={s('especificacion')} placeholder="Ej: NVMe / M.2" />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Link del producto</label>
-          <Input className="h-7 text-xs" value={p.link_producto || ''} onChange={s('link_producto')} placeholder="https://..." />
-        </div>
+    <div className="space-y-2.5 pt-3">
+      {/* Nombre: siempre visible, es la identidad del producto */}
+      <div className="space-y-1">
+        <label className="text-[11px] text-muted-foreground">Nombre del producto</label>
+        <Input className="h-9 sm:h-8 text-xs" value={p.nombre} onChange={s('nombre')} placeholder="Ej: SSD 512GB" />
       </div>
 
-      <Separator />
+      {/* Cifras clave: siempre a la vista, para no tener que abrir "Resultados" */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <StatCard label="Costo unit." value={costeo.costo_unitario} hint="Desembolso por unidad, IVA aduana incluido" />
+        <StatCard label={sinFactura ? 'Piso s/factura' : 'Piso c/factura'} value={sinFactura ? costeo.precio_piso_sf : costeo.precio_piso} hint="Venta mínima por unidad para no perder" />
+        <StatCard label="Ganancia" value={costeo.ganancia} bold color={costeo.ganancia < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
+        <StatCard label="ROI" value={costeo.roi} isPct bold hint="Ganancia / Inversión" color={costeo.roi < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
+      </div>
 
-      {/* Costo de importación */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Costo de importación</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-3">
+      <FormSection
+        title="Compra e impuestos"
+        defaultOpen
+        summary={`USD ${fmt(p.precio_usd ?? 0)} · Q ${p.cantidad} · GA ${p.ga_pct}%`}
+      >
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2.5">
           <Field label="Cantidad"><NumInput value={p.cantidad} onChange={n('cantidad')} min="1" step="1" /></Field>
           <Field label="Precio USD"><NumInput value={p.precio_usd} onChange={n('precio_usd')} min="0" step="0.001" /></Field>
           <Field label="Tax prov. %"><NumInput value={p.tax_pct} onChange={n('tax_pct')} min="0" /></Field>
+          <Field label="GA %" hint="Gravamen"><NumInput value={p.ga_pct} onChange={n('ga_pct')} min="0" /></Field>
           <Field label="T/C compra"><NumInput value={p.tc} onChange={n('tc')} min="0" /></Field>
           <Field label="T/C envío"><NumInput value={p.tc_envio} onChange={n('tc_envio')} min="0" placeholder="= compra" /></Field>
-          <Field label="T/C aduana" hint="GA + IVA"><NumInput value={p.tc_oficial} onChange={n('tc_oficial')} min="0" step="0.01" placeholder={`= análisis (${tcOficialDefault})`} /></Field>
-          <Field label="% flete en CIF" hint="10 aéreo / 25 marít."><NumInput value={p.flete_cif_pct} onChange={n('flete_cif_pct')} min="0" max="100" step="1" placeholder={`= análisis (${fleteCifPctDefault})`} /></Field>
-          <Field label="GA %" hint="Gravamen"><NumInput value={p.ga_pct} onChange={n('ga_pct')} min="0" /></Field>
+          <Field label="T/C aduana" hint="GA + IVA"><NumInput value={p.tc_oficial} onChange={n('tc_oficial')} min="0" step="0.01" placeholder={`= ${tcOficialDefault}`} /></Field>
+          <Field label="% flete en CIF" hint="10 aéreo / 25 marít."><NumInput value={p.flete_cif_pct} onChange={n('flete_cif_pct')} min="0" max="100" step="1" placeholder={`= ${fleteCifPctDefault}`} /></Field>
         </div>
+      </FormSection>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-3 mt-3">
+      <FormSection
+        title="Peso y flete"
+        summary={`${p.usa_peso_bruto ? 'bruto' : 'vol.'} ${fmt(costeo.peso)} kg · envío Bs ${fmt(costeo.envio)}`}
+      >
+        <div className="grid grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-2.5">
           <Field label="M1 (cm)"><NumInput value={p.m1} onChange={n('m1')} min="0" step="0.1" /></Field>
           <Field label="M2 (cm)"><NumInput value={p.m2} onChange={n('m2')} min="0" step="0.1" /></Field>
           <Field label="M3 (cm)"><NumInput value={p.m3} onChange={n('m3')} min="0" step="0.1" /></Field>
-          <Field label="Peso bruto (kg)"><NumInput value={p.peso_bruto} onChange={n('peso_bruto')} min="0" step="0.001" /></Field>
-          <Field label="Tarifa envío $/kg"><NumInput value={p.tarifa_envio} onChange={n('tarifa_envio')} min="0" step="0.5" /></Field>
-          <Field label="Manipuleo Bs/kg"><NumInput value={p.tarifa_manipuleo} onChange={n('tarifa_manipuleo')} min="0" step="0.5" /></Field>
+          <Field label="Peso (kg)"><NumInput value={p.peso_bruto} onChange={n('peso_bruto')} min="0" step="0.001" /></Field>
+          <Field label="Envío $/kg"><NumInput value={p.tarifa_envio} onChange={n('tarifa_envio')} min="0" step="0.5" /></Field>
+          <Field label="Manip. Bs/kg"><NumInput value={p.tarifa_manipuleo} onChange={n('tarifa_manipuleo')} min="0" step="0.5" /></Field>
         </div>
 
-        {/* Toggle peso + batería */}
-        <div className="flex flex-wrap items-start gap-x-6 gap-y-3 mt-3">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3 mt-3">
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Peso para flete</label>
+            <label className="text-[11px] text-muted-foreground">Peso para flete</label>
             <div className="flex gap-1">
-              <Button type="button" size="sm" variant={!p.usa_peso_bruto ? 'default' : 'outline'} className="h-7 text-xs px-2 gap-1" onClick={() => onChange({ usa_peso_bruto: false })}>
+              <Button type="button" size="sm" variant={!p.usa_peso_bruto ? 'default' : 'outline'} className="h-8 text-xs px-2 gap-1" onClick={() => onChange({ usa_peso_bruto: false })}>
                 <Box className="h-3 w-3" /> Vol.{costeo.peso_vol > 0 ? ` (${costeo.peso_vol} kg)` : ''}
               </Button>
-              <Button type="button" size="sm" variant={p.usa_peso_bruto ? 'default' : 'outline'} className="h-7 text-xs px-2 gap-1" onClick={() => onChange({ usa_peso_bruto: true })}>
+              <Button type="button" size="sm" variant={p.usa_peso_bruto ? 'default' : 'outline'} className="h-8 text-xs px-2 gap-1" onClick={() => onChange({ usa_peso_bruto: true })}>
                 <Weight className="h-3 w-3" /> Bruto{p.peso_bruto ? ` (${p.peso_bruto} kg)` : ''}
               </Button>
             </div>
           </div>
-          <label className="flex items-center gap-2 text-xs cursor-pointer mt-5">
+          <label className="flex items-center gap-2 text-xs cursor-pointer min-h-9">
             <input type="checkbox" checked={p.tiene_bateria} onChange={e => onChange({ tiene_bateria: e.target.checked })} className="rounded" />
             Tiene batería
           </label>
@@ -436,123 +442,72 @@ function ItemForm({ item: p, calc, tcOficialDefault, fleteCifPctDefault, onChang
             <Field label="Costo batería (Bs)" className="w-32"><NumInput value={p.costo_bateria} onChange={n('costo_bateria')} min="0" /></Field>
           )}
         </div>
+      </FormSection>
 
-        {/* Overrides manuales: reemplazan el valor calculado por uno tecleado */}
-        <div className="mt-4 rounded-lg border bg-background/60 px-3 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            Valores manuales
-            <span className="ml-2 normal-case font-normal opacity-70">
-              reemplazan al cálculo automático (ej. cifras exactas de la DUI)
-            </span>
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-            <ManualOverride
-              label="Flete"
-              cantidad={p.cantidad}
-              usa={!!p.usa_flete_manual}
-              valor={p.flete_manual}
-              esTotal={!!p.flete_manual_es_total}
-              calculado={costeo.envio}
-              calculadoHint="peso × tarifa × T/C envío"
-              onUsa={v => onChange({ usa_flete_manual: v })}
-              onValor={v => onChange({ flete_manual: v })}
-              onEsTotal={v => onChange({ flete_manual_es_total: v })}
-            />
-            <ManualOverride
-              label="Manipuleo"
-              cantidad={p.cantidad}
-              usa={!!p.usa_manipuleo_manual}
-              valor={p.manipuleo_manual}
-              esTotal={!!p.manipuleo_manual_es_total}
-              calculado={costeo.manipuleo}
-              calculadoHint="peso × tarifa de manipuleo"
-              onUsa={v => onChange({ usa_manipuleo_manual: v })}
-              onValor={v => onChange({ manipuleo_manual: v })}
-              onEsTotal={v => onChange({ manipuleo_manual_es_total: v })}
-            />
-            <ManualOverride
-              label="GA (gravamen)"
-              cantidad={p.cantidad}
-              usa={p.usa_ga_manual}
-              valor={p.ga_manual}
-              esTotal={!!p.ga_manual_es_total}
-              calculado={costeo.ga_calculado}
-              calculadoHint="CIF × GA%"
-              onUsa={v => onChange({ usa_ga_manual: v })}
-              onValor={v => onChange({ ga_manual: v })}
-              onEsTotal={v => onChange({ ga_manual_es_total: v })}
-            />
-            <ManualOverride
-              label="IVA aduana"
-              cantidad={p.cantidad}
-              usa={p.usa_iva_manual}
-              valor={p.iva_aduana_manual}
-              esTotal={!!p.iva_manual_es_total}
-              calculado={costeo.iva_aduana_calculado}
-              calculadoHint="(CIF + GA) × 14,94%"
-              onUsa={v => onChange({ usa_iva_manual: v })}
-              onValor={v => onChange({ iva_aduana_manual: v })}
-              onEsTotal={v => onChange({ iva_manual_es_total: v })}
-            />
-          </div>
-        </div>
-
-        {/* Resultados costeo */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
-          <StatCard label="Precio Bs" value={costeo.precio_bs} hint="(USD + tax) × T/C" />
-          <StatCard
-            label={p.usa_flete_manual ? 'Envío (manual)' : 'Envío'}
-            value={costeo.envio}
-            hint={p.usa_flete_manual
-              ? `Valor manual. Calculado sería Bs ${fmt(costeo.envio_calculado)}`
-              : 'peso × tarifa × T/C envío — costo real (100%)'}
+      <FormSection
+        title="Valores manuales"
+        hint="reemplazan al cálculo (ej. cifras de la DUI)"
+        summary={manualesActivos > 0 ? `${manualesActivos} activo${manualesActivos > 1 ? 's' : ''}` : 'automáticos'}
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-3">
+          <ManualOverride
+            label="Flete" cantidad={p.cantidad}
+            usa={!!p.usa_flete_manual} valor={p.flete_manual} esTotal={!!p.flete_manual_es_total}
+            calculado={costeo.envio_calculado} calculadoHint="peso × tarifa × T/C envío"
+            onUsa={v => onChange({ usa_flete_manual: v })}
+            onValor={v => onChange({ flete_manual: v })}
+            onEsTotal={v => onChange({ flete_manual_es_total: v })}
           />
-          <StatCard label="Base CIF" value={costeo.cif} hint={`Precio BOB + ${p.flete_cif_pct ?? fleteCifPctDefault}% del flete (${fmt(costeo.flete_cif)}) + 2% — base de GA e IVA`} />
-          <StatCard label="GA" value={costeo.ga} hint={`CIF × GA% (T/C aduana ${p.tc_oficial ?? tcOficialDefault})`} />
-          <StatCard label="IVA aduana" value={costeo.iva_aduana} hint="Crédito fiscal (recuperable) — no es costo contable del inventario" />
-          <StatCard label="Manipuleo" value={costeo.manipuleo} />
-          <StatCard label="Costo unit. CON IVA" value={costeo.costo_unitario} bold hint="Desembolso total por unidad, IVA aduana incluido" />
-          <StatCard label="Costo unit. SIN IVA" value={costeo.costo_unitario_sin_iva} bold hint="Costo contable del inventario — el que va a libros y al COGS real del embarque" />
-          <StatCard label="Inversión" value={costeo.inversion} bold hint="Capital comprometido = costo import. × cantidad + extras" />
-          <StatCard label="Precio piso" value={costeo.precio_piso} hint="Venta mínima para no perder" />
+          <ManualOverride
+            label="Manipuleo" cantidad={p.cantidad}
+            usa={!!p.usa_manipuleo_manual} valor={p.manipuleo_manual} esTotal={!!p.manipuleo_manual_es_total}
+            calculado={costeo.manipuleo_calculado} calculadoHint="peso × tarifa de manipuleo"
+            onUsa={v => onChange({ usa_manipuleo_manual: v })}
+            onValor={v => onChange({ manipuleo_manual: v })}
+            onEsTotal={v => onChange({ manipuleo_manual_es_total: v })}
+          />
+          <ManualOverride
+            label="GA (gravamen)" cantidad={p.cantidad}
+            usa={p.usa_ga_manual} valor={p.ga_manual} esTotal={!!p.ga_manual_es_total}
+            calculado={costeo.ga_calculado} calculadoHint="CIF × GA%"
+            onUsa={v => onChange({ usa_ga_manual: v })}
+            onValor={v => onChange({ ga_manual: v })}
+            onEsTotal={v => onChange({ ga_manual_es_total: v })}
+          />
+          <ManualOverride
+            label="IVA aduana" cantidad={p.cantidad}
+            usa={p.usa_iva_manual} valor={p.iva_aduana_manual} esTotal={!!p.iva_manual_es_total}
+            calculado={costeo.iva_aduana_calculado} calculadoHint="(CIF + GA) × 14,94%"
+            onUsa={v => onChange({ usa_iva_manual: v })}
+            onValor={v => onChange({ iva_aduana_manual: v })}
+            onEsTotal={v => onChange({ iva_manual_es_total: v })}
+          />
         </div>
-      </div>
+      </FormSection>
 
-      <Separator />
-
-      {/* Venta esperada */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Venta esperada</p>
-
-        {/* Modalidad de venta — decide qué precio maneja el análisis */}
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-xs text-muted-foreground">Vender:</span>
-          <Button
-            type="button" size="sm"
-            variant={p.modalidad_venta === 'con_factura' ? 'default' : 'outline'}
-            className="h-7 text-xs px-3"
-            onClick={() => onChange({ modalidad_venta: 'con_factura' })}
-          >
+      <FormSection
+        title="Venta esperada"
+        defaultOpen
+        summary={`${sinFactura ? 's/f' : 'c/f'} Bs ${fmt(sinFactura ? p.precio_venta_sin_factura : p.precio_venta)}`}
+      >
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <span className="text-[11px] text-muted-foreground">Vender:</span>
+          <Button type="button" size="sm" variant={p.modalidad_venta === 'con_factura' ? 'default' : 'outline'} className="h-8 text-xs px-3" onClick={() => onChange({ modalidad_venta: 'con_factura' })}>
             Con factura
           </Button>
-          <Button
-            type="button" size="sm"
-            variant={p.modalidad_venta === 'sin_factura' ? 'default' : 'outline'}
-            className="h-7 text-xs px-3"
-            onClick={() => onChange({ modalidad_venta: 'sin_factura' })}
-          >
+          <Button type="button" size="sm" variant={p.modalidad_venta === 'sin_factura' ? 'default' : 'outline'} className="h-8 text-xs px-3" onClick={() => onChange({ modalidad_venta: 'sin_factura' })}>
             Sin factura
           </Button>
         </div>
 
-        <div className="flex flex-wrap items-end gap-4 mb-3">
-          <div className="space-y-1 w-40">
-            <label className="text-xs font-semibold">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[11px] font-semibold">
               Precio CON factura {p.modalidad_venta === 'con_factura' && <span className="text-primary">●</span>}
             </label>
             <Input
-              type="number" min="0" step="0.01"
-              className={`h-9 font-mono font-semibold text-base ${p.modalidad_venta === 'con_factura' ? 'ring-2 ring-primary/40' : 'opacity-70'}`}
+              type="number" inputMode="decimal" min="0" step="0.01"
+              className={`h-9 font-mono font-semibold text-sm ${p.modalidad_venta === 'con_factura' ? 'ring-2 ring-primary/40' : 'opacity-70'}`}
               value={p.precio_venta || ''}
               placeholder="0.00"
               onChange={e => onChange({ precio_venta: toDecimal(e.target.value) || 0 })}
@@ -568,155 +523,125 @@ function ItemForm({ item: p, calc, tcOficialDefault, fleteCifPctDefault, onChang
               </button>
             )}
           </div>
-          <div className="space-y-1 w-40">
-            <label className="text-xs font-semibold">
+          <div className="space-y-1">
+            <label className="text-[11px] font-semibold">
               Precio SIN factura {p.modalidad_venta === 'sin_factura' && <span className="text-primary">●</span>}
             </label>
             <Input
-              type="number" min="0" step="0.01"
-              className={`h-9 font-mono font-semibold text-base ${p.modalidad_venta === 'sin_factura' ? 'ring-2 ring-primary/40' : 'opacity-70'}`}
+              type="number" inputMode="decimal" min="0" step="0.01"
+              className={`h-9 font-mono font-semibold text-sm ${p.modalidad_venta === 'sin_factura' ? 'ring-2 ring-primary/40' : 'opacity-70'}`}
               value={p.precio_venta_sin_factura || ''}
               placeholder="0.00"
               onChange={e => onChange({ precio_venta_sin_factura: toDecimal(e.target.value) || 0 })}
             />
           </div>
-          <Field label="Velocidad de venta" hint="uds/mes" className="w-28">
+          <Field label="Velocidad de venta" hint="uds/mes">
             <NumInput value={p.velocidad_venta || undefined} onChange={n('velocidad_venta')} min="0" step="1" placeholder="uds/mes" />
           </Field>
-          <Field label="Plazo venta override" hint="meses" className="w-28">
+          <Field label="Plazo venta override" hint="meses">
             <NumInput value={p.meses_venta_override} onChange={n('meses_venta_override')} min="0" step="0.5" placeholder="auto" />
           </Field>
         </div>
 
-        {/* Comparación de ganancia por unidad: con vs sin factura (siempre ambas) */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
           <StatCard
-            label="Ganancia/u con factura"
+            label="Ganancia/u c/factura"
             value={round2(0.84 * p.precio_venta - costeo.costo_unitario + costeo.iva_aduana)}
             hint="0,84 × precio c/f − costo unitario + crédito IVA aduana"
           />
           <StatCard
-            label="Ganancia/u sin factura"
+            label="Ganancia/u s/factura"
             value={round2(p.precio_venta_sin_factura - costeo.costo_unitario)}
             hint="Precio sin factura − costo unitario (sin impuestos de venta)"
           />
-          <StatCard
-            label="Total venta"
-            value={costeo.ingreso_total}
-            bold
-            hint={p.modalidad_venta === 'sin_factura' ? 'Venta sin factura de todo el lote' : 'Venta con factura de todo el lote'}
-          />
-          <StatCard
-            label={p.modalidad_venta === 'sin_factura' ? 'Piso s/factura' : 'Piso c/factura'}
-            value={p.modalidad_venta === 'sin_factura' ? costeo.precio_piso_sf : costeo.precio_piso}
-            hint="Venta mínima por unidad para no perder"
-          />
+          <StatCard label="Total venta" value={costeo.ingreso_total} bold hint={sinFactura ? 'Venta sin factura de todo el lote' : 'Venta con factura de todo el lote'} />
+        </div>
+      </FormSection>
+
+      <FormSection
+        title="Costos adicionales"
+        hint="solo de este producto — no se reparten entre los demás"
+        summary={`Bs ${fmt(costeo.extras)}`}
+      >
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-2.5">
+          <Field label="Pasaje (Bs)"><NumInput value={p.pasaje || undefined} onChange={n('pasaje')} min="0" /></Field>
+          <Field label="Envío local (Bs)"><NumInput value={p.envio_local || undefined} onChange={n('envio_local')} min="0" /></Field>
+          <Field label="Otros costos (Bs)"><NumInput value={p.otros_costos || undefined} onChange={n('otros_costos')} min="0" /></Field>
+          {/* Campo legado: en inversión no hay boleta de garantía. Solo aparece
+              si un análisis viejo ya traía un monto cargado. */}
+          {(p.garantia || 0) > 0 && (
+            <Field label="Garantía (Bs)" hint="legado"><NumInput value={p.garantia || undefined} onChange={n('garantia')} min="0" /></Field>
+          )}
         </div>
 
-        {/* Costos adicionales — propios de ESTE producto, nunca prorrateados */}
-        <div className="rounded-lg border bg-background/60 px-3 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            Costos adicionales
-            <span className="ml-2 normal-case font-normal opacity-70">
-              solo de este producto — no se reparten entre los demás
-            </span>
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <Field label="Pasaje (Bs)"><NumInput value={p.pasaje || undefined} onChange={n('pasaje')} min="0" /></Field>
-            <Field label="Envío local (Bs)"><NumInput value={p.envio_local || undefined} onChange={n('envio_local')} min="0" /></Field>
-            <Field label="Otros costos (Bs)"><NumInput value={p.otros_costos || undefined} onChange={n('otros_costos')} min="0" /></Field>
-            {/* Campo legado: en inversión no hay boleta de garantía. Solo se
-                muestra si un análisis viejo ya traía un monto cargado. */}
-            {(p.garantia || 0) > 0 && (
-              <Field label="Garantía (Bs)" hint="legado"><NumInput value={p.garantia || undefined} onChange={n('garantia')} min="0" /></Field>
-            )}
-          </div>
+        <CostosExtraEditor
+          items={p.costos_extra ?? []}
+          onChange={next => onChange({ costos_extra: next })}
+        />
 
-          <CostosExtraEditor
-            items={p.costos_extra ?? []}
-            onChange={next => onChange({ costos_extra: next })}
+        <p className="text-[11px] text-muted-foreground mt-3">
+          Se suman a la inversión y al precio piso de este producto.
+        </p>
+      </FormSection>
+
+      <FormSection
+        title="Detalle del costeo"
+        summary={`inversión Bs ${fmt(costeo.inversion)}`}
+      >
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <StatCard label="Precio Bs" value={costeo.precio_bs} hint="(USD + tax) × T/C" />
+          <StatCard
+            label={p.usa_flete_manual ? 'Envío (manual)' : 'Envío'}
+            value={costeo.envio}
+            hint={p.usa_flete_manual
+              ? `Valor manual. Calculado sería Bs ${fmt(costeo.envio_calculado)}`
+              : 'peso × tarifa × T/C envío — costo real (100%)'}
           />
-
-          <p className="text-[11px] text-muted-foreground mt-3">
-            Total costos adicionales: <span className="font-mono">Bs {fmt(costeo.extras)}</span> — se suman a la
-            inversión y al precio piso de este producto.
-          </p>
-        </div>
-
-        {/* Resultados rentabilidad */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mt-4">
+          <StatCard label="Base CIF" value={costeo.cif} hint={`Precio BOB + ${p.flete_cif_pct ?? fleteCifPctDefault}% del flete (${fmt(costeo.flete_cif)}) + 2% — base de GA e IVA`} />
+          <StatCard
+            label={p.usa_ga_manual ? 'GA (manual)' : 'GA'}
+            value={costeo.ga}
+            hint={p.usa_ga_manual
+              ? `Valor manual. Calculado sería Bs ${fmt(costeo.ga_calculado)}`
+              : `CIF × GA% (T/C aduana ${p.tc_oficial ?? tcOficialDefault})`}
+          />
+          <StatCard
+            label={p.usa_iva_manual ? 'IVA aduana (manual)' : 'IVA aduana'}
+            value={costeo.iva_aduana}
+            hint={p.usa_iva_manual
+              ? `Valor manual. Calculado sería Bs ${fmt(costeo.iva_aduana_calculado)}`
+              : 'Crédito fiscal (recuperable) — no es costo contable del inventario'}
+          />
+          <StatCard
+            label={p.usa_manipuleo_manual ? 'Manipuleo (manual)' : 'Manipuleo'}
+            value={costeo.manipuleo}
+            hint={p.usa_manipuleo_manual ? `Valor manual. Calculado sería Bs ${fmt(costeo.manipuleo_calculado)}` : undefined}
+          />
+          <StatCard label="Costo unit. CON IVA" value={costeo.costo_unitario} bold hint="Desembolso total por unidad, IVA aduana incluido" />
+          <StatCard label="Costo unit. SIN IVA" value={costeo.costo_unitario_sin_iva} bold hint="Costo contable del inventario — el que va a libros y al COGS real del embarque" />
+          <StatCard label="Inversión" value={costeo.inversion} bold hint="Capital comprometido = costo import. × cantidad + extras" />
           <StatCard label="IVA a pagar" value={costeo.iva_pagar} hint="13% venta − crédito IVA aduana" />
           <StatCard label="IT a pagar" value={costeo.it_pagar} hint="3% de la venta" />
           <StatCard label="Costos total" value={costeo.costos} bold />
-          <StatCard label="Ganancia" value={costeo.ganancia} bold color={costeo.ganancia < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
-          <StatCard label="ROI" value={costeo.roi} isPct hint="Ganancia / Inversión" color={costeo.roi < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
         </div>
-      </div>
-    </div>
-  );
-}
+      </FormSection>
 
-// ─── Override manual de un componente del costeo ──────────────────────────────
-// Mismo patrón que el cotizador de licitaciones: casilla para activar, monto y
-// selector por unidad / total del lote, con el valor calculado como referencia.
-
-function ManualOverride({
-  label, cantidad, usa, valor, esTotal, calculado, calculadoHint,
-  onUsa, onValor, onEsTotal,
-}: {
-  label: string;
-  cantidad: number;
-  usa: boolean;
-  valor: number | undefined;
-  esTotal: boolean;
-  calculado: number;
-  calculadoHint: string;
-  onUsa: (v: boolean) => void;
-  onValor: (v: number | undefined) => void;
-  onEsTotal: (v: boolean) => void;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label className="flex items-center gap-2 text-xs cursor-pointer">
-        <input type="checkbox" checked={usa} onChange={e => onUsa(e.target.checked)} className="rounded" />
-        <span className="font-medium">{label} manual</span>
-        <span className="text-muted-foreground">{esTotal ? '(Bs total)' : '(Bs/unidad)'}</span>
-      </label>
-
-      {usa ? (
-        <div className="flex items-center gap-2 flex-wrap pl-6">
-          <NumInput value={valor} onChange={onValor} min="0" className="w-28" />
-          <div className="flex text-[10px] rounded overflow-hidden">
-            <button
-              type="button"
-              onClick={() => onEsTotal(false)}
-              className={`px-1.5 py-0.5 rounded-l border ${!esTotal ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}
-            >
-              /unidad
-            </button>
-            <button
-              type="button"
-              onClick={() => onEsTotal(true)}
-              className={`px-1.5 py-0.5 rounded-r border ${esTotal ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}
-            >
-              total
-            </button>
+      <FormSection title="Descripción y enlace" summary={p.especificacion || (p.link_producto ? 'con enlace' : '—')}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">Especificación</label>
+            <Input className="h-9 sm:h-8 text-xs" value={p.especificacion || ''} onChange={s('especificacion')} placeholder="Ej: NVMe / M.2" />
           </div>
-          {esTotal && valor != null && cantidad > 0 && (
-            <span className="text-[10px] text-muted-foreground">= {fmt(round2(valor / cantidad))}/u</span>
-          )}
-          <span className="text-[10px] text-muted-foreground">
-            calculado: Bs {fmt(calculado)}
-          </span>
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">Link del producto</label>
+            <Input className="h-9 sm:h-8 text-xs" value={p.link_producto || ''} onChange={s('link_producto')} placeholder="https://..." />
+          </div>
         </div>
-      ) : (
-        <p className="text-[10px] text-muted-foreground pl-6">
-          Calculado: Bs {fmt(calculado)} — {calculadoHint}
-        </p>
-      )}
+      </FormSection>
     </div>
   );
 }
+
 
 // ─── Costos adicionales con nombre libre ──────────────────────────────────────
 // Son de ESTE producto: no se reparten ni se comparten con los demás.
