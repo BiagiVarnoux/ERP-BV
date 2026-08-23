@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import autoTable, { RowInput } from 'jspdf-autotable';
 import { fmt } from '@/accounting/utils';
 import { downloadBlob, openExternalUrl, isStandalonePWA } from '@/lib/open-url';
+import { viewGeneratedPdf } from '@/lib/generated-pdf-viewer';
 
 // ── Salida de PDF: descargar (save) o ver en el visor (view) ─────────────────
 export type PdfOutputMode = 'save' | 'view';
@@ -34,9 +35,9 @@ function savePdf(doc: jsPDF, filename: string): void {
 function viewPdf(doc: jsPDF, filename: string): void {
   const blob = doc.output('blob');
   if (isStandalonePWA()) {
-    // En standalone, navegar a un blob: es inestable; downloadBlob usa data URL,
-    // que iOS abre en su visor in-app (equivale a "ver").
-    downloadBlob(blob, filename);
+    // PWA: subir a Storage y abrir la URL firmada → visor nativo (in-app en iOS),
+    // igual que los documentos guardados. Navegar a blob: aquí está bloqueado.
+    void viewGeneratedPdf(blob, filename);
     return;
   }
   const url = URL.createObjectURL(blob);
