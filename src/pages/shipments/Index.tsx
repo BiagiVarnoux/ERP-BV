@@ -42,7 +42,7 @@ import {
 } from '@/accounting/shipment-utils';
 import { ShipmentCloseModal, ProductLink } from '@/components/inventory/ShipmentCloseModal';
 import { FileAttachments } from '@/components/shipments/FileAttachments';
-import { exportShipmentToPDF, ShipmentPDFData } from '@/services/pdfService';
+import { exportShipmentToPDF, ShipmentPDFData, previewNextPdf } from '@/services/pdfService';
 import { useProductCategories, ProductCategoryRow } from '@/hooks/useProductCategories';
 
 // Dropdown de categoría: lee de las categorías de Configuración (product_categories).
@@ -999,7 +999,7 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
 
           <div className="flex flex-wrap gap-2 items-center shrink-0">
               {(() => {
-                const buildAndExport = (includeIVA: boolean) => {
+                const buildAndExport = (includeIVA: boolean, mode: 'save' | 'view' = 'save') => {
                   const costos = calcCostoFinalPorProducto(s);
                   const pdfData: ShipmentPDFData = {
                     numero: s.numero,
@@ -1027,11 +1027,18 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
                     })),
                     includeIVA,
                   };
-                  exportShipmentToPDF(pdfData);
-                  toast.success(includeIVA ? 'PDF (con IVA) descargado' : 'PDF descargado');
+                  if (mode === 'view') {
+                    previewNextPdf(() => exportShipmentToPDF(pdfData));
+                  } else {
+                    exportShipmentToPDF(pdfData);
+                    toast.success(includeIVA ? 'PDF (con IVA) descargado' : 'PDF descargado');
+                  }
                 };
                 return (
                   <>
+                    <Button size="sm" variant="ghost" onClick={() => buildAndExport(false, 'view')} title="Ver PDF (costo contable, sin IVA)">
+                      <Eye className="w-4 h-4" />
+                    </Button>
                     <Button size="sm" variant="ghost" onClick={() => buildAndExport(false)} title="Descargar PDF (costo contable, sin IVA)">
                       <Download className="w-4 h-4" />
                     </Button>

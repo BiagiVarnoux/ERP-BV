@@ -5,12 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { FileDown, TrendingUp, TrendingDown } from 'lucide-react';
+import { FileDown, TrendingUp, TrendingDown, Eye } from 'lucide-react';
 import { Account, JournalEntry } from '@/accounting/types';
 import { signedBalanceFor, fmt, round2 } from '@/accounting/utils';
 import { useReportSum, SumToggleButton, RowCheck, SumBar } from './useReportSum';
 import { getFiscalYearBounds, computePeriodResult, findUtilidadesAcumuladasAccount } from '@/accounting/fiscal-year-utils';
-import { exportBalanceSheetNIIFToPDF, BalanceSheetNIIFData } from '@/services/pdfService';
+import { exportBalanceSheetNIIFToPDF, BalanceSheetNIIFData, previewNextPdf } from '@/services/pdfService';
 
 interface BalanceSheetReportProps {
   accounts: Account[];
@@ -227,7 +227,7 @@ export function BalanceSheetReport({
   ].map(r => ({ id: r.id, value: r.balance })), [balanceSheet]);
   const resumenSel = sel.sumOf(selectableRows);
 
-  const handleExportPDF = () => {
+  const handleExportPDF = (mode: 'save' | 'view' = 'save') => {
     const pdfData: BalanceSheetNIIFData = {
       activosCorrientes: balanceSheet.activosCorrientes,
       totalActivosCorrientes: balanceSheet.totalActivosCorrientes,
@@ -248,7 +248,8 @@ export function BalanceSheetReport({
       razonEndeudamiento: balanceSheet.razonEndeudamiento,
       capitalTrabajo: balanceSheet.capitalTrabajo,
     };
-    exportBalanceSheetNIIFToPDF(pdfData, bsDate);
+    const run = () => exportBalanceSheetNIIFToPDF(pdfData, bsDate);
+    if (mode === 'view') previewNextPdf(run); else run();
   };
 
   const renderAccountSection = (
@@ -302,9 +303,13 @@ export function BalanceSheetReport({
         </div>
         <div className="flex items-center gap-2">
           <SumToggleButton active={sel.active} onToggle={() => (sel.active ? sel.close() : sel.setActive(true))} />
-          <Button variant="outline" size="sm" onClick={handleExportPDF}>
-            <FileDown className="h-4 w-4 mr-2" />
-            Exportar PDF
+          <Button variant="outline" size="sm" onClick={() => handleExportPDF('view')} title="Ver PDF">
+            <Eye className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Ver</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleExportPDF('save')}>
+            <FileDown className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Exportar PDF</span>
           </Button>
         </div>
       </CardHeader>

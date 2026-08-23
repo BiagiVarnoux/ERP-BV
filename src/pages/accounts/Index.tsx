@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Pencil, Trash2, Save, Banknote, Calendar, Tag, BarChart3, TrendingUp, Settings2, FileDown, Upload, Hash } from 'lucide-react';
+import { Pencil, Trash2, Save, Banknote, Calendar, Tag, BarChart3, TrendingUp, Settings2, FileDown, Upload, Hash, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
@@ -17,7 +17,7 @@ import { AccountsBulkUploadModal } from '@/components/accounts/AccountsBulkUploa
 import { AIAccountAssistant } from '@/components/accounts/AIAccountAssistant';
 import { RenameAccountCodeModal } from '@/components/accounts/RenameAccountCodeModal';
 import type { AccountClassificationSuggestion } from '@/services/accountAiService';
-import { exportChartOfAccountsToPDF } from '@/services/pdfService';
+import { exportChartOfAccountsToPDF, previewNextPdf } from '@/services/pdfService';
 import { downloadCSV } from '@/services/exportService';
 import { DataCard, DataCardHeader, DataCardActions, DataCardList } from '@/components/ui/data-card';
 import {
@@ -195,6 +195,9 @@ export default function AccountsPage() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle>Plan de Cuentas</CardTitle>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => previewNextPdf(() => exportChartOfAccountsToPDF(accounts))} title="Ver PDF">
+              <Eye className="w-4 h-4 sm:mr-1" /><span className="hidden sm:inline">Ver</span>
+            </Button>
             <Button variant="outline" size="sm" onClick={() => exportChartOfAccountsToPDF(accounts)}>
               <FileDown className="w-4 h-4 mr-1" />PDF
             </Button>

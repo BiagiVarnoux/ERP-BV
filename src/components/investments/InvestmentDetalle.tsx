@@ -4,9 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Ship, Save, FileDown } from 'lucide-react';
+import { ArrowLeft, Ship, Save, FileDown, Eye } from 'lucide-react';
 import { toast } from 'sonner';
-import { exportInvestmentAnalysisToPDF } from '@/services/pdfService';
+import { exportInvestmentAnalysisToPDF, previewNextPdf } from '@/services/pdfService';
 import {
   InvestmentAnalysis, InvestmentItem, InvestmentEstado,
   INVESTMENT_ESTADO_LABELS, INVESTMENT_ESTADO_COLORS,
@@ -15,6 +15,8 @@ import { calcItem, calcResumen, emptyItem } from '@/accounting/investment-utils'
 import { TC_OFICIAL, FLETE_CIF_PCT_AEREO } from '@/accounting/licitacion-utils';
 import { InvestmentStorage } from '@/accounting/investment-storage';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
+import { useShareTarget } from '@/hooks/useShareTarget';
+import { ShareButton } from '@/components/shared/ShareButton';
 import { TabProductos } from './TabProductos';
 import { TabTiempo } from './TabTiempo';
 import { TabComparador } from './TabComparador';
@@ -31,6 +33,9 @@ const ESTADOS_ORDEN: InvestmentEstado[] = ['BORRADOR', 'APROBADO', 'DESCARTADO',
 
 export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
   const companyId = useActiveCompanyId();
+  // Enlace compartido: cambia de empresa si el análisis es de otra empresa del
+  // usuario y señala el producto indicado en ?item=.
+  const { itemId: sharedItemId } = useShareTarget(analysis.company_id);
   const [items, setItems] = useState<InvestmentItem[]>(analysis.items);
   const [costoCapital, setCostoCapital] = useState(analysis.costo_capital_anual);
   const [plazoImport, setPlazoImport] = useState(analysis.plazo_importacion_meses);
@@ -82,6 +87,27 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
     setHeaderTcEnvio(v);
     setItems(prev => prev.map(it => ({ ...it, tc_envio: v })));
   }, []);
+  // Duplica un producto: copia con id nuevo justo debajo, renumerando `orden`.
+  const duplicateItem = useCallback((id: string) => {
+    setItems(prev => {
+      const idx = prev.findIndex(it => it.id === id);
+      if (idx === -1) return prev;
+      const copia: InvestmentItem = {
+        ...prev[idx],
+        id: crypto.randomUUID(),
+        // Las líneas de costo llevan id propio: también deben renovarse.
+        costos_extra: (prev[idx].costos_extra ?? []).map(c => ({ ...c, id: crypto.randomUUID() })),
+        // La conciliación con el embarque es 1-a-1: la copia arranca sin vínculo.
+        mapped_shipment_product_ids: [],
+        created_at: undefined,
+        updated_at: undefined,
+      };
+      const next = [...prev];
+      next.splice(idx + 1, 0, copia);
+      return next.map((it, i) => (it.orden === i ? it : { ...it, orden: i }));
+    });
+  }, []);
+
   const removeItem = useCallback((id: string) => {
     setItems(prev => prev.filter(it => it.id !== id));
   }, []);
@@ -118,10 +144,10 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
     }
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = (mode: 'save' | 'view' = 'save') => {
     if (items.length === 0) { toast.error('No hay productos para exportar'); return; }
     try {
-      exportInvestmentAnalysisToPDF({
+      const emitInversion = () => exportInvestmentAnalysisToPDF({
         analysis: {
           nombre:                  analysis.nombre,
           notas:                   analysis.notas,
@@ -149,6 +175,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
         })),
         resumen: { ...resumen, fuc_pct: fuc },
       });
+      if (mode === 'view') previewNextPdf(emitInversion); else emitInversion();
       toast.success('PDF generado');
     } catch (e) {
       toast.error('Error al generar el PDF');
@@ -197,11 +224,22 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <ShareButton basePath={`/investments/${analysis.id}`} label="Copiar enlace a este análisis" />
           <Button
             variant="outline"
             size="sm"
             className="gap-2"
-            onClick={handleExportPDF}
+            onClick={() => handleExportPDF('view')}
+            disabled={items.length === 0}
+            title="Ver PDF"
+          >
+            <Eye className="h-3.5 w-3.5" /> Ver
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => handleExportPDF('save')}
             disabled={items.length === 0}
           >
             <FileDown className="h-3.5 w-3.5" /> PDF
@@ -242,7 +280,10 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
             onUpdate={updateItem}
             onAdd={addItem}
             onRemove={removeItem}
+            onDuplicate={duplicateItem}
             onReorder={reorderItems}
+            sharePath={`/investments/${analysis.id}`}
+            highlightItemId={sharedItemId}
           />
         </TabsContent>
 

@@ -15,14 +15,16 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { Plus, Trash2, Copy, ChevronDown, ChevronRight, ExternalLink, AlertTriangle, TrendingUp, TrendingDown, Download, Weight, Box, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Copy, ChevronDown, ChevronRight, ExternalLink, AlertTriangle, TrendingUp, TrendingDown, Download, Weight, Box, GripVertical, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { Licitacion, LicitacionProducto } from '@/accounting/licitacion-types';
 import { calcProducto, calcResumen, emptyProducto, TC_OFICIAL, FLETE_CIF_PCT_AEREO, FLETE_CIF_PCT_MARITIMO } from '@/accounting/licitacion-utils';
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
 import { fmt, round2 } from '@/accounting/utils';
 import { toDecimal } from '@/accounting/utils';
-import { exportCotizacionToPDF } from '@/services/pdfService';
+import { exportCotizacionToPDF, previewNextPdf } from '@/services/pdfService';
+import { ShareButton } from '@/components/shared/ShareButton';
+import { useShareTarget } from '@/hooks/useShareTarget';
 import { TIPO_PROCESO_LABELS } from '@/accounting/licitacion-types';
 
 interface Props {
@@ -82,6 +84,22 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
+
+  // Enlace compartido: cambia de empresa si la licitación es de otra empresa del
+  // usuario y señala el producto indicado en ?item=.
+  const { itemId: sharedItemId } = useShareTarget(licitacion.company_id);
+  const sharePath = `/licitaciones/${licitacion.id}`;
+  const scrolledTo = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!sharedItemId || scrolledTo.current === sharedItemId) return;
+    if (!productos.some(p => p.id === sharedItemId)) return;
+    scrolledTo.current = sharedItemId;
+    setExpandedIds(prev => new Set([...prev, sharedItemId]));
+    requestAnimationFrame(() => {
+      document.getElementById(`producto-${sharedItemId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [sharedItemId, productos]);
 
   // ¿Todos los productos comparten el mismo T/C? (si no, avisamos que hay valores mixtos)
   const allSameTcCompra = productos.length <= 1 || productos.every(p => p.tc === productos[0].tc);
@@ -242,13 +260,13 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
 
   // ── Exportar PDF ───────────────────────────────────────────────────────────
 
-  const handleExportPDF = () => {
+  const handleExportPDF = (mode: 'save' | 'view' = 'save') => {
     if (productos.length === 0) {
       toast.error('No hay productos en la cotización');
       return;
     }
     try {
-      exportCotizacionToPDF({
+      const emitCotizacion = () => exportCotizacionToPDF({
         licitacion: {
           nombre:              licitacion.nombre,
           entidad:             licitacion.entidad,
@@ -271,6 +289,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
         })),
         resumen,
       });
+      if (mode === 'view') previewNextPdf(emitCotizacion); else emitCotizacion();
       toast.success('PDF generado');
     } catch (err) {
       console.error(err);
@@ -416,6 +435,8 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
                   onChange={changes => updateProducto(p.id, changes)}
                   onRemove={() => removeProducto(p.id)}
                   onDuplicate={() => duplicateProducto(p.id)}
+                  sharePath={sharePath}
+                  highlighted={sharedItemId === p.id}
                   canReorder={productos.length > 1}
                   isDragging={dragIdx === i}
                   isOver={overIdx === i && dragIdx !== i}
@@ -440,16 +461,30 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
 
         {/* Acciones footer */}
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={handleExportPDF}
-            disabled={productos.length === 0}
-          >
-            <Download className="h-3.5 w-3.5" />
-            Exportar PDF
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => handleExportPDF('view')}
+              disabled={productos.length === 0}
+              title="Ver PDF"
+            >
+              <Eye className="h-3.5 w-3.5" />
+              Ver
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => handleExportPDF('save')}
+              disabled={productos.length === 0}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Exportar PDF
+            </Button>
+            <ShareButton basePath={sharePath} label="Copiar enlace a esta cotización" />
+          </div>
 
           {isDirty && (
             <div className="flex gap-2">
@@ -479,7 +514,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
 
 // ─── Fila de producto ──────────────────────────────────────────────────────────
 
-function ProductoRow({ producto: p, index, calc, tcOficialDefault, fleteCifPctDefault, expanded, onToggle, onChange, onRemove, onDuplicate, canReorder, isDragging, isOver, onDragStart, onDragOver, onDrop, onDragEnd }: {
+function ProductoRow({ producto: p, index, calc, tcOficialDefault, fleteCifPctDefault, expanded, onToggle, onChange, onRemove, onDuplicate, sharePath, highlighted, canReorder, isDragging, isOver, onDragStart, onDragOver, onDrop, onDragEnd }: {
   producto: LicitacionProducto;
   index: number;
   calc: ReturnType<typeof calcProducto>;
@@ -490,6 +525,8 @@ function ProductoRow({ producto: p, index, calc, tcOficialDefault, fleteCifPctDe
   onChange: (c: Partial<LicitacionProducto>) => void;
   onRemove: () => void;
   onDuplicate: () => void;
+  sharePath: string;
+  highlighted?: boolean;
   canReorder: boolean;
   isDragging: boolean;
   isOver: boolean;
@@ -519,7 +556,12 @@ function ProductoRow({ producto: p, index, calc, tcOficialDefault, fleteCifPctDe
     <Collapsible open={expanded} onOpenChange={onToggle}>
       {/* Fila compacta (siempre visible) */}
       <CollapsibleTrigger asChild>
-        <div className={`flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-muted/40 transition-colors ${isUnprofitable ? 'bg-red-50/30 dark:bg-red-950/10' : ''}`}>
+        <div
+          id={`producto-${p.id}`}
+          className={`flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-muted/40 transition-colors ${
+            highlighted ? 'ring-2 ring-inset ring-primary/60 bg-primary/5' : isUnprofitable ? 'bg-red-50/30 dark:bg-red-950/10' : ''
+          }`}
+        >
           {canReorder && (
             <span
               className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors flex items-center shrink-0"
@@ -659,6 +701,7 @@ function ProductoRow({ producto: p, index, calc, tcOficialDefault, fleteCifPctDe
             </span>
           </div>
 
+          <ShareButton basePath={sharePath} itemId={p.id} variant="icon" />
           <Button
             variant="ghost"
             size="icon"

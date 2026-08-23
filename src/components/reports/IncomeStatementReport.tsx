@@ -3,13 +3,13 @@ import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { FileDown, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { FileDown, TrendingUp, TrendingDown, Minus, Eye } from 'lucide-react';
 import { PeriodSelector, PeriodType, getYearPeriod, isDateInYear, YearPeriod } from './PeriodSelector';
 import { Account, JournalEntry } from '@/accounting/types';
 import { fmt, round2, nowInAppTZ } from '@/accounting/utils';
 import { Quarter, isDateInQuarter, getPreviousQuarter, parseQuarterString } from '@/accounting/quarterly-utils';
 import { parseMonthString, isDateInMonth, MonthPeriod } from '@/accounting/period-utils';
-import { exportIncomeStatementNIIFToPDF } from '@/services/pdfService';
+import { exportIncomeStatementNIIFToPDF, previewNextPdf } from '@/services/pdfService';
 import { useReportSettings } from '@/hooks/useReportSettings';
 import { useReportSum, SumToggleButton, RowCheck, SumBar } from './useReportSum';
 
@@ -376,11 +376,12 @@ export function IncomeStatementReport({
   ].map(x => ({ id: x.id, value: x.amount })), [current]);
   const resumenSel = sel.sumOf(selectableRows);
 
-  const handleExportPDF = () => {
+  const handleExportPDF = (mode: 'save' | 'view' = 'save') => {
     const periodLabel = periodType === 'monthly' ? selectedMonth
       : periodType === 'quarterly' ? selectedQuarter
       : `Año ${selectedYear}`;
-    exportIncomeStatementNIIFToPDF(current, periodLabel, hasPreviousData ? previous : undefined);
+    const run = () => exportIncomeStatementNIIFToPDF(current, periodLabel, hasPreviousData ? previous : undefined);
+    if (mode === 'view') previewNextPdf(run); else run();
   };
 
   const MarginIndicator = ({ value }: { value: number }) => {
@@ -474,9 +475,13 @@ export function IncomeStatementReport({
         <CardTitle>Estado de Resultados (NIIF)</CardTitle>
         <div className="flex items-center gap-2">
           <SumToggleButton active={sel.active} onToggle={() => (sel.active ? sel.close() : sel.setActive(true))} />
-          <Button variant="outline" size="sm" onClick={handleExportPDF}>
-            <FileDown className="h-4 w-4 mr-2" />
-            Exportar PDF
+          <Button variant="outline" size="sm" onClick={() => handleExportPDF('view')} title="Ver PDF">
+            <Eye className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Ver</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleExportPDF('save')}>
+            <FileDown className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Exportar PDF</span>
           </Button>
         </div>
       </CardHeader>

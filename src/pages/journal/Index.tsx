@@ -393,7 +393,7 @@ export default function JournalPage() {
       <ReadOnlyBanner />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text- font-semibold">Libro Diario</h1>
+        <h1 className="text-xl font-semibold">Libro Diario</h1>
         <Button variant="outline" onClick={() => exportJournalToCSV(entries)}>
           <Download className="w-4 h-4 mr-2" />
           Exportar Diario

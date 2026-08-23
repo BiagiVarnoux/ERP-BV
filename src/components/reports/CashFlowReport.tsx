@@ -5,13 +5,13 @@ import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { FileDown, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
+import { FileDown, TrendingUp, TrendingDown, Wallet, Eye } from 'lucide-react';
 import { PeriodSelector, PeriodType, getYearPeriod, isDateInYear, YearPeriod } from './PeriodSelector';
 import { Account, JournalEntry } from '@/accounting/types';
 import { fmt, round2 } from '@/accounting/utils';
 import { Quarter, isDateInQuarter } from '@/accounting/quarterly-utils';
 import { parseMonthString, isDateInMonth, MonthPeriod } from '@/accounting/period-utils';
-import { exportCashFlowNIIFToPDF, CashFlowNIIFData } from '@/services/pdfService';
+import { exportCashFlowNIIFToPDF, CashFlowNIIFData, previewNextPdf } from '@/services/pdfService';
 import { computeIncomeStatement } from './IncomeStatementReport';
 import { useReportSettings } from '@/hooks/useReportSettings';
 import { useReportSum, SumToggleButton, RowCheck, SumBar } from './useReportSum';
@@ -376,7 +376,7 @@ export function CashFlowReport({
   }, [directData, indirectData, metodo]);
   const resumenSel = sel.sumOf(selectableRows);
 
-  const handleExportPDF = () => {
+  const handleExportPDF = (mode: 'save' | 'view' = 'save') => {
     const periodLabel = periodType === 'monthly' ? selectedMonth
       : periodType === 'quarterly' ? selectedQuarter
       : `Año ${selectedYear}`;
@@ -400,7 +400,8 @@ export function CashFlowReport({
       totalVariacionesCT: indirectData.totalVariacionesCT,
       flujoOperativoIndirecto: indirectData.flujoOperativoIndirecto,
     };
-    exportCashFlowNIIFToPDF(pdfData, periodLabel);
+    const run = () => exportCashFlowNIIFToPDF(pdfData, periodLabel);
+    if (mode === 'view') previewNextPdf(run); else run();
   };
 
   const renderSection = (
@@ -578,9 +579,13 @@ export function CashFlowReport({
             <Label htmlFor="metodo-toggle" className="text-xs text-muted-foreground">Indirecto</Label>
           </div>
           <SumToggleButton active={sel.active} onToggle={() => (sel.active ? sel.close() : sel.setActive(true))} />
-          <Button variant="outline" size="sm" onClick={handleExportPDF}>
-            <FileDown className="h-4 w-4 mr-2" />
-            PDF
+          <Button variant="outline" size="sm" onClick={() => handleExportPDF('view')} title="Ver PDF">
+            <Eye className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Ver</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleExportPDF('save')}>
+            <FileDown className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">PDF</span>
           </Button>
         </div>
       </CardHeader>

@@ -2,12 +2,52 @@
 import jsPDF from 'jspdf';
 import autoTable, { RowInput } from 'jspdf-autotable';
 import { fmt } from '@/accounting/utils';
-import { downloadBlob } from '@/lib/open-url';
+import { downloadBlob, openExternalUrl, isStandalonePWA } from '@/lib/open-url';
+
+// ── Salida de PDF: descargar (save) o ver en el visor (view) ─────────────────
+export type PdfOutputMode = 'save' | 'view';
+
+// Modo de la próxima emisión. Los generadores jsPDF son SÍNCRONOS, así que fijarlo
+// justo antes de llamar y resetearlo después es seguro (no hay await intermedio).
+let _pdfMode: PdfOutputMode = 'save';
+
+/**
+ * Ejecuta un export de PDF en modo "ver" (abre el visor en vez de descargar).
+ * Uso: previewNextPdf(() => exportBalanceSheetNIIFToPDF(data, date))
+ */
+export function previewNextPdf<T>(build: () => T): T {
+  _pdfMode = 'view';
+  try {
+    return build();
+  } finally {
+    _pdfMode = 'save';
+  }
+}
 
 // Guarda el PDF de forma robusta también en la PWA de iOS (donde jsPDF `.save()`,
 // que usa <a download>, no hace nada). Genera el Blob y lo enruta por downloadBlob.
 function savePdf(doc: jsPDF, filename: string): void {
   downloadBlob(doc.output('blob'), filename);
+}
+
+// Abre el PDF en el visor: navegador → pestaña/visor nativo; PWA iOS → visor in-app.
+function viewPdf(doc: jsPDF, filename: string): void {
+  const blob = doc.output('blob');
+  if (isStandalonePWA()) {
+    // En standalone, navegar a un blob: es inestable; downloadBlob usa data URL,
+    // que iOS abre en su visor in-app (equivale a "ver").
+    downloadBlob(blob, filename);
+    return;
+  }
+  const url = URL.createObjectURL(blob);
+  openExternalUrl(url); // pestaña nueva con el PDF embebido
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+// Punto único de emisión: respeta el modo actual.
+function emitPdf(doc: jsPDF, filename: string): void {
+  if (_pdfMode === 'view') viewPdf(doc, filename);
+  else savePdf(doc, filename);
 }
 
 interface ReportHeader {
@@ -117,7 +157,7 @@ export function exportTrialBalanceToPDF(
   });
 
   addFooter(doc);
-  savePdf(doc, `balance-comprobacion-${period.replace(/\s/g, '-')}.pdf`);
+  emitPdf(doc, `balance-comprobacion-${period.replace(/\s/g, '-')}.pdf`);
 }
 
 export interface IncomeStatementData {
@@ -296,7 +336,7 @@ export function exportIncomeStatementNIIFToPDF(data: NIIFIncomeStatementData, pe
 
   autoTable(doc, { startY, head, body, styles: { fontSize: 9 }, headStyles: { fillColor: [66, 66, 66] }, columnStyles: colStyles });
   addFooter(doc);
-  savePdf(doc, `estado-resultados-niif-${period.replace(/\s/g, '-')}.pdf`);
+  emitPdf(doc, `estado-resultados-niif-${period.replace(/\s/g, '-')}.pdf`);
 }
 
 export interface BalanceSheetData {
@@ -366,7 +406,7 @@ export function exportBalanceSheetNIIFToPDF(data: BalanceSheetNIIFData, date: st
   ], head: [['Indicador', 'Valor']], styles: { fontSize: 10 }, headStyles: { fillColor: [100, 100, 100] }, columnStyles: { 1: { halign: 'right' } } });
 
   addFooter(doc);
-  savePdf(doc, `balance-general-niif-${date}.pdf`);
+  emitPdf(doc, `balance-general-niif-${date}.pdf`);
 }
 
 export interface CashFlowNIIFData {
@@ -470,7 +510,7 @@ export function exportCashFlowNIIFToPDF(data: CashFlowNIIFData, period: string):
   }
 
   addFooter(doc);
-  savePdf(doc, `flujo-efectivo-nic7-${data.metodo}-${period.replace(/\s/g, '-')}.pdf`);
+  emitPdf(doc, `flujo-efectivo-nic7-${data.metodo}-${period.replace(/\s/g, '-')}.pdf`);
 }
 
 export interface JournalEntryPDF {
@@ -544,7 +584,7 @@ export function exportJournalToPDF(
   });
 
   addFooter(doc);
-  savePdf(doc, `libro-diario-${period.replace(/\s/g, '-')}.pdf`);
+  emitPdf(doc, `libro-diario-${period.replace(/\s/g, '-')}.pdf`);
 }
 
 export interface CashFlowData {
@@ -655,7 +695,7 @@ export function exportCashFlowToPDF(data: CashFlowData, period: string): void {
   });
 
   addFooter(doc);
-  savePdf(doc, `flujo-caja-${period.replace(/\s/g, '-')}.pdf`);
+  emitPdf(doc, `flujo-caja-${period.replace(/\s/g, '-')}.pdf`);
 }
 
 export interface ChartOfAccountsRow {
@@ -707,7 +747,7 @@ export function exportChartOfAccountsToPDF(accounts: ChartOfAccountsRow[]): void
   });
 
   addFooter(doc);
-  savePdf(doc, 'plan-de-cuentas.pdf');
+  emitPdf(doc, 'plan-de-cuentas.pdf');
 }
 
 // ─── Estado de Cambios en el Patrimonio ──────────────────────────────────────
@@ -785,7 +825,7 @@ export function exportEquityChangesToPDF(data: EquityChangesPDFData, period: str
   });
 
   addFooter(doc);
-  savePdf(doc, `estado-cambios-patrimonio-${period.replace(/\s/g, '-').toLowerCase()}.pdf`);
+  emitPdf(doc, `estado-cambios-patrimonio-${period.replace(/\s/g, '-').toLowerCase()}.pdf`);
 }
 
 // ─── Exportar Embarque a PDF ──────────────────────────────────────────────────
@@ -1225,7 +1265,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     doc.setTextColor(0, 0, 0);
   }
 
-  savePdf(doc, `embarque-${data.numero.toLowerCase()}${includeIVA ? '-con-iva' : ''}.pdf`);
+  emitPdf(doc, `embarque-${data.numero.toLowerCase()}${includeIVA ? '-con-iva' : ''}.pdf`);
 }
 
 // ─── Exportar Cotización de Licitación a PDF ──────────────────────────────────
@@ -1458,7 +1498,7 @@ export function exportCotizacionToPDF(data: CotizacionPDFData): void {
   const slug = data.licitacion.numero_sicoes
     ? data.licitacion.numero_sicoes.toLowerCase().replace(/\s+/g, '-')
     : 'cotizacion';
-  savePdf(doc, `cotizacion-${slug}-${new Date().toISOString().split('T')[0]}.pdf`);
+  emitPdf(doc, `cotizacion-${slug}-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
 // ─── Análisis de Inversión ──────────────────────────────────────────────────────
@@ -1680,5 +1720,5 @@ export function exportInvestmentAnalysisToPDF(data: InvestmentPDFData): void {
   }
 
   const slug = (data.analysis.nombre || 'analisis').toLowerCase().replace(/\s+/g, '-').slice(0, 40);
-  savePdf(doc, `analisis-inversion-${slug}-${new Date().toISOString().split('T')[0]}.pdf`);
+  emitPdf(doc, `analisis-inversion-${slug}-${new Date().toISOString().split('T')[0]}.pdf`);
 }

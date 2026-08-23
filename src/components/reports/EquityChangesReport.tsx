@@ -3,13 +3,13 @@ import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { FileDown, Scale } from 'lucide-react';
+import { FileDown, Scale, Eye } from 'lucide-react';
 import { PeriodSelector, PeriodType, getYearPeriod, isDateInYear } from './PeriodSelector';
 import { Account, JournalEntry } from '@/accounting/types';
 import { fmt, round2, nowInAppTZ } from '@/accounting/utils';
 import { Quarter, isDateInQuarter } from '@/accounting/quarterly-utils';
 import { parseMonthString, isDateInMonth, MonthPeriod } from '@/accounting/period-utils';
-import { exportEquityChangesToPDF } from '@/services/pdfService';
+import { exportEquityChangesToPDF, previewNextPdf } from '@/services/pdfService';
 import { computeIncomeStatement } from './IncomeStatementReport';
 import { computePeriodResult, findUtilidadesAcumuladasAccount } from '@/accounting/fiscal-year-utils';
 import { useReportSettings } from '@/hooks/useReportSettings';
@@ -307,8 +307,9 @@ export function EquityChangesReport({
   );
   const resumenSel = sel.sumOf(selectableRows);
 
-  const handleExportPDF = () => {
-    exportEquityChangesToPDF({ ...data, periodLabel }, periodLabel);
+  const handleExportPDF = (mode: 'save' | 'view' = 'save') => {
+    const run = () => exportEquityChangesToPDF({ ...data, periodLabel }, periodLabel);
+    if (mode === 'view') previewNextPdf(run); else run();
   };
 
   const getCellClass = (amount: number | undefined) => {
@@ -337,9 +338,13 @@ export function EquityChangesReport({
         </div>
         <div className="flex items-center gap-2">
           <SumToggleButton active={sel.active} onToggle={() => (sel.active ? sel.close() : sel.setActive(true))} />
-          <Button variant="outline" size="sm" onClick={handleExportPDF}>
-            <FileDown className="h-4 w-4 mr-2" />
-            PDF
+          <Button variant="outline" size="sm" onClick={() => handleExportPDF('view')} title="Ver PDF">
+            <Eye className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Ver</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleExportPDF('save')}>
+            <FileDown className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">PDF</span>
           </Button>
         </div>
       </CardHeader>
