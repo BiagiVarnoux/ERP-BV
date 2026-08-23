@@ -32,22 +32,7 @@ export function openExternalUrl(url: string): void {
   if (!w) window.location.href = url;
 }
 
-/**
- * Descarga (o abre) un Blob generado en el cliente — PDF de jsPDF, CSV, backup JSON.
- * - Navegador normal: descarga clásica con <a download>.
- * - PWA instalada (iOS): el atributo `download` se ignora y navegar a blob: es
- *   inestable; se convierte a data URL y se abre en el visor in-app, desde donde
- *   el usuario puede guardar/compartir con la hoja de compartir de iOS.
- */
-export function downloadBlob(blob: Blob, filename: string): void {
-  if (isStandalonePWA()) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') window.location.href = reader.result;
-    };
-    reader.readAsDataURL(blob);
-    return;
-  }
+function classicDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -56,4 +41,40 @@ export function downloadBlob(blob: Blob, filename: string): void {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/**
+ * Descarga (o abre) un Blob generado en el cliente — PDF de jsPDF, CSV, backup JSON.
+ *
+ * - PWA instalada (iOS/Android): usa la HOJA DE COMPARTIR nativa
+ *   (`navigator.share` con archivos). En iOS standalone, navegar a un `blob:` o
+ *   `data:` está bloqueado por el sistema (por eso "no pasaba nada"); la hoja de
+ *   compartir sí funciona y permite previsualizar, "Guardar en Archivos",
+ *   imprimir o abrir en otra app.
+ * - Navegador normal: descarga clásica con <a download>.
+ *
+ * IMPORTANTE: debe invocarse dentro del gesto del usuario (clic). Los generadores
+ * jsPDF/CSV son síncronos, así que la cadena clic → generar → compartir mantiene
+ * la activación que iOS exige para `navigator.share`.
+ */
+export function downloadBlob(blob: Blob, filename: string): void {
+  const nav = navigator as Navigator & {
+    canShare?: (data?: unknown) => boolean;
+    share?: (data?: unknown) => Promise<void>;
+  };
+
+  if (isStandalonePWA() && typeof File !== 'undefined' && nav.share && nav.canShare) {
+    const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+    if (nav.canShare({ files: [file] })) {
+      // Debe llamarse sincrónicamente aquí (dentro del gesto) para no perder la activación.
+      nav.share({ files: [file], title: filename }).catch((err: unknown) => {
+        // El usuario canceló → no hacer nada. Cualquier otro fallo → descarga clásica.
+        const name = (err as { name?: string })?.name;
+        if (name !== 'AbortError' && name !== 'NotAllowedError') classicDownload(blob, filename);
+      });
+      return;
+    }
+  }
+
+  classicDownload(blob, filename);
 }
