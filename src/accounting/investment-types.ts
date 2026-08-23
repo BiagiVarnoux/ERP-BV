@@ -18,6 +18,14 @@ export const INVESTMENT_ESTADO_COLORS: Record<InvestmentEstado, string> = {
   EJECUTADO:  'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
 };
 
+// Costo adicional con nombre libre, propio de UN producto del análisis.
+// No se reparte ni se comparte con los demás productos.
+export interface CostoExtra {
+  id: string;
+  nombre: string;
+  monto: number; // Bs, total para todo el lote del producto
+}
+
 // ─── Producto del análisis ──────────────────────────────────────────────────
 // Comparte los campos de costeo del cotizador de licitaciones y agrega la
 // dimensión de venta/tiempo (precio_venta, velocidad_venta).
@@ -52,12 +60,23 @@ export interface InvestmentItem {
   tarifa_envio: number;
   tarifa_manipuleo: number;
 
+  // Overrides manuales de flete y manipuleo (Bs). `*_es_total` = el monto es
+  // para todo el lote; false/undefined = por unidad.
+  flete_manual?: number;
+  usa_flete_manual?: boolean;
+  flete_manual_es_total?: boolean;
+  manipuleo_manual?: number;
+  usa_manipuleo_manual?: boolean;
+  manipuleo_manual_es_total?: boolean;
+
   // Tributos aduaneros
   ga_pct: number;
   ga_manual?: number;
   usa_ga_manual: boolean;
+  ga_manual_es_total?: boolean;
   iva_aduana_manual?: number;
   usa_iva_manual: boolean;
+  iva_manual_es_total?: boolean;
 
   // Batería
   tiene_bateria: boolean;
@@ -69,11 +88,12 @@ export interface InvestmentItem {
   precio_venta_sin_factura: number; // Bs/unidad SIN factura (normalmente menor)
   cantidad_sin_factura: number;     // (obsoleto, sin uso) — se mantiene por compatibilidad de BD
 
-  // Costos adicionales
-  garantia: number;
+  // Costos adicionales (propios del producto, nunca prorrateados entre productos)
+  garantia: number;   // legado: en inversión no hay boleta de garantía; se mantiene por compatibilidad
   pasaje: number;
   envio_local: number;
   otros_costos: number;
+  costos_extra: CostoExtra[]; // líneas con nombre libre
 
   // Dimensión temporal de venta
   velocidad_venta: number;        // unidades/mes estimadas
@@ -122,6 +142,7 @@ export interface ItemCosteo {
   peso_vol: number;
   peso: number;
   envio: number;               // costo REAL de envío (100%)
+  envio_calculado: number;     // envío auto por peso/tarifa (referencia al usar override manual)
   flete_cif: number;           // porción del envío computada en la base CIF
   cif: number;                 // base aduanera (precio_bob + flete_cif + 2%)
   ga_calculado: number;
@@ -130,6 +151,7 @@ export interface ItemCosteo {
   iva_aduana: number;
   impuestos: number;
   manipuleo: number;
+  manipuleo_calculado: number; // manipuleo auto por peso × tarifa (referencia al usar override)
   bateria: number;
   costo_unitario: number;      // costo importación por unidad CON IVA aduana (total_individual)
   costo_unitario_sin_iva: number; // costo contable del inventario (sin IVA — = costo real del embarque/COGS)

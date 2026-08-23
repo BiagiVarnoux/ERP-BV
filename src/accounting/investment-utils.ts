@@ -17,6 +17,19 @@ import type { ShipmentRealizedDetailRow } from './investment-storage';
 
 // ─── Costeo: reutiliza el motor de licitaciones ─────────────────────────────
 
+/** Σ de las líneas de costo con nombre libre del producto (Bs, total del lote). */
+export function sumCostosExtra(it: Pick<InvestmentItem, 'costos_extra'>): number {
+  return round2((it.costos_extra ?? []).reduce((acc, c) => acc + (Number(c.monto) || 0), 0));
+}
+
+/** Σ de todos los costos adicionales del producto (fijos + líneas libres). */
+export function sumExtras(it: InvestmentItem): number {
+  return round2(
+    (it.garantia || 0) + (it.pasaje || 0) + (it.envio_local || 0) + (it.otros_costos || 0)
+    + sumCostosExtra(it),
+  );
+}
+
 /** Mapea un InvestmentItem a la forma de LicitacionProducto para reusar calcProducto. */
 function toLicitacionProducto(it: InvestmentItem): LicitacionProducto {
   return {
@@ -43,11 +56,19 @@ function toLicitacionProducto(it: InvestmentItem): LicitacionProducto {
     usa_peso_bruto:    it.usa_peso_bruto,
     tarifa_envio:      it.tarifa_envio,
     tarifa_manipuleo:  it.tarifa_manipuleo,
+    flete_manual:          it.flete_manual,
+    usa_flete_manual:      it.usa_flete_manual,
+    flete_manual_es_total: it.flete_manual_es_total,
+    manipuleo_manual:          it.manipuleo_manual,
+    usa_manipuleo_manual:      it.usa_manipuleo_manual,
+    manipuleo_manual_es_total: it.manipuleo_manual_es_total,
     ga_pct:            it.ga_pct,
     ga_manual:         it.ga_manual,
     usa_ga_manual:     it.usa_ga_manual,
+    ga_manual_es_total: it.ga_manual_es_total,
     iva_aduana_manual: it.iva_aduana_manual,
     usa_iva_manual:    it.usa_iva_manual,
+    iva_manual_es_total: it.iva_manual_es_total,
     tiene_bateria:     it.tiene_bateria,
     costo_bateria:     it.costo_bateria,
     // El precio de venta esperado juega el rol del "precio ofertado"
@@ -55,7 +76,9 @@ function toLicitacionProducto(it: InvestmentItem): LicitacionProducto {
     garantia:          it.garantia,
     pasaje:            it.pasaje,
     envio_local:       it.envio_local,
-    otros_costos:      it.otros_costos,
+    // Las líneas de costo con nombre libre viajan sumadas dentro de otros_costos
+    // para que el motor de licitaciones las considere en el precio piso.
+    otros_costos:      round2((it.otros_costos || 0) + sumCostosExtra(it)),
     fuente:            'manual',
   };
 }
@@ -73,7 +96,7 @@ export function calcCosteo(it: InvestmentItem, defaults?: CalcDefaults): ItemCos
   const cantidad = Math.max(0, it.cantidad || 0);
   const sinFactura = it.modalidad_venta === 'sin_factura';
 
-  const extras = round2((it.garantia || 0) + (it.pasaje || 0) + (it.envio_local || 0) + (it.otros_costos || 0));
+  const extras = sumExtras(it);
   const costoUnit = c.total_individual;         // costo importación por unidad (CON IVA aduana)
   // Costo contable del inventario: sin el IVA aduana (que es crédito fiscal, no costo).
   // Es el mismo número que se capitaliza en el embarque y va al COGS real.
@@ -115,6 +138,7 @@ export function calcCosteo(it: InvestmentItem, defaults?: CalcDefaults): ItemCos
     peso_vol:             c.peso_vol,
     peso:                 c.peso,
     envio:                c.envio,
+    envio_calculado:      c.envio_calculado,
     flete_cif:            c.flete_cif,
     cif:                  c.cif,
     ga_calculado:         c.ga_calculado,
@@ -123,6 +147,7 @@ export function calcCosteo(it: InvestmentItem, defaults?: CalcDefaults): ItemCos
     iva_aduana:           c.iva_aduana,
     impuestos:            c.impuestos,
     manipuleo:            c.manipuleo,
+    manipuleo_calculado:  c.manipuleo_calculado,
     bateria:              c.bateria,
     costo_unitario:       costoUnit,
     costo_unitario_sin_iva: costoUnitSinIva,
@@ -755,11 +780,19 @@ export function emptyItem(analysis_id: string, orden: number): InvestmentItem {
     usa_peso_bruto:   false,
     tarifa_envio:     12,
     tarifa_manipuleo: 25,
+    flete_manual:         undefined,
+    usa_flete_manual:     false,
+    flete_manual_es_total: false,
+    manipuleo_manual:     undefined,
+    usa_manipuleo_manual: false,
+    manipuleo_manual_es_total: false,
     ga_pct:           5,
     ga_manual:        undefined,
     usa_ga_manual:    false,
+    ga_manual_es_total: false,
     iva_aduana_manual: undefined,
     usa_iva_manual:   false,
+    iva_manual_es_total: false,
     tiene_bateria:    false,
     costo_bateria:    0,
     modalidad_venta:  'con_factura',
@@ -770,6 +803,7 @@ export function emptyItem(analysis_id: string, orden: number): InvestmentItem {
     pasaje:           0,
     envio_local:      0,
     otros_costos:     0,
+    costos_extra:     [],
     velocidad_venta:  0,
     meses_venta_override: undefined,
     mapped_shipment_product_ids: [],

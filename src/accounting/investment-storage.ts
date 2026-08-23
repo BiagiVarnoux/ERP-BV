@@ -5,8 +5,9 @@
 // membresía" — correcto para el modelo multi-empresa (Holding).
 
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import {
-  InvestmentAnalysis, InvestmentItem, InvestmentEstado,
+  InvestmentAnalysis, InvestmentItem, InvestmentEstado, CostoExtra,
 } from './investment-types';
 
 // ─── Ventas reales atribuidas por embarque (Fase 3) ─────────────────────────
@@ -64,6 +65,23 @@ function rowToAnalysis(row: Record<string, unknown>): InvestmentAnalysis {
   };
 }
 
+/** Normaliza el JSONB `costos_extra` (puede venir null, string u objeto suelto). */
+function parseCostosExtra(raw: unknown): CostoExtra[] {
+  const arr = typeof raw === 'string' ? safeJson(raw) : raw;
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object')
+    .map(c => ({
+      id:     (c.id as string) || crypto.randomUUID(),
+      nombre: String(c.nombre ?? ''),
+      monto:  Number(c.monto) || 0,
+    }));
+}
+
+function safeJson(s: string): unknown {
+  try { return JSON.parse(s); } catch { return null; }
+}
+
 function rowToItem(row: Record<string, unknown>): InvestmentItem {
   return {
     id:                row.id as string,
@@ -88,11 +106,19 @@ function rowToItem(row: Record<string, unknown>): InvestmentItem {
     // Nullish (no `|| default`): 0 es un valor válido que debe preservarse.
     tarifa_envio:      row.tarifa_envio != null ? Number(row.tarifa_envio) : 12,
     tarifa_manipuleo:  row.tarifa_manipuleo != null ? Number(row.tarifa_manipuleo) : 25,
+    flete_manual:          row.flete_manual != null ? Number(row.flete_manual) : undefined,
+    usa_flete_manual:      Boolean(row.usa_flete_manual),
+    flete_manual_es_total: Boolean(row.flete_manual_es_total),
+    manipuleo_manual:          row.manipuleo_manual != null ? Number(row.manipuleo_manual) : undefined,
+    usa_manipuleo_manual:      Boolean(row.usa_manipuleo_manual),
+    manipuleo_manual_es_total: Boolean(row.manipuleo_manual_es_total),
     ga_pct:            row.ga_pct != null ? Number(row.ga_pct) : 5,
     ga_manual:         row.ga_manual != null ? Number(row.ga_manual) : undefined,
     usa_ga_manual:     Boolean(row.usa_ga_manual),
+    ga_manual_es_total: Boolean(row.ga_manual_es_total),
     iva_aduana_manual: row.iva_aduana_manual != null ? Number(row.iva_aduana_manual) : undefined,
     usa_iva_manual:    Boolean(row.usa_iva_manual),
+    iva_manual_es_total: Boolean(row.iva_manual_es_total),
     tiene_bateria:     Boolean(row.tiene_bateria),
     costo_bateria:     Number(row.costo_bateria) || 0,
     modalidad_venta:   (row.modalidad_venta as 'con_factura' | 'sin_factura') || 'con_factura',
@@ -103,6 +129,7 @@ function rowToItem(row: Record<string, unknown>): InvestmentItem {
     pasaje:            Number(row.pasaje) || 0,
     envio_local:       Number(row.envio_local) || 0,
     otros_costos:      Number(row.otros_costos) || 0,
+    costos_extra:      parseCostosExtra(row.costos_extra),
     velocidad_venta:   Number(row.velocidad_venta) || 0,
     meses_venta_override: row.meses_venta_override != null ? Number(row.meses_venta_override) : undefined,
     mapped_shipment_product_ids: Array.isArray(row.mapped_shipment_product_ids)
@@ -135,11 +162,19 @@ function itemToRow(it: InvestmentItem) {
     usa_peso_bruto:    it.usa_peso_bruto,
     tarifa_envio:      it.tarifa_envio,
     tarifa_manipuleo:  it.tarifa_manipuleo,
+    flete_manual:          it.flete_manual ?? null,
+    usa_flete_manual:      !!it.usa_flete_manual,
+    flete_manual_es_total: !!it.flete_manual_es_total,
+    manipuleo_manual:          it.manipuleo_manual ?? null,
+    usa_manipuleo_manual:      !!it.usa_manipuleo_manual,
+    manipuleo_manual_es_total: !!it.manipuleo_manual_es_total,
     ga_pct:            it.ga_pct,
     ga_manual:         it.ga_manual ?? null,
     usa_ga_manual:     it.usa_ga_manual,
+    ga_manual_es_total: !!it.ga_manual_es_total,
     iva_aduana_manual: it.iva_aduana_manual ?? null,
     usa_iva_manual:    it.usa_iva_manual,
+    iva_manual_es_total: !!it.iva_manual_es_total,
     tiene_bateria:     it.tiene_bateria,
     costo_bateria:     it.costo_bateria,
     modalidad_venta:   it.modalidad_venta,
@@ -150,6 +185,7 @@ function itemToRow(it: InvestmentItem) {
     pasaje:            it.pasaje,
     envio_local:       it.envio_local,
     otros_costos:      it.otros_costos,
+    costos_extra:      (it.costos_extra ?? []) as unknown as Json,
     velocidad_venta:   it.velocidad_venta,
     meses_venta_override: it.meses_venta_override ?? null,
     mapped_shipment_product_ids: it.mapped_shipment_product_ids ?? [],

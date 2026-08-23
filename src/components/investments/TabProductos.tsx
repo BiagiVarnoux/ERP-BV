@@ -7,12 +7,14 @@ import { Separator } from '@/components/ui/separator';
 import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
-  Plus, Trash2, ChevronDown, ChevronRight, ExternalLink, AlertTriangle,
+  Plus, Trash2, Copy, ChevronDown, ChevronRight, ExternalLink, AlertTriangle,
   TrendingUp, TrendingDown, Box, Weight, GripVertical,
 } from 'lucide-react';
-import { InvestmentItem, ItemCalc, InvestmentResumen } from '@/accounting/investment-types';
+import { InvestmentItem, ItemCalc, InvestmentResumen, CostoExtra } from '@/accounting/investment-types';
 import { fmt, toDecimal, round2 } from '@/accounting/utils';
 import { TC_OFICIAL, FLETE_CIF_PCT_AEREO, FLETE_CIF_PCT_MARITIMO } from '@/accounting/licitacion-utils';
+import { sumCostosExtra } from '@/accounting/investment-utils';
+import { ShareButton } from '@/components/shared/ShareButton';
 import { NumInput, Pct, Field, StatCard } from './ui-helpers';
 
 interface Props {
@@ -30,13 +32,18 @@ interface Props {
   onUpdate: (id: string, changes: Partial<InvestmentItem>) => void;
   onAdd: () => void;
   onRemove: (id: string) => void;
+  onDuplicate: (id: string) => void;
   onReorder: (items: InvestmentItem[]) => void;
+  /** Ruta del análisis, para los enlaces de "Compartir" por producto. */
+  sharePath: string;
+  /** Producto señalado por un enlace compartido (?item=...): se abre y resalta. */
+  highlightItemId?: string | null;
 }
 
 export function TabProductos({
   items, calcs, resumen, tcOficial, onTcOficial, fleteCifPct, onFleteCifPct,
   headerTcCompra, headerTcEnvio, onTcCompraAll, onTcEnvioAll,
-  onUpdate, onAdd, onRemove, onReorder,
+  onUpdate, onAdd, onRemove, onDuplicate, onReorder, sharePath, highlightItemId,
 }: Props) {
   // ¿Todos los productos comparten el mismo T/C? (si no, avisamos que hay valores mixtos)
   const allSameTcCompra = items.length <= 1 || items.every(it => it.tc === items[0].tc);
@@ -44,6 +51,20 @@ export function TabProductos({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
+
+  // Enlace compartido a un producto: abrirlo y llevarlo a la vista una sola vez.
+  const scrolledTo = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!highlightItemId || scrolledTo.current === highlightItemId) return;
+    if (!items.some(it => it.id === highlightItemId)) return;
+    scrolledTo.current = highlightItemId;
+    setExpandedIds(prev => new Set([...prev, highlightItemId]));
+    // Esperar al render del contenido expandido antes de desplazar.
+    requestAnimationFrame(() => {
+      document.getElementById(`item-${highlightItemId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [highlightItemId, items]);
 
   const toggle = (id: string) => setExpandedIds(prev => {
     const s = new Set(prev);
@@ -183,6 +204,9 @@ export function TabProductos({
                   onToggle={() => toggle(it.id)}
                   onChange={c => onUpdate(it.id, c)}
                   onRemove={() => onRemove(it.id)}
+                  onDuplicate={() => onDuplicate(it.id)}
+                  sharePath={sharePath}
+                  highlighted={highlightItemId === it.id}
                   showDragHandle
                 />
               </div>
@@ -204,7 +228,7 @@ export function TabProductos({
 
 // ─── Fila de producto ─────────────────────────────────────────────────────────
 
-function ItemRow({ item: p, calc, tcOficialDefault, fleteCifPctDefault, expanded, onToggle, onChange, onRemove, showDragHandle }: {
+function ItemRow({ item: p, calc, tcOficialDefault, fleteCifPctDefault, expanded, onToggle, onChange, onRemove, onDuplicate, sharePath, highlighted, showDragHandle }: {
   item: InvestmentItem;
   calc: ItemCalc;
   tcOficialDefault: number;
@@ -213,6 +237,9 @@ function ItemRow({ item: p, calc, tcOficialDefault, fleteCifPctDefault, expanded
   onToggle: () => void;
   onChange: (c: Partial<InvestmentItem>) => void;
   onRemove: () => void;
+  onDuplicate: () => void;
+  sharePath: string;
+  highlighted?: boolean;
   showDragHandle?: boolean;
 }) {
   const { costeo } = calc;
@@ -225,7 +252,12 @@ function ItemRow({ item: p, calc, tcOficialDefault, fleteCifPctDefault, expanded
   return (
     <Collapsible open={expanded} onOpenChange={onToggle}>
       <CollapsibleTrigger asChild>
-        <div className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/40 transition-colors ${isUnprofitable ? 'bg-red-50/30 dark:bg-red-950/10' : ''}`}>
+        <div
+          id={`item-${p.id}`}
+          className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/40 transition-colors ${
+            highlighted ? 'ring-2 ring-inset ring-primary/60 bg-primary/5' : isUnprofitable ? 'bg-red-50/30 dark:bg-red-950/10' : ''
+          }`}
+        >
           {showDragHandle && (
             <span
               className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors shrink-0"
@@ -290,6 +322,22 @@ function ItemRow({ item: p, calc, tcOficialDefault, fleteCifPctDefault, expanded
               <Pct v={costeo.roi} />
             </span>
           </div>
+
+          <ShareButton basePath={sharePath} itemId={p.id} variant="icon" />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={e => { e.stopPropagation(); onDuplicate(); }}
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Duplicar producto</TooltipContent>
+          </Tooltip>
 
           <Button
             variant="ghost"
@@ -389,10 +437,76 @@ function ItemForm({ item: p, calc, tcOficialDefault, fleteCifPctDefault, onChang
           )}
         </div>
 
+        {/* Overrides manuales: reemplazan el valor calculado por uno tecleado */}
+        <div className="mt-4 rounded-lg border bg-background/60 px-3 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+            Valores manuales
+            <span className="ml-2 normal-case font-normal opacity-70">
+              reemplazan al cálculo automático (ej. cifras exactas de la DUI)
+            </span>
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+            <ManualOverride
+              label="Flete"
+              cantidad={p.cantidad}
+              usa={!!p.usa_flete_manual}
+              valor={p.flete_manual}
+              esTotal={!!p.flete_manual_es_total}
+              calculado={costeo.envio}
+              calculadoHint="peso × tarifa × T/C envío"
+              onUsa={v => onChange({ usa_flete_manual: v })}
+              onValor={v => onChange({ flete_manual: v })}
+              onEsTotal={v => onChange({ flete_manual_es_total: v })}
+            />
+            <ManualOverride
+              label="Manipuleo"
+              cantidad={p.cantidad}
+              usa={!!p.usa_manipuleo_manual}
+              valor={p.manipuleo_manual}
+              esTotal={!!p.manipuleo_manual_es_total}
+              calculado={costeo.manipuleo}
+              calculadoHint="peso × tarifa de manipuleo"
+              onUsa={v => onChange({ usa_manipuleo_manual: v })}
+              onValor={v => onChange({ manipuleo_manual: v })}
+              onEsTotal={v => onChange({ manipuleo_manual_es_total: v })}
+            />
+            <ManualOverride
+              label="GA (gravamen)"
+              cantidad={p.cantidad}
+              usa={p.usa_ga_manual}
+              valor={p.ga_manual}
+              esTotal={!!p.ga_manual_es_total}
+              calculado={costeo.ga_calculado}
+              calculadoHint="CIF × GA%"
+              onUsa={v => onChange({ usa_ga_manual: v })}
+              onValor={v => onChange({ ga_manual: v })}
+              onEsTotal={v => onChange({ ga_manual_es_total: v })}
+            />
+            <ManualOverride
+              label="IVA aduana"
+              cantidad={p.cantidad}
+              usa={p.usa_iva_manual}
+              valor={p.iva_aduana_manual}
+              esTotal={!!p.iva_manual_es_total}
+              calculado={costeo.iva_aduana_calculado}
+              calculadoHint="(CIF + GA) × 14,94%"
+              onUsa={v => onChange({ usa_iva_manual: v })}
+              onValor={v => onChange({ iva_aduana_manual: v })}
+              onEsTotal={v => onChange({ iva_manual_es_total: v })}
+            />
+          </div>
+        </div>
+
         {/* Resultados costeo */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
           <StatCard label="Precio Bs" value={costeo.precio_bs} hint="(USD + tax) × T/C" />
-          <StatCard label="Envío" value={costeo.envio} hint="peso × tarifa × T/C envío — costo real (100%)" />
+          <StatCard
+            label={p.usa_flete_manual ? 'Envío (manual)' : 'Envío'}
+            value={costeo.envio}
+            hint={p.usa_flete_manual
+              ? `Valor manual. Calculado sería Bs ${fmt(costeo.envio_calculado)}`
+              : 'peso × tarifa × T/C envío — costo real (100%)'}
+          />
           <StatCard label="Base CIF" value={costeo.cif} hint={`Precio BOB + ${p.flete_cif_pct ?? fleteCifPctDefault}% del flete (${fmt(costeo.flete_cif)}) + 2% — base de GA e IVA`} />
           <StatCard label="GA" value={costeo.ga} hint={`CIF × GA% (T/C aduana ${p.tc_oficial ?? tcOficialDefault})`} />
           <StatCard label="IVA aduana" value={costeo.iva_aduana} hint="Crédito fiscal (recuperable) — no es costo contable del inventario" />
@@ -499,12 +613,34 @@ function ItemForm({ item: p, calc, tcOficialDefault, fleteCifPctDefault, onChang
           />
         </div>
 
-        {/* Costos adicionales */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Field label="Garantía (Bs)"><NumInput value={p.garantia || undefined} onChange={n('garantia')} min="0" /></Field>
-          <Field label="Pasaje (Bs)"><NumInput value={p.pasaje || undefined} onChange={n('pasaje')} min="0" /></Field>
-          <Field label="Envío local (Bs)"><NumInput value={p.envio_local || undefined} onChange={n('envio_local')} min="0" /></Field>
-          <Field label="Otros costos (Bs)"><NumInput value={p.otros_costos || undefined} onChange={n('otros_costos')} min="0" /></Field>
+        {/* Costos adicionales — propios de ESTE producto, nunca prorrateados */}
+        <div className="rounded-lg border bg-background/60 px-3 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+            Costos adicionales
+            <span className="ml-2 normal-case font-normal opacity-70">
+              solo de este producto — no se reparten entre los demás
+            </span>
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <Field label="Pasaje (Bs)"><NumInput value={p.pasaje || undefined} onChange={n('pasaje')} min="0" /></Field>
+            <Field label="Envío local (Bs)"><NumInput value={p.envio_local || undefined} onChange={n('envio_local')} min="0" /></Field>
+            <Field label="Otros costos (Bs)"><NumInput value={p.otros_costos || undefined} onChange={n('otros_costos')} min="0" /></Field>
+            {/* Campo legado: en inversión no hay boleta de garantía. Solo se
+                muestra si un análisis viejo ya traía un monto cargado. */}
+            {(p.garantia || 0) > 0 && (
+              <Field label="Garantía (Bs)" hint="legado"><NumInput value={p.garantia || undefined} onChange={n('garantia')} min="0" /></Field>
+            )}
+          </div>
+
+          <CostosExtraEditor
+            items={p.costos_extra ?? []}
+            onChange={next => onChange({ costos_extra: next })}
+          />
+
+          <p className="text-[11px] text-muted-foreground mt-3">
+            Total costos adicionales: <span className="font-mono">Bs {fmt(costeo.extras)}</span> — se suman a la
+            inversión y al precio piso de este producto.
+          </p>
         </div>
 
         {/* Resultados rentabilidad */}
@@ -515,6 +651,127 @@ function ItemForm({ item: p, calc, tcOficialDefault, fleteCifPctDefault, onChang
           <StatCard label="Ganancia" value={costeo.ganancia} bold color={costeo.ganancia < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
           <StatCard label="ROI" value={costeo.roi} isPct hint="Ganancia / Inversión" color={costeo.roi < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Override manual de un componente del costeo ──────────────────────────────
+// Mismo patrón que el cotizador de licitaciones: casilla para activar, monto y
+// selector por unidad / total del lote, con el valor calculado como referencia.
+
+function ManualOverride({
+  label, cantidad, usa, valor, esTotal, calculado, calculadoHint,
+  onUsa, onValor, onEsTotal,
+}: {
+  label: string;
+  cantidad: number;
+  usa: boolean;
+  valor: number | undefined;
+  esTotal: boolean;
+  calculado: number;
+  calculadoHint: string;
+  onUsa: (v: boolean) => void;
+  onValor: (v: number | undefined) => void;
+  onEsTotal: (v: boolean) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="flex items-center gap-2 text-xs cursor-pointer">
+        <input type="checkbox" checked={usa} onChange={e => onUsa(e.target.checked)} className="rounded" />
+        <span className="font-medium">{label} manual</span>
+        <span className="text-muted-foreground">{esTotal ? '(Bs total)' : '(Bs/unidad)'}</span>
+      </label>
+
+      {usa ? (
+        <div className="flex items-center gap-2 flex-wrap pl-6">
+          <NumInput value={valor} onChange={onValor} min="0" className="w-28" />
+          <div className="flex text-[10px] rounded overflow-hidden">
+            <button
+              type="button"
+              onClick={() => onEsTotal(false)}
+              className={`px-1.5 py-0.5 rounded-l border ${!esTotal ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}
+            >
+              /unidad
+            </button>
+            <button
+              type="button"
+              onClick={() => onEsTotal(true)}
+              className={`px-1.5 py-0.5 rounded-r border ${esTotal ? 'bg-primary/10 border-primary' : 'border-border text-muted-foreground'}`}
+            >
+              total
+            </button>
+          </div>
+          {esTotal && valor != null && cantidad > 0 && (
+            <span className="text-[10px] text-muted-foreground">= {fmt(round2(valor / cantidad))}/u</span>
+          )}
+          <span className="text-[10px] text-muted-foreground">
+            calculado: Bs {fmt(calculado)}
+          </span>
+        </div>
+      ) : (
+        <p className="text-[10px] text-muted-foreground pl-6">
+          Calculado: Bs {fmt(calculado)} — {calculadoHint}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Costos adicionales con nombre libre ──────────────────────────────────────
+// Son de ESTE producto: no se reparten ni se comparten con los demás.
+
+function CostosExtraEditor({ items, onChange }: {
+  items: CostoExtra[];
+  onChange: (next: CostoExtra[]) => void;
+}) {
+  const lineas = items ?? [];
+  const total = sumCostosExtra({ costos_extra: lineas });
+
+  const update = (id: string, changes: Partial<CostoExtra>) =>
+    onChange(lineas.map(c => c.id === id ? { ...c, ...changes } : c));
+
+  return (
+    <div className="mt-3 space-y-2">
+      {lineas.map(c => (
+        <div key={c.id} className="flex items-center gap-2">
+          <Input
+            className="h-7 text-xs flex-1 min-w-0"
+            value={c.nombre}
+            placeholder="Concepto (ej: certificación, embalaje)"
+            onChange={e => update(c.id, { nombre: e.target.value })}
+          />
+          <NumInput
+            value={c.monto || undefined}
+            onChange={v => update(c.id, { monto: v ?? 0 })}
+            min="0"
+            className="w-28"
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+            onClick={() => onChange(lineas.filter(x => x.id !== c.id))}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ))}
+
+      <div className="flex items-center gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs gap-1.5"
+          onClick={() => onChange([...lineas, { id: crypto.randomUUID(), nombre: '', monto: 0 }])}
+        >
+          <Plus className="h-3 w-3" /> Agregar costo
+        </Button>
+        {lineas.length > 0 && (
+          <span className="text-[11px] text-muted-foreground">
+            Total costos con nombre: <span className="font-mono">Bs {fmt(total)}</span>
+          </span>
+        )}
       </div>
     </div>
   );
