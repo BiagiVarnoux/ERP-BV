@@ -33,9 +33,14 @@ export function useReportSum() {
 
 export function SumToggleButton({ active, onToggle }: { active: boolean; onToggle: () => void }) {
   return (
-    <Button variant={active ? 'default' : 'outline'} size="sm" onClick={onToggle}>
-      <ListChecks className="h-4 w-4 mr-2" />
-      {active ? 'Cerrar selección' : 'Seleccionar y sumar'}
+    <Button
+      variant={active ? 'default' : 'outline'}
+      size="sm"
+      onClick={onToggle}
+      title={active ? 'Cerrar selección' : 'Seleccionar y sumar'}
+    >
+      <ListChecks className="h-4 w-4 sm:mr-2" />
+      <span className="hidden sm:inline">{active ? 'Cerrar selección' : 'Seleccionar y sumar'}</span>
     </Button>
   );
 }

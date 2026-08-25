@@ -326,7 +326,7 @@ export function EquityChangesReport({
 
   return (
     <Card className="shadow-sm">
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <CardTitle className="flex items-center gap-2">
             <Scale className="h-5 w-5" />
@@ -336,7 +336,7 @@ export function EquityChangesReport({
             Variaciones en el patrimonio neto del período
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
           <SumToggleButton active={sel.active} onToggle={() => (sel.active ? sel.close() : sel.setActive(true))} />
           <Button variant="outline" size="sm" onClick={() => handleExportPDF('view')} title="Ver PDF">
             <Eye className="h-4 w-4 sm:mr-2" />

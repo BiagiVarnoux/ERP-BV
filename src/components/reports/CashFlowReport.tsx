@@ -558,7 +558,7 @@ export function CashFlowReport({
 
   return (
     <Card className="shadow-sm">
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <CardTitle className="flex items-center gap-2">
             <Wallet className="h-5 w-5" />
@@ -568,7 +568,7 @@ export function CashFlowReport({
             {metodo === 'directo' ? 'Método Directo' : 'Método Indirecto'}
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-x-4 gap-y-2 flex-wrap w-full sm:w-auto justify-between sm:justify-end">
           <div className="flex items-center gap-2">
             <Label htmlFor="metodo-toggle" className="text-xs text-muted-foreground">Directo</Label>
             <Switch

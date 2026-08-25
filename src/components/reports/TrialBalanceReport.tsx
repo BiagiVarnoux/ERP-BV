@@ -134,9 +134,9 @@ export function TrialBalanceReport({
 
   return (
     <Card className="shadow-sm">
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle>Balance de Comprobación</CardTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
           <Button
             variant={seleccionando ? 'default' : 'outline'}
             size="sm"
