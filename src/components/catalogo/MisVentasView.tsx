@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt, round2 } from '@/accounting/utils';
+import { DataCard, DataCardHeader, DataCardList } from '@/components/ui/data-card';
 
 interface VentaFila {
   fecha: string;
@@ -63,7 +64,25 @@ export function MisVentasView() {
         </Card>
       </div>
 
-      <Card>
+      {/* Móvil: tarjetas */}
+      {filas.length === 0 ? (
+        <p className="sm:hidden text-center text-sm text-muted-foreground py-6">Todavía no tienes ventas registradas.</p>
+      ) : (
+        <DataCardList>
+          {filas.map((f, i) => (
+            <DataCard key={i}>
+              <DataCardHeader
+                title={<span className="font-mono text-sm">{f.numero}</span>}
+                subtitle={f.fecha}
+                right={<div><div className="text-[11px] uppercase tracking-wide text-muted-foreground">Comisión</div><div className="font-semibold text-green-600">Bs {fmt(f.comision)}</div></div>}
+              />
+              <div className="mt-2 pt-2 border-t text-sm">{f.productos}</div>
+            </DataCard>
+          ))}
+        </DataCardList>
+      )}
+
+      <Card className="hidden sm:block">
         <CardContent className="p-0">
           <Table>
             <TableHeader>

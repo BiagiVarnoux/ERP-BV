@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt, round2 } from '@/accounting/utils';
+import { DataCard, DataCardHeader, DataCardList } from '@/components/ui/data-card';
 
 interface VentaItemRow {
   sale_id: string;
@@ -132,7 +133,25 @@ export function VentasPorVendedorView() {
         ))}
       </div>
 
-      <Card>
+      {/* Móvil: tarjetas */}
+      {filas.length === 0 ? (
+        <p className="sm:hidden text-center text-sm text-muted-foreground py-6">Sin ventas con comisión registrada.</p>
+      ) : (
+        <DataCardList>
+          {filas.map(f => (
+            <DataCard key={f.id}>
+              <DataCardHeader
+                title={<span className="font-mono text-sm">{f.numero}</span>}
+                subtitle={<>{f.fecha} · {f.vendedorNombre}</>}
+                right={<div><div className="text-[11px] uppercase tracking-wide text-muted-foreground">Comisión</div><div className="font-semibold text-green-600">Bs {fmt(f.comision)}</div></div>}
+              />
+              <div className="mt-2 pt-2 border-t text-sm">{f.productos}</div>
+            </DataCard>
+          ))}
+        </DataCardList>
+      )}
+
+      <Card className="hidden sm:block">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
