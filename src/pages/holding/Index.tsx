@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/table';
 import { Loader2, TrendingUp, TrendingDown, Building2, AlertCircle } from 'lucide-react';
 import { round2, fmt } from '@/accounting/utils';
+import { DataCard, DataCardHeader, DataCardGrid, DataCardField, DataCardList } from '@/components/ui/data-card';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -198,7 +199,46 @@ export default function HoldingPage() {
               <CardDescription>Gestión {selectedYear}</CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto">
-              <Table>
+              {/* Móvil: tarjetas por empresa */}
+              <DataCardList>
+                {data.map(c => (
+                  <DataCard key={c.company_id}>
+                    <DataCardHeader
+                      title={c.company_name}
+                      subtitle={c.currency}
+                      right={<ResultBadge value={round2(c.resultado_neto)} />}
+                    />
+                    <DataCardGrid className="mt-3">
+                      <DataCardField label="Activos"><span className="font-mono">{fmt(c.total_activos)}</span></DataCardField>
+                      <DataCardField label="Pasivos"><span className="font-mono">{fmt(c.total_pasivos)}</span></DataCardField>
+                      <DataCardField label="Patrimonio"><span className="font-mono">{fmt(c.total_patrimonio)}</span></DataCardField>
+                      <DataCardField label="Ventas mes"><span className="font-mono">{fmt(c.ventas_mes)}</span></DataCardField>
+                      <DataCardField label="Ingresos"><span className="font-mono text-green-700 dark:text-green-400">{fmt(c.ingresos)}</span></DataCardField>
+                      <DataCardField label="Gastos"><span className="font-mono text-red-700 dark:text-red-400">{fmt(c.gastos)}</span></DataCardField>
+                      <DataCardField label="CxC"><span className="font-mono">{fmt(c.cxc_pendiente)}</span></DataCardField>
+                      <DataCardField label="CxP"><span className="font-mono">{fmt(c.cxp_pendiente)}</span></DataCardField>
+                    </DataCardGrid>
+                  </DataCard>
+                ))}
+                {data.length > 1 && (
+                  <DataCard className="bg-muted/40">
+                    <DataCardHeader title={<span className="font-bold">TOTAL</span>} right={<ResultBadge value={round2(totals.resultado)} />} />
+                    <DataCardGrid className="mt-3">
+                      <DataCardField label="Activos"><span className="font-mono font-semibold">{fmt(totals.activos)}</span></DataCardField>
+                      <DataCardField label="Pasivos"><span className="font-mono font-semibold">{fmt(totals.pasivos)}</span></DataCardField>
+                      <DataCardField label="Patrimonio"><span className="font-mono font-semibold">{fmt(totals.patrimonio)}</span></DataCardField>
+                      <DataCardField label="Ventas mes"><span className="font-mono font-semibold">{fmt(totals.ventas_mes)}</span></DataCardField>
+                      <DataCardField label="Ingresos"><span className="font-mono font-semibold text-green-700 dark:text-green-400">{fmt(totals.ingresos)}</span></DataCardField>
+                      <DataCardField label="Gastos"><span className="font-mono font-semibold text-red-700 dark:text-red-400">{fmt(totals.gastos)}</span></DataCardField>
+                      <DataCardField label="CxC"><span className="font-mono font-semibold">{fmt(totals.cxc)}</span></DataCardField>
+                      <DataCardField label="CxP"><span className="font-mono font-semibold">{fmt(totals.cxp)}</span></DataCardField>
+                    </DataCardGrid>
+                  </DataCard>
+                )}
+              </DataCardList>
+
+              {/* Escritorio: tabla */}
+              <Table className="hidden sm:table">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Empresa</TableHead>
