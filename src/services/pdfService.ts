@@ -2,7 +2,7 @@
 import jsPDF from 'jspdf';
 import autoTable, { RowInput } from 'jspdf-autotable';
 import { fmt } from '@/accounting/utils';
-import { downloadBlob, openExternalUrl, isStandalonePWA } from '@/lib/open-url';
+import { downloadBlob, openExternalUrl, isMobilePWA } from '@/lib/open-url';
 import { viewGeneratedPdf } from '@/lib/generated-pdf-viewer';
 
 // ── Salida de PDF: descargar (save) o ver en el visor (view) ─────────────────
@@ -34,14 +34,14 @@ function savePdf(doc: jsPDF, filename: string): void {
 // Abre el PDF en el visor: navegador → pestaña/visor nativo; PWA iOS → visor in-app.
 function viewPdf(doc: jsPDF, filename: string): void {
   const blob = doc.output('blob');
-  if (isStandalonePWA()) {
-    // PWA: subir a Storage y abrir la URL firmada → visor nativo (in-app en iOS),
+  if (isMobilePWA()) {
+    // Móvil PWA: subir a Storage y abrir la URL firmada → visor nativo in-app,
     // igual que los documentos guardados. Navegar a blob: aquí está bloqueado.
     void viewGeneratedPdf(blob, filename);
     return;
   }
   const url = URL.createObjectURL(blob);
-  openExternalUrl(url); // pestaña nueva con el PDF embebido
+  openExternalUrl(url); // escritorio: pestaña nueva con el PDF embebido
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 

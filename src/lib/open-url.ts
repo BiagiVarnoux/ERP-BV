@@ -17,19 +17,45 @@ export function isStandalonePWA(): boolean {
   return mm || iosStandalone;
 }
 
+// Dispositivo tipo móvil (puntero grueso): iPhone/iPad/Android. En estos, en modo
+// standalone, la única forma fiable de abrir un documento es navegar en la misma
+// vista (abre el visor in-app). En escritorio, en cambio, abrimos pestaña nueva.
+function isMobileLike(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia?.('(pointer: coarse)').matches ?? false;
+}
+
+/** PWA instalada en un dispositivo móvil (iOS/Android). Los casos que necesitan
+ *  el visor in-app / hoja de compartir; en escritorio (aunque sea PWA) NO. */
+export function isMobilePWA(): boolean {
+  return isStandalonePWA() && isMobileLike();
+}
+
+// Abre una pestaña nueva SIN tocar la pestaña actual. Usar un <a target="_blank">
+// evita el bug de window.open(...'noopener') que devuelve null y hacía que un
+// fallback navegara la pestaña del ERP.
+function openInNewTab(url: string): void {
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 /**
  * Abre una URL (documento, PDF, imagen, descarga con Content-Disposition).
- * - PWA instalada: navega en la misma vista → iOS abre el visor/descarga in-app.
- * - Navegador normal: intenta pestaña nueva y cae a la misma vista si el popup se bloquea.
+ * - PWA instalada en móvil: navega en la misma vista → iOS abre el visor in-app.
+ * - Escritorio (o navegador normal): abre en pestaña nueva, sin tocar la actual.
  */
 export function openExternalUrl(url: string): void {
   if (!url) return;
-  if (isStandalonePWA()) {
+  if (isMobilePWA()) {
     window.location.href = url;
     return;
   }
-  const w = window.open(url, '_blank', 'noopener,noreferrer');
-  if (!w) window.location.href = url;
+  openInNewTab(url);
 }
 
 function classicDownload(blob: Blob, filename: string): void {
@@ -63,7 +89,7 @@ export function downloadBlob(blob: Blob, filename: string): void {
     share?: (data?: unknown) => Promise<void>;
   };
 
-  if (isStandalonePWA() && typeof File !== 'undefined' && nav.share && nav.canShare) {
+  if (isMobilePWA() && typeof File !== 'undefined' && nav.share && nav.canShare) {
     const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
     if (nav.canShare({ files: [file] })) {
       // Debe llamarse sincrónicamente aquí (dentro del gesto) para no perder la activación.
