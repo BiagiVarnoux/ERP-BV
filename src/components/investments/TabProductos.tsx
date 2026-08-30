@@ -378,10 +378,22 @@ function ItemForm({ item: p, calc, tcOficialDefault, fleteCifPctDefault, onChang
 
   return (
     <div className="space-y-2.5 pt-3">
-      {/* Nombre: siempre visible, es la identidad del producto */}
-      <div className="space-y-1">
-        <label className="text-[11px] text-muted-foreground">Nombre del producto</label>
-        <Input className="h-9 sm:h-8 text-xs" value={p.nombre} onChange={s('nombre')} placeholder="Ej: SSD 512GB" />
+      {/* Identidad del producto: nombre, especificación y enlace juntos */}
+      <div className="space-y-2.5">
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">Nombre del producto</label>
+          <Input className="h-9 sm:h-8 text-xs" value={p.nombre} onChange={s('nombre')} placeholder="Ej: SSD 512GB" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">Especificación</label>
+            <Input className="h-9 sm:h-8 text-xs" value={p.especificacion || ''} onChange={s('especificacion')} placeholder="Ej: NVMe / M.2" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">Link del producto</label>
+            <Input className="h-9 sm:h-8 text-xs" value={p.link_producto || ''} onChange={s('link_producto')} placeholder="https://..." />
+          </div>
+        </div>
       </div>
 
       {/* Cifras clave: siempre a la vista, para no tener que abrir "Resultados" */}
@@ -626,18 +638,6 @@ function ItemForm({ item: p, calc, tcOficialDefault, fleteCifPctDefault, onChang
         </div>
       </FormSection>
 
-      <FormSection title="Descripción y enlace" summary={p.especificacion || (p.link_producto ? 'con enlace' : '—')}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="text-[11px] text-muted-foreground">Especificación</label>
-            <Input className="h-9 sm:h-8 text-xs" value={p.especificacion || ''} onChange={s('especificacion')} placeholder="Ej: NVMe / M.2" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[11px] text-muted-foreground">Link del producto</label>
-            <Input className="h-9 sm:h-8 text-xs" value={p.link_producto || ''} onChange={s('link_producto')} placeholder="https://..." />
-          </div>
-        </div>
-      </FormSection>
     </div>
   );
 }

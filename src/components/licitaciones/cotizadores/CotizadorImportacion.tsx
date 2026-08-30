@@ -776,6 +776,18 @@ function ProductoForm({ producto: p, calc, tcOficialDefault, fleteCifPctDefault,
         </div>
       </div>
 
+      {/* Descripción y enlace: junto al nombre, siempre visibles */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">Especificación</label>
+          <Input className="h-9 sm:h-8 text-xs" value={p.especificacion || ''} onChange={s('especificacion')} placeholder="Ej: 256GB / WiFi" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">Link del producto</label>
+          <Input className="h-9 sm:h-8 text-xs" value={p.link_producto || ''} onChange={s('link_producto')} placeholder="https://..." />
+        </div>
+      </div>
+
       {/* Precio ofertado: el campo que más se toca, siempre a la vista */}
       <div className="rounded-lg border bg-background/60 px-3 py-3">
         <div className="grid grid-cols-2 gap-3">
@@ -868,18 +880,6 @@ function ProductoForm({ producto: p, calc, tcOficialDefault, fleteCifPctDefault,
         </div>
       </FormSection>
 
-      <FormSection title="Descripción y enlace" summary={p.especificacion || (p.link_producto ? 'con enlace' : '—')}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="text-[11px] text-muted-foreground">Especificación</label>
-            <Input className="h-9 sm:h-8 text-xs" value={p.especificacion || ''} onChange={s('especificacion')} placeholder="Ej: 256GB / WiFi" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[11px] text-muted-foreground">Link del producto</label>
-            <Input className="h-9 sm:h-8 text-xs" value={p.link_producto || ''} onChange={s('link_producto')} placeholder="https://..." />
-          </div>
-        </div>
-      </FormSection>
     </div>
   );
 }
