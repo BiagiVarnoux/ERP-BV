@@ -37,6 +37,8 @@ export interface CreatePayableInput {
   proveedor_nit?: string | null;
   numero_documento: string;
   fecha_emision: string;
+  /** Hora del asiento (HH:mm, opcional). Si no se indica, el servidor usa la hora actual. */
+  entry_time?: string | null;
   fecha_vencimiento?: string | null;
   monto_original: number;
   moneda: Moneda;
@@ -48,6 +50,8 @@ export interface CreatePayableInput {
 export interface RegisterPayablePaymentInput {
   payable_id: string;
   fecha: string;
+  /** Hora del asiento (HH:mm, opcional). Si no se indica, el servidor usa la hora actual. */
+  entry_time?: string | null;
   monto: number;
   tipo_pago: string;
   cuenta_pago_id: string;
@@ -85,6 +89,7 @@ export async function createPayable(input: CreatePayableInput): Promise<void> {
       proveedor_nit:     input.proveedor_nit ?? null,
       numero_documento:  input.numero_documento,
       fecha_emision:     input.fecha_emision,
+      entry_time:        input.entry_time ?? null,
       fecha_vencimiento: input.fecha_vencimiento ?? null,
       monto_original:    input.monto_original,
       moneda:            input.moneda,
@@ -117,6 +122,7 @@ export async function registerPayablePayment(input: RegisterPayablePaymentInput)
       company_id:     companyId,
       payable_id:     input.payable_id,
       fecha:          input.fecha,
+      entry_time:     input.entry_time ?? null,
       monto:          input.monto,
       tipo_pago:      input.tipo_pago,
       cuenta_pago_id: input.cuenta_pago_id,

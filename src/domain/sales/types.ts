@@ -30,6 +30,8 @@ export interface SaleItemInput {
 
 export interface SaleHeaderInput {
   fecha: string;            // YYYY-MM-DD
+  /** Hora del asiento (HH:mm, opcional). Si no se indica, el servidor usa la hora actual. */
+  entry_time?: string | null;
   canal: Canal | string;    // string para canales personalizados por empresa
   con_factura: boolean;
   tipo_pago: TipoPago | string; // string para métodos personalizados

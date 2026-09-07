@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Trash2, ShoppingCart, Loader2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { fmt, todayISO, round2 } from '@/accounting/utils';
+import { fmt, todayISO, round2, nowTimeHHMM } from '@/accounting/utils';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import {
@@ -73,6 +73,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
 
   // Header
   const [fecha, setFecha] = useState(todayISO());
+  const [hora, setHora] = useState(nowTimeHHMM());
   const [canal, setCanal] = useState<string>('electronica');
   const [conFactura, setConFactura] = useState(false);
   const [tipoPago, setTipoPago] = useState<string>('caja_mn');
@@ -149,6 +150,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
 
   function resetForm() {
     setFecha(todayISO());
+    setHora(nowTimeHHMM());
     setCanal('electronica');
     setConFactura(false);
     setTipoPago('caja_mn');
@@ -320,6 +322,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
       const result = await createSale(
         {
           fecha,
+          entry_time: hora || null,
           canal,
           con_factura: conFactura,
           tipo_pago: tipoPago,
@@ -647,13 +650,23 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
                   />
                 </div>
 
-                <div>
-                  <Label>Fecha</Label>
-                  <Input
-                    type="date"
-                    value={fecha}
-                    onChange={e => setFecha(e.target.value)}
-                  />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label>Fecha</Label>
+                    <Input
+                      type="date"
+                      value={fecha}
+                      onChange={e => setFecha(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Hora</Label>
+                    <Input
+                      type="time"
+                      value={hora}
+                      onChange={e => setHora(e.target.value)}
+                    />
+                  </div>
                 </div>
 
                 <div>

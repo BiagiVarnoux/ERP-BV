@@ -37,6 +37,8 @@ export interface CreateReceivableInput {
   sale_id?: string | null;
   numero_documento: string;
   fecha_emision: string;
+  /** Hora del asiento (HH:mm, opcional). Si no se indica, el servidor usa la hora actual. */
+  entry_time?: string | null;
   fecha_vencimiento?: string | null;
   monto_original: number;
   moneda: Moneda;
@@ -48,6 +50,8 @@ export interface CreateReceivableInput {
 export interface RegisterPaymentInput {
   receivable_id: string;
   fecha: string;
+  /** Hora del asiento (HH:mm, opcional). Si no se indica, el servidor usa la hora actual. */
+  entry_time?: string | null;
   monto: number;
   tipo_pago: string;
   cuenta_pago_id: string;
@@ -93,6 +97,7 @@ export async function createReceivable(input: CreateReceivableInput): Promise<vo
       customer_id:       input.customer_id ?? null,
       numero_documento:  input.numero_documento,
       fecha_emision:     input.fecha_emision,
+      entry_time:        input.entry_time ?? null,
       fecha_vencimiento: input.fecha_vencimiento ?? null,
       monto_original:    input.monto_original,
       moneda:            input.moneda,
@@ -124,6 +129,7 @@ export async function registerPayment(input: RegisterPaymentInput): Promise<void
       company_id:     companyId,
       receivable_id:  input.receivable_id,
       fecha:          input.fecha,
+      entry_time:     input.entry_time ?? null,
       monto:          input.monto,
       tipo_pago:      input.tipo_pago,
       cuenta_pago_id: input.cuenta_pago_id,

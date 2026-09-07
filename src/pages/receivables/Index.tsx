@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
-import { fmt, round2, todayISO, nowInAppTZ } from '@/accounting/utils';
+import { fmt, round2, todayISO, nowInAppTZ, nowTimeHHMM } from '@/accounting/utils';
 import { getMonthEndDate } from '@/accounting/period-utils';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { AccountCombobox } from '@/components/journal/AccountCombobox';
@@ -111,6 +111,7 @@ export default function ReceivablesPage() {
   // Payment modal
   const [payTarget, setPayTarget]   = useState<ReceivableRow | null>(null);
   const [payFecha, setPayFecha]     = useState(today());
+  const [payHora, setPayHora]       = useState(nowTimeHHMM());
   const [payMonto, setPayMonto]     = useState('');
   const [payCuentaPago, setPayCuentaPago] = useState('');
   const [payNotas, setPayNotas]     = useState('');
@@ -120,6 +121,7 @@ export default function ReceivablesPage() {
   const [showCreate, setShowCreate]             = useState(false);
   const [createNumero, setCreateNumero]         = useState('');
   const [createFechaEmision, setCreateFechaEmision] = useState(today());
+  const [createHora, setCreateHora]             = useState(nowTimeHHMM());
   const [createFechaVenc, setCreateFechaVenc]   = useState('');
   const [createMonto, setCreateMonto]           = useState('');
   const [createMoneda, setCreateMoneda]         = useState<Moneda>('BOB');
@@ -215,6 +217,7 @@ export default function ReceivablesPage() {
   function openPayModal(row: ReceivableRow) {
     setPayTarget(row);
     setPayFecha(today());
+    setPayHora(nowTimeHHMM());
     setPayMonto(String(row.monto_pendiente));
     setPayCuentaPago('');
     setPayNotas('');
@@ -245,6 +248,7 @@ export default function ReceivablesPage() {
       await registerPayment({
         receivable_id:  payTarget.id,
         fecha:          payFecha,
+        entry_time:     payHora || null,
         monto,
         tipo_pago:      cuentaPago?.name ?? payCuentaPago,
         cuenta_pago_id: payCuentaPago,
@@ -265,6 +269,7 @@ export default function ReceivablesPage() {
   function openCreateModal() {
     setCreateNumero('');
     setCreateFechaEmision(today());
+    setCreateHora(nowTimeHHMM());
     setCreateFechaVenc('');
     setCreateMonto('');
     setCreateMoneda('BOB');
@@ -288,6 +293,7 @@ export default function ReceivablesPage() {
         customer_id:       createCustomerId || null,
         numero_documento:  createNumero.trim(),
         fecha_emision:     createFechaEmision,
+        entry_time:        createHora || null,
         fecha_vencimiento: createFechaVenc || null,
         monto_original:    monto,
         moneda:            createMoneda,
@@ -558,14 +564,25 @@ export default function ReceivablesPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="pay-fecha">Fecha</Label>
-                <Input
-                  id="pay-fecha"
-                  type="date"
-                  value={payFecha}
-                  onChange={e => setPayFecha(e.target.value)}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="pay-fecha">Fecha</Label>
+                  <Input
+                    id="pay-fecha"
+                    type="date"
+                    value={payFecha}
+                    onChange={e => setPayFecha(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pay-hora">Hora</Label>
+                  <Input
+                    id="pay-hora"
+                    type="time"
+                    value={payHora}
+                    onChange={e => setPayHora(e.target.value)}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -646,7 +663,7 @@ export default function ReceivablesPage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="c-fecha-em">Fecha emisión</Label>
                 <Input
@@ -654,6 +671,15 @@ export default function ReceivablesPage() {
                   type="date"
                   value={createFechaEmision}
                   onChange={e => setCreateFechaEmision(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="c-hora">Hora</Label>
+                <Input
+                  id="c-hora"
+                  type="time"
+                  value={createHora}
+                  onChange={e => setCreateHora(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
