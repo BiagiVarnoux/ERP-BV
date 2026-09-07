@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, TrendingDown, TrendingUp, Layers, ArrowRightLeft } from 'lucide-react';
+import { Package, TrendingDown, TrendingUp, Layers, ArrowRightLeft, Pencil } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { fmt, round2 } from '@/accounting/utils';
@@ -13,6 +13,7 @@ import { InventoryLot, calcularEstadoFifo } from './fifo-utils';
 import { FifoExitModal } from './FifoExitModal';
 import { ManualMovementModal } from './ManualMovementModal';
 import { InventoryTransferModal } from './InventoryTransferModal';
+import { EditarEntradaLoteModal } from './EditarEntradaLoteModal';
 import type { InventoryMovement } from './inventory-utils';
 
 interface FifoKardexModalProps {
@@ -30,6 +31,7 @@ export function FifoKardexModal({ isOpen, onClose, product, isReadOnly, onSaved 
   const [showExit, setShowExit] = useState(false);
   const [showEntry, setShowEntry] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
+  const [editLot, setEditLot] = useState<InventoryLot | null>(null);
   const activeCompanyId = useActiveCompanyId();
 
   const loadData = useCallback(async () => {
@@ -129,12 +131,14 @@ export function FifoKardexModal({ isOpen, onClose, product, isReadOnly, onSaved 
                         <TableHead className="text-right">Disponible</TableHead>
                         <TableHead className="text-right">Consumido</TableHead>
                         <TableHead>Estado</TableHead>
+                        {!isReadOnly && <TableHead className="w-10" />}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {lots.map(l => {
                         const consumido = round2(l.cantidad_inicial - l.cantidad_disponible);
                         const activo = l.cantidad_disponible > 0;
+                        const editable = !l.shipment_id && !l.shipment_product_id && l.cantidad_disponible === l.cantidad_inicial;
                         return (
                           <TableRow key={l.id} className={!activo ? 'opacity-60' : ''}>
                             <TableCell>{l.fecha_ingreso}</TableCell>
@@ -147,6 +151,15 @@ export function FifoKardexModal({ isOpen, onClose, product, isReadOnly, onSaved 
                                 {activo ? 'Activo' : 'Agotado'}
                               </Badge>
                             </TableCell>
+                            {!isReadOnly && (
+                              <TableCell>
+                                {editable && (
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditLot(l)} title="Corregir entrada">
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </Button>
+                                )}
+                              </TableCell>
+                            )}
                           </TableRow>
                         );
                       })}
@@ -157,6 +170,7 @@ export function FifoKardexModal({ isOpen, onClose, product, isReadOnly, onSaved 
                         <TableCell className="text-right">{lots.reduce((s, l) => s + l.cantidad_disponible, 0)}</TableCell>
                         <TableCell className="text-right">{round2(lots.reduce((s, l) => s + (l.cantidad_inicial - l.cantidad_disponible), 0))}</TableCell>
                         <TableCell />
+                        {!isReadOnly && <TableCell />}
                       </TableRow>
                     </TableBody>
                   </Table>
@@ -234,6 +248,17 @@ export function FifoKardexModal({ isOpen, onClose, product, isReadOnly, onSaved 
             product={product}
             lots={lots}
             onSaved={() => { setShowTransfer(false); loadData(); onSaved?.(); }}
+          />
+        )}
+
+        {editLot && (
+          <EditarEntradaLoteModal
+            isOpen={!!editLot}
+            onClose={() => setEditLot(null)}
+            productName={`${product.codigo} ${product.nombre}`}
+            lot={editLot}
+            movement={movs.find(m => m.inventory_lot_id === editLot.id && m.tipo === 'ENTRADA') || null}
+            onSaved={() => { setEditLot(null); loadData(); onSaved?.(); }}
           />
         )}
       </DialogContent>

@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.4"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -1143,20 +1143,27 @@ export type Database = {
           cantidad: number
           cantidad_sin_factura: number
           costo_bateria: number
+          costos_extra: Json
           created_at: string
           envio_local: number
           especificacion: string | null
           flete_cif_pct: number | null
+          flete_manual: number | null
+          flete_manual_es_total: boolean
           ga_manual: number | null
+          ga_manual_es_total: boolean
           ga_pct: number
           garantia: number
           hs_code: string | null
           id: string
           iva_aduana_manual: number | null
+          iva_manual_es_total: boolean
           link_producto: string | null
           m1: number | null
           m2: number | null
           m3: number | null
+          manipuleo_manual: number | null
+          manipuleo_manual_es_total: boolean
           mapped_shipment_product_ids: string[]
           meses_venta_override: number | null
           modalidad_venta: string
@@ -1176,8 +1183,10 @@ export type Database = {
           tc_oficial: number | null
           tiene_bateria: boolean
           updated_at: string
+          usa_flete_manual: boolean
           usa_ga_manual: boolean
           usa_iva_manual: boolean
+          usa_manipuleo_manual: boolean
           usa_peso_bruto: boolean
           velocidad_venta: number
         }
@@ -1186,20 +1195,27 @@ export type Database = {
           cantidad?: number
           cantidad_sin_factura?: number
           costo_bateria?: number
+          costos_extra?: Json
           created_at?: string
           envio_local?: number
           especificacion?: string | null
           flete_cif_pct?: number | null
+          flete_manual?: number | null
+          flete_manual_es_total?: boolean
           ga_manual?: number | null
+          ga_manual_es_total?: boolean
           ga_pct?: number
           garantia?: number
           hs_code?: string | null
           id?: string
           iva_aduana_manual?: number | null
+          iva_manual_es_total?: boolean
           link_producto?: string | null
           m1?: number | null
           m2?: number | null
           m3?: number | null
+          manipuleo_manual?: number | null
+          manipuleo_manual_es_total?: boolean
           mapped_shipment_product_ids?: string[]
           meses_venta_override?: number | null
           modalidad_venta?: string
@@ -1219,8 +1235,10 @@ export type Database = {
           tc_oficial?: number | null
           tiene_bateria?: boolean
           updated_at?: string
+          usa_flete_manual?: boolean
           usa_ga_manual?: boolean
           usa_iva_manual?: boolean
+          usa_manipuleo_manual?: boolean
           usa_peso_bruto?: boolean
           velocidad_venta?: number
         }
@@ -1229,20 +1247,27 @@ export type Database = {
           cantidad?: number
           cantidad_sin_factura?: number
           costo_bateria?: number
+          costos_extra?: Json
           created_at?: string
           envio_local?: number
           especificacion?: string | null
           flete_cif_pct?: number | null
+          flete_manual?: number | null
+          flete_manual_es_total?: boolean
           ga_manual?: number | null
+          ga_manual_es_total?: boolean
           ga_pct?: number
           garantia?: number
           hs_code?: string | null
           id?: string
           iva_aduana_manual?: number | null
+          iva_manual_es_total?: boolean
           link_producto?: string | null
           m1?: number | null
           m2?: number | null
           m3?: number | null
+          manipuleo_manual?: number | null
+          manipuleo_manual_es_total?: boolean
           mapped_shipment_product_ids?: string[]
           meses_venta_override?: number | null
           modalidad_venta?: string
@@ -1262,8 +1287,10 @@ export type Database = {
           tc_oficial?: number | null
           tiene_bateria?: boolean
           updated_at?: string
+          usa_flete_manual?: boolean
           usa_ga_manual?: boolean
           usa_iva_manual?: boolean
+          usa_manipuleo_manual?: boolean
           usa_peso_bruto?: boolean
           velocidad_venta?: number
         }
@@ -2825,6 +2852,18 @@ export type Database = {
           module: Database["public"]["Enums"]["erp_module"]
         }[]
       }
+      editar_entrada_inventario: {
+        Args: {
+          p_cantidad: number
+          p_company_id: string
+          p_costo_unitario: number
+          p_fecha: string
+          p_journal_entry_id?: string
+          p_lot_id: string
+          p_referencia: string
+        }
+        Returns: Json
+      }
       get_balance_sheet: {
         Args: { as_of_date: string }
         Returns: {
@@ -3199,12 +3238,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3228,11 +3267,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3253,11 +3292,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3278,11 +3317,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3295,11 +3334,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
