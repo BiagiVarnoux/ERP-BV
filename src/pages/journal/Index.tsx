@@ -9,7 +9,6 @@ import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { JournalEntry } from '@/accounting/types';
-import { generateEntryId, generateChronologicalEntryId } from '@/accounting/utils';
 import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString } from '@/accounting/quarterly-utils';
 import { PeriodType, getCurrentMonth, isDateInPeriod, resolvePeriod } from '@/accounting/period-utils';
 import { PeriodSelector } from '@/components/reports/PeriodSelector';
@@ -223,29 +222,22 @@ export default function JournalPage() {
   async function saveEntry() {
     const je = form.validateAndBuildEntry();
     if (!je) return;
-    
-    const auxiliaryLines = detectAuxiliaryLines(je);
-    
-    if (auxiliaryLines.length > 0) {
-      setAuxiliaryModalState({
-        isOpen: true,
-        linesToProcess: auxiliaryLines,
-        originalEntry: je
-      });
-      return;
-    }
-    
-    await handleFinalSave(je);
-  }
-
-  async function handleAuxiliarySave(je: JournalEntry) {
     await handleFinalSave(je);
   }
 
   async function handleFinalSave(je: JournalEntry) {
     try {
-      await adapter.saveEntry(je);
-      
+      const isNew = !form.editingEntry;
+      if (isNew) {
+        // RPC atómica: el id se calcula e inserta en una sola transacción del
+        // servidor, así dos guardados concurrentes (p.ej. dos pestañas) nunca
+        // pueden calcular el mismo id y pisarse entre sí.
+        const created = await adapter.createManualEntry({ date: je.date, entry_time: je.entry_time, memo: je.memo, lines: je.lines });
+        je.id = created.id;
+      } else {
+        await adapter.saveEntry(je, false);
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         for (const line of form.lines) {
@@ -267,6 +259,13 @@ export default function JournalPage() {
       setEntries(await adapter.loadEntries());
       toast.success(`Asiento ${je.id} ${form.editingEntry ? 'actualizado' : 'guardado'}`);
       form.clearForm();
+
+      // Detect lines touching accounts con libro auxiliar — el asiento ya está
+      // guardado (je.id confirmado), así que el modal solo vincula los movimientos.
+      const auxiliaryLines = detectAuxiliaryLines(je);
+      if (auxiliaryLines.length > 0) {
+        setAuxiliaryModalState({ isOpen: true, linesToProcess: auxiliaryLines, originalEntry: je });
+      }
 
       // Detect cost-of-sales lines for inventory exit
       const costLines = je.lines
@@ -353,21 +352,19 @@ export default function JournalPage() {
   };
 
   async function voidEntry(orig: JournalEntry) {
-    const inv: JournalEntry = {
-      id: generateEntryId(orig.date, entries),
-      date: orig.date,
-      entry_time: orig.entry_time,
-      memo: (orig.memo ? `${orig.memo} ` : '') + '(ANULACIÓN)',
-      void_of: orig.id,
-      lines: orig.lines.map(l => ({
-        account_id: l.account_id,
-        debit: l.credit,
-        credit: l.debit,
-        line_memo: l.line_memo
-      }))
-    };
     try {
-      await adapter.saveEntry(inv);
+      const inv = await adapter.createManualEntry({
+        date: orig.date,
+        entry_time: orig.entry_time,
+        memo: (orig.memo ? `${orig.memo} ` : '') + '(ANULACIÓN)',
+        void_of: orig.id,
+        lines: orig.lines.map(l => ({
+          account_id: l.account_id,
+          debit: l.credit,
+          credit: l.debit,
+          line_memo: l.line_memo
+        })),
+      });
       setEntries(await adapter.loadEntries());
       toast.success(`Asiento ${orig.id} anulado con ${inv.id}`);
     } catch (e: any) {
@@ -478,7 +475,7 @@ export default function JournalPage() {
         onClose={() => setAuxiliaryModalState({ ...auxiliaryModalState, isOpen: false })}
         linesToProcess={auxiliaryModalState.linesToProcess}
         originalEntry={auxiliaryModalState.originalEntry}
-        onSave={handleAuxiliarySave}
+        onSave={() => setAuxiliaryModalState({ ...auxiliaryModalState, isOpen: false })}
       />
 
       {cxpCxcModalState.isOpen && cxpCxcModalState.journalEntry && (

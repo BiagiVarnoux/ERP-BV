@@ -210,7 +210,7 @@ export function AuxiliaryLedgerModal({
       const updatedEntries = await adapter.loadAuxiliaryEntries();
       setAuxiliaryEntries(updatedEntries);
       onSave(originalEntry);
-      toast.success('Asiento y movimientos auxiliares guardados');
+      toast.success('Movimientos auxiliares guardados');
       onClose();
     } catch (error: any) {
       toast.error(error.message || 'Error al guardar movimientos');
@@ -435,7 +435,7 @@ export function AuxiliaryLedgerModal({
                   onClose();
                 }}
               >
-                Omitir Asignación y Guardar Asiento
+                Omitir Asignación
               </Button>
               <Button 
                 onClick={handleSave}

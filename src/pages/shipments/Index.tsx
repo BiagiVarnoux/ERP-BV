@@ -375,7 +375,7 @@ export default function ShipmentsPage() {
             { account_id: 'G.2', debit: 0, credit: s.flete_total_bs },
           ],
         };
-        await adapter.saveEntry(e);
+        await adapter.saveEntry(e, true);
         currentEntries = [...currentEntries, e];
         newIds.push(e.id);
       }
@@ -392,7 +392,7 @@ export default function ShipmentsPage() {
             { account_id: 'G.6', debit: 0, credit: totalGA },
           ],
         };
-        await adapter.saveEntry(e);
+        await adapter.saveEntry(e, true);
         currentEntries = [...currentEntries, e];
         newIds.push(e.id);
       }
@@ -409,7 +409,7 @@ export default function ShipmentsPage() {
             { account_id: 'G.5', debit: 0, credit: totalManipuleo },
           ],
         };
-        await adapter.saveEntry(e);
+        await adapter.saveEntry(e, true);
         currentEntries = [...currentEntries, e];
         newIds.push(e.id);
       }
@@ -488,7 +488,7 @@ export default function ShipmentsPage() {
         memo: customMemos[3],
         lines: nationLines,
       };
-      await adapter.saveEntry(nationEntry);
+      await adapter.saveEntry(nationEntry, true);
       newIds.push(nationEntry.id);
 
       setEntries(await adapter.loadEntries());

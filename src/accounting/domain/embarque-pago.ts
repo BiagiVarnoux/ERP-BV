@@ -58,7 +58,7 @@ export async function registrarPagoProducto(opts: RegistrarPagoOpts): Promise<Re
     ],
   };
 
-  await opts.adapter.saveEntry(entry);
+  await opts.adapter.saveEntry(entry, true);
 
   await postKardexMovement({
     accountId: opts.cuentaPagoId,

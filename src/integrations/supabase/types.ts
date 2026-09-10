@@ -2828,6 +2828,17 @@ export type Database = {
         }
         Returns: string
       }
+      create_manual_journal_entry: {
+        Args: {
+          p_company_id: string
+          p_date: string
+          p_entry_time: string
+          p_lines: Json
+          p_memo: string
+          p_void_of: string
+        }
+        Returns: Json
+      }
       create_my_company: {
         Args: {
           p_country?: string

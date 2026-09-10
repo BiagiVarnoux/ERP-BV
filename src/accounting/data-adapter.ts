@@ -1,6 +1,6 @@
 // src/accounting/data-adapter.ts
-import { Account, JournalEntry, AuxiliaryLedgerEntry, AuxiliaryLedgerDefinition, AuxiliaryMovementDetail, KardexDefinition, seedAccounts } from './types';
-import { cmpEntryOrder, round2 } from './utils';
+import { Account, JournalEntry, JournalLine, AuxiliaryLedgerEntry, AuxiliaryLedgerDefinition, AuxiliaryMovementDetail, KardexDefinition, seedAccounts } from './types';
+import { cmpEntryOrder, round2, generateEntryId } from './utils';
 import { calculateCPP } from './kardex-utils';
 import { supabase } from '@/integrations/supabase/client';
 import { DEFAULT_COMPANY_ID } from '@/lib/constants';
@@ -46,7 +46,15 @@ export interface IDataAdapter {
   upsertAccount(a: Account): Promise<void>;
   deleteAccount(id: string): Promise<void>;
   loadEntries(): Promise<JournalEntry[]>;
-  saveEntry(e: JournalEntry): Promise<void>;
+  /** isNew=true rechaza con error si el id ya existe (INSERT); isNew=false actualiza un asiento existente. */
+  saveEntry(e: JournalEntry, isNew: boolean): Promise<void>;
+  /**
+   * Crea un asiento NUEVO de forma atómica: el ID se calcula y se inserta en una
+   * sola transacción del lado del servidor (bajo lock), así dos guardados
+   * concurrentes nunca pueden pisarse. Úsese para altas y anulaciones manuales
+   * del Libro Diario en vez de saveEntry(e, true).
+   */
+  createManualEntry(input: { date: string; entry_time?: string; memo?: string; void_of?: string; lines: JournalLine[] }): Promise<JournalEntry>;
   deleteEntry(id: string): Promise<void>;
   loadAuxiliaryDefinitions(): Promise<AuxiliaryLedgerDefinition[]>;
   upsertAuxiliaryDefinition(d: AuxiliaryLedgerDefinition): Promise<void>;
@@ -91,11 +99,26 @@ export const LocalAdapter: IDataAdapter = {
     const raw = localStorage.getItem(LS_ENTRIES); 
     return raw ? JSON.parse(raw) : []; 
   },
-  async saveEntry(e){ 
-    const list = await this.loadEntries(); 
-    list.push(e);
+  async saveEntry(e, isNew){
+    const list = await this.loadEntries();
+    const i = list.findIndex(x => x.id === e.id);
+    if (isNew) {
+      if (i >= 0) throw new Error(`Ya existe un asiento con el id ${e.id}`);
+      list.push(e);
+    } else {
+      if (i >= 0) list[i] = e; else list.push(e);
+    }
     list.sort(cmpEntryOrder);
     localStorage.setItem(LS_ENTRIES, JSON.stringify(list));
+  },
+  async createManualEntry(input){
+    const list = await this.loadEntries();
+    const id = generateEntryId(input.date, list);
+    const entry: JournalEntry = { id, date: input.date, entry_time: input.entry_time, memo: input.memo, void_of: input.void_of, lines: input.lines };
+    list.push(entry);
+    list.sort(cmpEntryOrder);
+    localStorage.setItem(LS_ENTRIES, JSON.stringify(list));
+    return entry;
   },
   async deleteEntry(id){
     const list = await this.loadEntries();
@@ -326,17 +349,41 @@ export function createSupaAdapter(companyId: string): IDataAdapter {
       for (const l of allLines) { const e = map.get(l.entry_id)!; if (e) e.lines.push({ account_id: l.account_id, debit: Number(l.debit)||0, credit: Number(l.credit)||0, line_memo: l.line_memo||undefined }); }
       return Array.from(map.values()).filter(e => e.lines.length > 0).sort(cmpEntryOrder);
     },
-    async saveEntry(e){
-      const supa = await getSupabase(); if (!supa) return LocalAdapter.saveEntry(e);
+    async saveEntry(e, isNew){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.saveEntry(e, isNew);
       const { data: { user } } = await supa.auth.getUser();
       if (!user) throw new Error("Usuario no autenticado");
-      const { error: e1 } = await supa.from("journal_entries").upsert({ id: e.id, date: e.date, entry_time: e.entry_time||null, memo: e.memo||null, void_of: e.void_of||null, user_id: user.id, company_id: companyId });
-      if (e1) throw e1;
+      const row = { id: e.id, date: e.date, entry_time: e.entry_time||null, memo: e.memo||null, void_of: e.void_of||null, user_id: user.id, company_id: companyId };
+      if (isNew) {
+        // INSERT (no upsert): si el id ya existiera (colisión), esto falla con un
+        // error claro en vez de pisar en silencio la cabecera/líneas existentes.
+        const { error: e1 } = await supa.from("journal_entries").insert(row);
+        if (e1) throw e1;
+      } else {
+        const { error: e1 } = await supa.from("journal_entries").update(row).eq("id", e.id).eq("company_id", companyId);
+        if (e1) throw e1;
+      }
       const { error: eDel } = await supa.from("journal_lines").delete().eq("entry_id", e.id);
       if (eDel) throw eDel;
       const payload = e.lines.map(l=> ({ entry_id: e.id, account_id: l.account_id, debit: round2(l.debit), credit: round2(l.credit), line_memo: l.line_memo||null }));
       const { error: e2 } = await supa.from("journal_lines").insert(payload);
       if (e2) throw e2;
+    },
+    async createManualEntry(input){
+      const supa = await getSupabase(); if (!supa) return LocalAdapter.createManualEntry(input);
+      const payload = input.lines.map(l => ({ account_id: l.account_id, debit: round2(l.debit), credit: round2(l.credit), line_memo: l.line_memo || null }));
+      const { data, error } = await supa.rpc('create_manual_journal_entry', {
+        p_company_id: companyId,
+        p_date: input.date,
+        p_entry_time: input.entry_time || null,
+        p_memo: input.memo || null,
+        p_void_of: input.void_of || null,
+        p_lines: payload,
+      });
+      if (error) throw error;
+      const id = (data as { id?: string } | null)?.id;
+      if (!id) throw new Error('No se recibió el id del asiento creado');
+      return { id, date: input.date, entry_time: input.entry_time, memo: input.memo, void_of: input.void_of, lines: input.lines };
     },
     async deleteEntry(id){
       const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteEntry(id);
