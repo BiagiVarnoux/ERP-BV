@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableRow, TableHeader } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Trash2, Download } from 'lucide-react';
+import { Plus, Trash2, Download, CalendarRange } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
@@ -15,6 +15,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { fmt, todayISO } from '@/accounting/utils';
 import { KardexDefinitionsModal } from './KardexDefinitionsModal';
 import { calculateCPP } from '@/accounting/kardex-utils';
+import { PeriodSelector } from '@/components/reports/PeriodSelector';
+import { PeriodType, ResolvedPeriod, getCurrentMonth, resolvePeriod } from '@/accounting/period-utils';
+import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString } from '@/accounting/quarterly-utils';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +42,16 @@ export function KardexCPP() {
   const [loading, setLoading] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [movementToDelete, setMovementToDelete] = useState<string | null>(null);
+  const [period, setPeriod] = usePersistedState<{ periodType: PeriodType; quarter: string; year: number; month: string }>(
+    'kardex:period',
+    {
+      periodType: 'quarterly',
+      quarter: getCurrentQuarter().label,
+      year: new Date().getFullYear(),
+      month: getCurrentMonth().label,
+    }
+  );
+  const [verTodo, setVerTodo] = usePersistedState<boolean>('kardex:ver-todo', false);
   
   const [formData, setFormData] = useState({
     fecha: todayISO(),
@@ -127,6 +141,30 @@ export function KardexCPP() {
     );
     return calculateCPP(ordered);
   }, [movements, entries]);
+
+  const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
+  const currentQuarterObj = useMemo(() => parseQuarterString(period.quarter), [period.quarter]);
+  const resolvedPeriod: ResolvedPeriod = useMemo(() => {
+    const value = period.periodType === 'monthly' ? period.month
+      : period.periodType === 'quarterly' ? period.quarter
+      : String(period.year);
+    return resolvePeriod({ type: period.periodType, value });
+  }, [period]);
+
+  // El CPP es acumulativo: el costo unitario de un movimiento depende de TODOS los
+  // anteriores. Por eso se calcula sobre el historial completo y recién después se
+  // recorta la vista al período; filtrar antes daría costos y saldos falsos.
+  // `saldoAnterior` es el último movimiento previo al período: se muestra como fila
+  // de arranque para que el saldo del período no aparezca salido de la nada.
+  const { movimientosVisibles, saldoAnterior } = useMemo(() => {
+    if (verTodo) return { movimientosVisibles: movementsWithCPP, saldoAnterior: null };
+    const { startDate, endDate } = resolvedPeriod;
+    const previos = movementsWithCPP.filter(m => m.fecha < startDate);
+    return {
+      movimientosVisibles: movementsWithCPP.filter(m => m.fecha >= startDate && m.fecha <= endDate),
+      saldoAnterior: previos.length > 0 ? previos[previos.length - 1] : null,
+    };
+  }, [movementsWithCPP, verTodo, resolvedPeriod]);
 
   const handleOpenModal = () => {
     setFormData({
@@ -246,29 +284,36 @@ export function KardexCPP() {
   };
 
   const handleExport = () => {
-    if (movementsWithCPP.length === 0) {
+    if (movimientosVisibles.length === 0) {
       toast.error('No hay datos para exportar');
       return;
     }
 
     const headers = ['Fecha', 'Concepto', 'Entrada', 'Salidas', 'Saldo', 'Costo Unitario', 'Costo Total', 'Saldo Valorado'];
-    const rows = movementsWithCPP.map(m => [
+    const toRow = (m: typeof movimientosVisibles[number], concepto: string) => [
       m.fecha,
-      m.concepto,
+      concepto,
       m.entrada.toString(),
       m.salidas.toString(),
       m.saldo.toFixed(2),
       m.costo_unitario.toFixed(2),
       m.costo_total.toFixed(2),
       m.saldo_valorado.toFixed(2)
-    ]);
+    ];
+    // Exporta lo que se ve. Con período, la primera fila es el saldo de arranque
+    // para que el CSV cuadre por sí solo.
+    const rows = [
+      ...(saldoAnterior ? [toRow({ ...saldoAnterior, entrada: 0, salidas: 0, costo_total: 0 }, 'Saldo anterior')] : []),
+      ...movimientosVisibles.map(m => toRow(m, m.concepto)),
+    ];
 
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+    const csv = [headers, ...rows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `kardex_${selectedKardexDef?.name}_${todayISO()}.csv`;
+    const sufijo = verTodo ? 'historial-completo' : resolvedPeriod.label.replace(/\s+/g, '-');
+    a.download = `kardex_${selectedKardexDef?.name}_${sufijo}_${todayISO()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success('Kárdex exportado');
@@ -403,12 +448,42 @@ export function KardexCPP() {
               <Button
                 variant="outline" 
                 onClick={handleExport}
-                disabled={!selectedKardexDefId || movements.length === 0}
+                disabled={!selectedKardexDefId || movimientosVisibles.length === 0}
               >
                 <Download className="w-4 h-4 mr-2" />
                 Exportar
               </Button>
             </div>
+          </div>
+
+          <div className="mt-4 pt-4 border-t space-y-2">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <Label className="flex items-center gap-1">
+                <CalendarRange className="w-3 h-3" />
+                Período
+              </Label>
+              <Button
+                variant={verTodo ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setVerTodo(v => !v)}
+              >
+                {verTodo ? 'Viendo todo el historial' : 'Ver todo el historial'}
+              </Button>
+            </div>
+            {!verTodo && (
+              <PeriodSelector
+                periodType={period.periodType}
+                onPeriodTypeChange={(t) => setPeriod((p) => ({ ...p, periodType: t }))}
+                selectedQuarter={period.quarter}
+                onQuarterChange={(q) => setPeriod((p) => ({ ...p, quarter: q }))}
+                selectedYear={period.year}
+                onYearChange={(y) => setPeriod((p) => ({ ...p, year: y }))}
+                selectedMonth={period.month}
+                onMonthChange={(m) => setPeriod((p) => ({ ...p, month: m }))}
+                availableQuarters={availableQuarters}
+                currentQuarter={currentQuarterObj}
+              />
+            )}
           </div>
         </CardContent>
       </Card>
@@ -419,6 +494,11 @@ export function KardexCPP() {
             <CardTitle>
               {selectedKardexDef.name} — Kárdex de {selectedAccount?.name} ({selectedAccount?.id}) — Costo Promedio Ponderado
             </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              {verTodo
+                ? `Todo el historial — ${movimientosVisibles.length} movimiento${movimientosVisibles.length === 1 ? '' : 's'}`
+                : `${resolvedPeriod.label} — ${movimientosVisibles.length} movimiento${movimientosVisibles.length === 1 ? '' : 's'} de ${movementsWithCPP.length} en total`}
+            </p>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -442,14 +522,29 @@ export function KardexCPP() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {movementsWithCPP.length === 0 ? (
+                    {saldoAnterior && (
+                      <TableRow className="bg-muted/40 text-muted-foreground">
+                        <TableCell>{saldoAnterior.fecha}</TableCell>
+                        <TableCell className="italic">Saldo anterior al período</TableCell>
+                        <TableCell className="text-right">-</TableCell>
+                        <TableCell className="text-right">-</TableCell>
+                        <TableCell className="text-right font-semibold">{fmt(saldoAnterior.saldo)}</TableCell>
+                        <TableCell className="text-right">{fmt(saldoAnterior.costo_unitario)}</TableCell>
+                        <TableCell className="text-right">-</TableCell>
+                        <TableCell className="text-right font-semibold">{fmt(saldoAnterior.saldo_valorado)}</TableCell>
+                        {!isReadOnly && <TableCell />}
+                      </TableRow>
+                    )}
+                    {movimientosVisibles.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={9} className="text-center text-muted-foreground">
-                          No hay movimientos registrados. Agrega el primer movimiento.
+                          {movementsWithCPP.length === 0
+                            ? 'No hay movimientos registrados. Agrega el primer movimiento.'
+                            : `Sin movimientos en ${resolvedPeriod.label}. Cambia el período o mira todo el historial.`}
                         </TableCell>
                       </TableRow>
                     ) : (
-                      movementsWithCPP.map((mov) => (
+                      movimientosVisibles.map((mov) => (
                         <TableRow key={mov.id}>
                           <TableCell>{mov.fecha}</TableCell>
                           <TableCell>{mov.concepto}</TableCell>
