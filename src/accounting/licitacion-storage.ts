@@ -82,9 +82,11 @@ function rowToProducto(row: Record<string, unknown>): LicitacionProducto {
     m3:                 row.m3 != null ? Number(row.m3) : undefined,
     peso_bruto:         row.peso_bruto != null ? Number(row.peso_bruto) : undefined,
     usa_peso_bruto:     Boolean(row.usa_peso_bruto),
-    tarifa_envio:       Number(row.tarifa_envio) || 12,
-    tarifa_manipuleo:   Number(row.tarifa_manipuleo) || 25,
-    ga_pct:             Number(row.ga_pct) || 5,
+    // Con `Number(x) || default` un 0 guardado por el usuario se leía como el
+    // default (GA 0% volvía a 5%). Cero es un valor válido en los tres campos.
+    tarifa_envio:       row.tarifa_envio != null ? Number(row.tarifa_envio) : 12,
+    tarifa_manipuleo:   row.tarifa_manipuleo != null ? Number(row.tarifa_manipuleo) : 25,
+    ga_pct:             row.ga_pct != null ? Number(row.ga_pct) : 5,
     flete_manual:       row.flete_manual != null ? Number(row.flete_manual) : undefined,
     usa_flete_manual:   Boolean(row.usa_flete_manual),
     flete_manual_es_total: Boolean(row.flete_manual_es_total),
