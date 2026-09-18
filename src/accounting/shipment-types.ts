@@ -75,6 +75,10 @@ export interface ShipmentProduct {
   pago_journal_entry_id?: string;   // Asiento generado por el pago (para revertir al editar/borrar)
 
   // Dimensiones (se ingresan cuando llega al almacén)
+  // Por defecto (false/undefined) corresponden al PAQUETE COMPLETO de todas las
+  // unidades. Con medidas_por_unidad = true corresponden a UNA unidad y el peso
+  // del paquete se obtiene multiplicando por `cantidad`.
+  medidas_por_unidad?: boolean;
   m1?: number;              // cm
   m2?: number;              // cm
   m3?: number;              // cm

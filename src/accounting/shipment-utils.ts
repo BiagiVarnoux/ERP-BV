@@ -76,29 +76,60 @@ export function calcPrecioBOB(p: ShipmentProduct, tc_oficial: number): number {
   return round2(precioUsdEfectivo(p) * tc_oficial);
 }
 
-/** Peso volumen: (M1 × M2 × M3) / 5000 */
-export function calcPesoVolumen(p: ShipmentProduct): number | undefined {
+/**
+ * Cuántas veces entra lo ingresado en el paquete completo: 1 si las medidas son
+ * del paquete, `cantidad` si se ingresaron por unidad.
+ */
+function factorPaquete(p: ShipmentProduct): number {
+  return p.medidas_por_unidad ? (p.cantidad || 1) : 1;
+}
+
+/** Peso volumen TAL COMO SE INGRESÓ: (M1 × M2 × M3) / 5000 — por unidad o por paquete */
+export function calcPesoVolumenIngresado(p: ShipmentProduct): number | undefined {
   if (!p.m1 || !p.m2 || !p.m3) return undefined;
   return round2((p.m1 * p.m2 * p.m3) / 5000);
+}
+
+/** Peso volumen del PAQUETE COMPLETO (todas las unidades del producto) */
+export function calcPesoVolumen(p: ShipmentProduct): number | undefined {
+  if (!p.m1 || !p.m2 || !p.m3) return undefined;
+  return round2(((p.m1 * p.m2 * p.m3) / 5000) * factorPaquete(p));
+}
+
+/** Peso bruto del PAQUETE COMPLETO (todas las unidades del producto) */
+export function calcPesoBrutoTotal(p: ShipmentProduct): number | undefined {
+  if (!p.peso_bruto) return undefined;
+  return round2(p.peso_bruto * factorPaquete(p));
 }
 
 /** Peso efectivo automático: el mayor entre peso volumen y peso bruto (criterio courier) */
 export function calcPesoEfectivo(p: ShipmentProduct): number | undefined {
   const pv = calcPesoVolumen(p);
-  if (!pv && !p.peso_bruto) return undefined;
-  if (!pv) return p.peso_bruto;
-  if (!p.peso_bruto) return pv;
-  return Math.max(pv, p.peso_bruto);
+  const pb = calcPesoBrutoTotal(p);
+  if (!pv && !pb) return undefined;
+  if (!pv) return pb;
+  if (!pb) return pv;
+  return Math.max(pv, pb);
 }
 
-/** Peso efectivo según el método seleccionado en el embarque */
+/** Peso efectivo del paquete según el método seleccionado en el embarque */
 export function getPesoEfectivoPorMetodo(
   p: ShipmentProduct,
   metodo: 'automatico' | 'peso_volumen' | 'peso_bruto' = 'automatico'
 ): number | undefined {
   if (metodo === 'peso_volumen') return calcPesoVolumen(p);
-  if (metodo === 'peso_bruto')   return p.peso_bruto;
+  if (metodo === 'peso_bruto')   return calcPesoBrutoTotal(p);
   return calcPesoEfectivo(p); // automatico = Math.max
+}
+
+/** Peso efectivo por UNIDAD (solo para mostrar) — el del paquete dividido entre la cantidad */
+export function getPesoEfectivoUnitario(
+  p: ShipmentProduct,
+  metodo: 'automatico' | 'peso_volumen' | 'peso_bruto' = 'automatico'
+): number | undefined {
+  const total = getPesoEfectivoPorMetodo(p, metodo);
+  if (total == null) return undefined;
+  return round2(total / (p.cantidad || 1));
 }
 
 /**
@@ -167,8 +198,8 @@ export function calcPesoTotalEmbarque(
 ): number {
   return round2(
     products.reduce((sum, p) => {
-      // El peso ingresado (bruto o volumen) es el del PAQUETE COMPLETO para todas las
-      // unidades de ese producto — NO se multiplica por cantidad.
+      // getPesoEfectivoPorMetodo siempre devuelve el peso del PAQUETE COMPLETO
+      // (ya multiplica por cantidad cuando las medidas se ingresaron por unidad).
       // La división por cantidad se hace en calcFleteProrrateado/calcManipuleoProrrateado
       // al asignar el costo unitario.
       const peso = getPesoEfectivoPorMetodo(p, metodo) ?? 0;

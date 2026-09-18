@@ -855,6 +855,7 @@ export interface ShipmentPDFData {
     ga_pct: number;
     ga_monto?: number;
     iva_monto?: number;
+    medidas_por_unidad?: boolean;
     m1?: number;
     m2?: number;
     m3?: number;
@@ -1107,13 +1108,19 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     currentY += 2;
 
     const medidasBody = data.products.map((p, i) => {
-      const pesoVol = (p.m1 && p.m2 && p.m3) ? (p.m1 * p.m2 * p.m3) / 5000 : null;
-      const pesoEfectivo = pesoVol != null && p.peso_bruto != null
-        ? Math.max(pesoVol, p.peso_bruto)
-        : pesoVol ?? p.peso_bruto ?? null;
+      // Las medidas pueden estar ingresadas por unidad o por paquete completo;
+      // los pesos de las dos últimas columnas son siempre del paquete completo,
+      // que es lo que se prorratea.
+      const factor = p.medidas_por_unidad ? (p.cantidad || 1) : 1;
+      const pesoVol = (p.m1 && p.m2 && p.m3) ? ((p.m1 * p.m2 * p.m3) / 5000) * factor : null;
+      const pesoBruto = p.peso_bruto != null ? p.peso_bruto * factor : null;
+      const pesoEfectivo = pesoVol != null && pesoBruto != null
+        ? Math.max(pesoVol, pesoBruto)
+        : pesoVol ?? pesoBruto ?? null;
       return [
         { content: String(i + 1), styles: { halign: 'center' as const, fillColor: CLR.lightblue } },
         p.nombre || '—',
+        { content: p.medidas_por_unidad ? 'Unidad' : 'Paquete', styles: { halign: 'center' as const } },
         { content: p.m1 ? String(p.m1) : '—', styles: { halign: 'center' as const } },
         { content: p.m2 ? String(p.m2) : '—', styles: { halign: 'center' as const } },
         { content: p.m3 ? String(p.m3) : '—', styles: { halign: 'center' as const } },
@@ -1125,7 +1132,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
 
     autoTable(doc, {
       startY: currentY,
-      head: [['#', 'Producto', 'M1 (cm)', 'M2 (cm)', 'M3 (cm)', 'Peso Bruto (kg)', 'Peso Vol. (kg)', 'Peso Efectivo (kg)']],
+      head: [['#', 'Producto', 'Medidas de', 'M1 (cm)', 'M2 (cm)', 'M3 (cm)', 'Peso Bruto (kg)', 'Peso Vol. total (kg)', 'Peso Efectivo total (kg)']],
       body: medidasBody,
       headStyles: { fillColor: CLR.purple, fontSize: 8, textColor: [255,255,255] },
       styles: { fontSize: 8, cellPadding: 2.2 },

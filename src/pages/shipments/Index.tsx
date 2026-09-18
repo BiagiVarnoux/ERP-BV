@@ -36,7 +36,8 @@ import {
 } from '@/accounting/shipment-types';
 import { ShipmentStorage } from '@/accounting/shipment-storage';
 import {
-  calcPrecioBs, calcPrecioBOB, calcPesoVolumen, calcPesoEfectivo, getPesoEfectivoPorMetodo,
+  calcPrecioBs, calcPrecioBOB, calcPesoVolumen, calcPesoVolumenIngresado, calcPesoEfectivo,
+  getPesoEfectivoPorMetodo, getPesoEfectivoUnitario,
   calcGAEstimado, calcIVAEstimado, calcTotalBsProducto,
   calcCostoFinalPorProducto, generateShipmentNumber, calcDesgloseReconciliado,
 } from '@/accounting/shipment-utils';
@@ -2053,8 +2054,10 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
       <div className="bg-info/10 border border-info/20 rounded-lg p-3 text-sm text-info">
         <p className="font-medium">Mide los productos en tu almacén</p>
         <p className="text-xs mt-0.5">
-          Ingresa las dimensiones y peso del <strong>paquete completo</strong> de cada producto
-          (no por unidad). El flete y manipuleo se prorratean según esos pesos totales.
+          Elige en cada producto si las medidas y el peso que ingresas son del{' '}
+          <strong>paquete completo</strong> (todas las unidades juntas) o de{' '}
+          <strong>una unidad</strong>. Con "Unidad" el sistema multiplica por la cantidad
+          para obtener el peso del paquete, que es el que se usa para prorratear flete y manipuleo.
         </p>
       </div>
 
@@ -2062,12 +2065,16 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
         <TableHeader>
           <TableRow>
             <TableHead>Producto</TableHead>
+            <TableHead className="text-center">Medidas de</TableHead>
             <TableHead className="text-right">M1 (cm)</TableHead>
             <TableHead className="text-right">M2 (cm)</TableHead>
             <TableHead className="text-right">M3 (cm)</TableHead>
             <TableHead className="text-right">Peso bruto (kg)</TableHead>
             <TableHead className="text-right">Batería (Bs)</TableHead>
-            <TableHead className="text-right">Peso vol.</TableHead>
+            <TableHead className="text-right">
+              Peso vol.
+              <span className="block text-[10px] font-normal text-muted-foreground">total</span>
+            </TableHead>
             <TableHead className="text-right">
               Peso usado
               <span className="block text-[10px] font-normal text-muted-foreground">{METODO_LABELS[metodo]}</span>
@@ -2076,8 +2083,11 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
         </TableHeader>
         <TableBody>
           {s.products.map(p => {
+            const porUnidad = !!p.medidas_por_unidad;
+            const pvIngresado = calcPesoVolumenIngresado(p);
             const pv = calcPesoVolumen(p);
             const pe = getPesoEfectivoPorMetodo(p, metodo);
+            const peUnit = getPesoEfectivoUnitario(p, metodo);
             return (
               <TableRow key={p.id}>
                 <TableCell className="font-medium text-sm">
@@ -2085,6 +2095,24 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
                   <span className="text-muted-foreground font-normal"> ×{p.cantidad}</span>
                   {p.especificacion && (
                     <div className="text-xs text-muted-foreground font-normal">{p.especificacion}</div>
+                  )}
+                </TableCell>
+                <TableCell className="text-center">
+                  {canEdit ? (
+                    <div className="inline-flex rounded-md border overflow-hidden">
+                      <button type="button"
+                        className={`px-2 py-1 text-xs ${!porUnidad ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'}`}
+                        onClick={() => updateProduct(p.id, { medidas_por_unidad: false })}>
+                        Paquete
+                      </button>
+                      <button type="button"
+                        className={`px-2 py-1 text-xs border-l ${porUnidad ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'}`}
+                        onClick={() => updateProduct(p.id, { medidas_por_unidad: true })}>
+                        Unidad
+                      </button>
+                    </div>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px]">{porUnidad ? 'Unidad' : 'Paquete'}</Badge>
                   )}
                 </TableCell>
                 {(['m1', 'm2', 'm3'] as const).map(dim => (
@@ -2118,10 +2146,24 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
                   )}
                 </TableCell>
                 <TableCell className="text-right text-sm">
-                  {pv != null ? <span className="font-medium">{pv}</span> : <span className="text-muted-foreground">—</span>}
+                  {pv != null ? (
+                    <>
+                      <span className="font-medium">{pv}</span>
+                      {porUnidad && pvIngresado != null && (
+                        <span className="block text-[10px] text-muted-foreground">{pvIngresado} × {p.cantidad}</span>
+                      )}
+                    </>
+                  ) : <span className="text-muted-foreground">—</span>}
                 </TableCell>
                 <TableCell className="text-right text-sm">
-                  {pe != null ? <span className="font-semibold text-primary">{pe} kg</span> : <span className="text-muted-foreground">—</span>}
+                  {pe != null ? (
+                    <>
+                      <span className="font-semibold text-primary">{pe} kg</span>
+                      {p.cantidad > 1 && peUnit != null && (
+                        <span className="block text-[10px] text-muted-foreground">{peUnit} kg/u</span>
+                      )}
+                    </>
+                  ) : <span className="text-muted-foreground">—</span>}
                 </TableCell>
               </TableRow>
             );
