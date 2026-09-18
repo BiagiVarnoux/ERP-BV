@@ -230,9 +230,13 @@ export default function ShipmentsPage() {
       }
     }
     if (s.status === 'EN_ADUANA') {
-      const sinTributos = s.products.find(p => p.ga_monto == null || p.iva_monto == null);
-      if (sinTributos) { toast.error('Ingresa GA e IVA del DIM para todos los productos (usa 0 si no aplica)'); return; }
       if (s.gastos_aduana.length === 0) { toast.error('Registra al menos un gasto de aduana'); return; }
+      // Casillas de GA/IVA vacías se entienden como 0 (no aplica) en vez de bloquear el avance.
+      s = { ...s, products: s.products.map(p => ({
+        ...p,
+        ga_monto: p.ga_monto ?? 0,
+        iva_monto: p.iva_monto ?? 0,
+      })) };
     }
     if (s.status === 'EN_ALMACEN') {
       const metodo = s.metodo_peso ?? 'automatico';
