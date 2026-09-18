@@ -178,16 +178,15 @@ export function calcImpuestosEstimados(ga: number, iva: number): number {
 
 /**
  * Costo total estimado por unidad:
- * precio_bs + envio + impuestos + manipuleo + bateria
+ * precio_bs + envio + impuestos + manipuleo
  */
 export function calcTotalIndividualEstimado(
   precioBs: number,
   envio: number,
   impuestos: number,
-  manipuleo: number,
-  bateria: number
+  manipuleo: number
 ): number {
-  return round2(precioBs + envio + impuestos + manipuleo + bateria);
+  return round2(precioBs + envio + impuestos + manipuleo);
 }
 
 // ─── Prorrateo al cerrar el embarque ──────────────────────────────────────────
@@ -269,12 +268,11 @@ export function calcCostoFinalPorProducto(
       ? p.iva_monto / p.cantidad
       : calcIVAEstimado(p, tc_oficial, ga);
     const manipuleo = manipuleoMap[p.id] ?? 0;
-    const bateria = p.tiene_bateria ? p.costo_bateria : 0;
 
     // IVA NO suma al costo — es Crédito Fiscal, solo aparece como info
     const impuestos = ga;
     // costo_unitario con 6 decimales — se guarda así en inventory_lots
-    const costo_unitario = round6(precioBs + envioUnitario + impuestos + manipuleo + bateria);
+    const costo_unitario = round6(precioBs + envioUnitario + impuestos + manipuleo);
 
     // Para el detalle de pantalla, usamos round2 solo al mostrar
     return {
@@ -288,7 +286,6 @@ export function calcCostoFinalPorProducto(
         iva: round2(iva),
         impuestos: round2(impuestos),
         manipuleo: round2(manipuleo),
-        bateria,
       },
     };
   });
@@ -301,7 +298,6 @@ export interface CostoDetalle {
   iva: number;
   impuestos: number;
   manipuleo: number;
-  bateria: number;
 }
 
 // ─── Desglose TOTAL por producto (reconciliado) ────────────────────────────────
@@ -319,14 +315,13 @@ export interface DesgloseTotalProducto {
   gaTotal: number;
   ivaTotal: number;
   manipuleoTotal: number;
-  bateriaTotal: number;
   costoSinIvaTotal: number;
   costoConIvaTotal: number;
 }
 
 export interface DesgloseTotales {
   precioBs: number; flete: number; ga: number; iva: number;
-  manipuleo: number; bateria: number; costoSinIva: number; costoConIva: number;
+  manipuleo: number; costoSinIva: number; costoConIva: number;
 }
 
 /** Reparte `total` entre productos según su valor exacto, redondea a 2 dec y
@@ -378,10 +373,9 @@ export function calcDesgloseReconciliado(shipment: Shipment): {
     const ivaTotal = p.iva_monto != null
       ? round2(p.iva_monto)
       : round2(calcIVAEstimado(p, tc_oficial, gaTotal / cantidad) * cantidad);
-    const bateriaTotal = round2((p.tiene_bateria ? p.costo_bateria : 0) * cantidad);
-    const costoSinIvaTotal = round2(precioBsTotal + fleteTotal + gaTotal + manipuleoTotal + bateriaTotal);
+    const costoSinIvaTotal = round2(precioBsTotal + fleteTotal + gaTotal + manipuleoTotal);
     const costoConIvaTotal = round2(costoSinIvaTotal + ivaTotal);
-    return { product: p, precioBsTotal, fleteTotal, gaTotal, ivaTotal, manipuleoTotal, bateriaTotal, costoSinIvaTotal, costoConIvaTotal };
+    return { product: p, precioBsTotal, fleteTotal, gaTotal, ivaTotal, manipuleoTotal, costoSinIvaTotal, costoConIvaTotal };
   });
 
   const sum = (f: (x: DesgloseTotalProducto) => number) => round2(filas.reduce((s, x) => s + f(x), 0));
@@ -391,7 +385,6 @@ export function calcDesgloseReconciliado(shipment: Shipment): {
     ga:          sum(x => x.gaTotal),
     iva:         sum(x => x.ivaTotal),
     manipuleo:   sum(x => x.manipuleoTotal),
-    bateria:     sum(x => x.bateriaTotal),
     costoSinIva: sum(x => x.costoSinIvaTotal),
     costoConIva: sum(x => x.costoConIvaTotal),
   };

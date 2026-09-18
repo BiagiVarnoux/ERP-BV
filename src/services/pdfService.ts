@@ -851,7 +851,6 @@ export interface ShipmentPDFData {
     tax_pct: number;
     fecha_compra: string;
     tiene_bateria: boolean;
-    costo_bateria: number;
     ga_pct: number;
     ga_monto?: number;
     iva_monto?: number;
@@ -873,7 +872,6 @@ export interface ShipmentPDFData {
     ga: number;
     iva: number;
     manipuleo: number;
-    bateria: number;
     costo_unitario: number;
   }>;
   /** Si es true, el PDF muestra el costo unitario sumando el IVA (no contable, solo informativo). */
@@ -1231,7 +1229,6 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
       { content: fmt(c.ga), styles: { halign: 'right' as const } },
       { content: fmt(c.iva), styles: { halign: 'right' as const, fontStyle: includeIVA ? ('bold' as const) : ('normal' as const) } },
       { content: fmt(c.manipuleo), styles: { halign: 'right' as const } },
-      { content: c.bateria > 0 ? fmt(c.bateria) : '—', styles: { halign: 'right' as const } },
       { content: fmt(costoUnit), styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
       { content: fmt(costoUnit * c.cantidad), styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
     ]; });
@@ -1239,14 +1236,13 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     costBody.push([
       { content: '', styles: { fillColor: CLR.totalrow } },
       { content: 'GRAN TOTAL', colSpan: 2, styles: { fontStyle: 'bold' as const, fillColor: CLR.totalrow } },
-      '', '', '', '', '', '', '',
-      { content: '', styles: { fillColor: CLR.totalrow } },
+      '', '', '', '', '', '',
       { content: fmt(totalCostoFinal!), styles: { halign: 'right' as const, fontStyle: 'bold' as const, fillColor: CLR.totalrow } },
     ]);
 
     autoTable(doc, {
       startY: currentY,
-      head: [['#', 'Producto', 'Cant.', 'Precio Bs', 'Envío', 'GA', 'IVA', 'Manipuleo', 'Batería', 'Costo Unit.', 'Costo Total']],
+      head: [['#', 'Producto', 'Cant.', 'Precio Bs', 'Envío', 'GA', 'IVA', 'Manipuleo', 'Costo Unit.', 'Costo Total']],
       body: costBody as any,
       headStyles: { fillColor: CLR.green, fontSize: 8, textColor: [255,255,255] },
       styles: { fontSize: 8, cellPadding: 2 },

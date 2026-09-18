@@ -59,8 +59,10 @@ export interface ShipmentProduct {
   precio_usd_total?: number;     // Total pagado en USD por toda la cantidad (fuente de verdad cuando existe)
   tax_pct: number;               // Tax del proveedor (ej: 7 para 7%), 0 si no aplica
   fecha_compra: string;          // ISO date — puede variar por producto
+  // Marca informativa: el producto requiere certificado de batería. El costo del
+  // certificado NO se carga aquí — va dentro del flete aéreo y se prorratea por
+  // peso junto con él.
   tiene_bateria: boolean;
-  costo_bateria: number;         // En Bs, solo si tiene_bateria = true
 
   // Precio pagado en Bs (para calcular T/C real por producto)
   precio_bs_pagado?: number;       // Precio unitario pagado en Bs

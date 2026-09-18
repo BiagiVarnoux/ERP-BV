@@ -87,7 +87,6 @@ function emptyProduct(shipment_id: string): ShipmentProduct {
     tax_pct: 0,
     fecha_compra: todayISO(),
     tiene_bateria: false,
-    costo_bateria: 0,
     ga_pct: 15,
   };
 }
@@ -462,9 +461,8 @@ export default function ShipmentsPage() {
         const fleteProducto  = pesoTotalEmb > 0 ? (s.flete_total_bs ?? 0) * pesoProducto / pesoTotalEmb : 0;
         const manipProducto  = pesoTotalEmb > 0 ? totalManipuleo * pesoProducto / pesoTotalEmb : 0;
         const gaProducto     = product.ga_monto ?? 0;
-        const bateriaProducto = product.tiene_bateria ? product.costo_bateria : 0;
 
-        const totalProducto = round2(precioBsTotal + fleteProducto + gaProducto + manipProducto + bateriaProducto);
+        const totalProducto = round2(precioBsTotal + fleteProducto + gaProducto + manipProducto);
         byAccount[cuentaId] = round2((byAccount[cuentaId] ?? 0) + totalProducto);
       });
 
@@ -513,8 +511,7 @@ export default function ShipmentsPage() {
         const fleteProducto   = pesoTotalEmb > 0 ? fleteExacto * pesoProd / pesoTotalEmb : 0;
         const gaProducto      = product.ga_monto ?? 0;
         const manipProducto   = pesoTotalEmb > 0 ? manipExacto * pesoProd / pesoTotalEmb : 0;
-        const bateriaProducto = product.tiene_bateria ? product.costo_bateria : 0;
-        costoTotalPorProducto[product.id] = precioBsTotal + fleteProducto + gaProducto + manipProducto + bateriaProducto;
+        costoTotalPorProducto[product.id] = precioBsTotal + fleteProducto + gaProducto + manipProducto;
       });
 
       // Paso 2: aplicar round2 y ajustar la diferencia residual al producto mayor
@@ -1027,7 +1024,6 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
                       ga: c.detalle.ga,
                       iva: c.detalle.iva,
                       manipuleo: c.detalle.manipuleo,
-                      bateria: c.detalle.bateria,
                       costo_unitario: c.costo_unitario,
                     })),
                     includeIVA,
@@ -1675,12 +1671,9 @@ function ProductEditDialog({ product, tcParalelo, shipmentId, shipmentNumero, sh
                 />
                 <Label htmlFor="edit-bateria" className="text-sm cursor-pointer">🔋 Certificado de batería</Label>
                 {p.tiene_bateria && (
-                  <div className="flex items-center gap-2 ml-4">
-                    <Label className="text-xs text-muted-foreground">Costo (Bs):</Label>
-                    <Input type="number" step="0.01" value={p.costo_bateria || ''}
-                      onChange={e => update({ costo_bateria: parseFloat(e.target.value) || 0 })}
-                      className="h-8 w-28" />
-                  </div>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    su costo va dentro del flete aéreo
+                  </span>
                 )}
               </div>
               {p.precio_usd > 0 && (
@@ -1857,7 +1850,7 @@ function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean
           <TableBody>
             {s.products.map(p => {
               const gaEst = calcGAEstimado(p, s.tc_oficial,
-                p.precio_usd > 0 ? round2(calcPesoEfectivo(p) ?? 0 * 11 * s.tc_paralelo) : 0);
+                p.precio_usd > 0 ? round2((calcPesoEfectivo(p) ?? 0) * 11 * s.tc_paralelo) : 0);
               const gaUnitario = p.ga_monto != null ? round2(p.ga_monto / p.cantidad) : null;
               const ivaUnitario = p.iva_monto != null ? round2(p.iva_monto / p.cantidad) : null;
               return (
@@ -2070,7 +2063,6 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
             <TableHead className="text-right">M2 (cm)</TableHead>
             <TableHead className="text-right">M3 (cm)</TableHead>
             <TableHead className="text-right">Peso bruto (kg)</TableHead>
-            <TableHead className="text-right">Batería (Bs)</TableHead>
             <TableHead className="text-right">
               Peso vol.
               <span className="block text-[10px] font-normal text-muted-foreground">total</span>
@@ -2133,18 +2125,6 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
                       placeholder="0.00" />
                   ) : <span>{p.peso_bruto ?? '—'}</span>}
                 </TableCell>
-                <TableCell className="text-right">
-                  {p.tiene_bateria && canEdit ? (
-                    <Input type="number" step="0.01" className="h-8 w-24 text-right ml-auto"
-                      value={p.costo_bateria || ''}
-                      onChange={e => updateProduct(p.id, { costo_bateria: parseFloat(e.target.value) || 0 })}
-                      placeholder="0.00" />
-                  ) : p.tiene_bateria ? (
-                    <span className="font-medium">{fmt(p.costo_bateria)}</span>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </TableCell>
                 <TableCell className="text-right text-sm">
                   {pv != null ? (
                     <>
@@ -2193,14 +2173,12 @@ function CostosFinalesTab({ s }: { s: Shipment }) {
   const totalGAExacto        = round2(s.products.reduce((sum, p) => sum + (p.ga_monto ?? 0), 0));
   const totalIVAExacto       = round2(s.products.reduce((sum, p) => sum + (p.iva_monto ?? 0), 0));
   const totalManipuleoExacto = round2(s.gastos_aduana.reduce((sum, g) => sum + g.monto, 0));
-  const totalBateriasExacto  = round2(s.products.reduce((sum, p) => sum + (p.tiene_bateria ? p.costo_bateria : 0), 0));
   const totalExacto = round2(
     totalProductosExacto +
     (s.flete_total_bs ?? 0) +
     totalGAExacto +
     (showWithIVA ? totalIVAExacto : 0) +
-    totalManipuleoExacto +
-    totalBateriasExacto
+    totalManipuleoExacto
   );
 
   const hayDiferencia = Math.abs(totalExacto - totalFilas) >= 0.01;
