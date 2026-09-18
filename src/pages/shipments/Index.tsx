@@ -40,6 +40,7 @@ import {
   getPesoEfectivoPorMetodo, getPesoEfectivoUnitario,
   calcGAEstimado, calcIVAEstimado, calcTotalBsProducto,
   calcCostoFinalPorProducto, generateShipmentNumber, calcDesgloseReconciliado,
+  calcRepartoCierre,
 } from '@/accounting/shipment-utils';
 import { ShipmentCloseModal, ProductLink } from '@/components/inventory/ShipmentCloseModal';
 import { FileAttachments } from '@/components/shipments/FileAttachments';
@@ -436,44 +437,22 @@ export default function ShipmentsPage() {
         }
       }
 
-      // Débitos exactos que ya entraron a A.4.1:
-      // - Asiento 1: flete_total_bs (exacto)
-      // - Asiento 2: totalGA (exacto del DIM)
-      // - Asiento 3: totalManipuleo (exacto de gastos_aduana)
-      // - Pagos de productos: calcTotalBsProducto por producto (exacto)
-      // El total del crédito a A.4.1 = suma de esos componentes exactos.
-      const totalA41Credit = round2(
-        (s.flete_total_bs ?? 0) +
-        totalGA +
-        totalManipuleo +
-        s.products.reduce((sum, p) => sum + calcTotalBsProducto(p, s.tc_paralelo), 0)
-      );
+      // Reparto único del cierre: de aquí salen el débito del asiento, el
+      // costo_total del movimiento y el costo_unitario del lote FIFO. Ver
+      // calcRepartoCierre() — es lo que garantiza que libro e inventario cuadren.
+      const {
+        totalPorProducto: costosRedondeados,
+        unitarioPorProducto: costoUnitarioFinal,
+        totalA41: totalA41Credit,
+      } = calcRepartoCierre(s);
 
-      // Distribuir el débito a las cuentas de inventario proporcionalmente
-      // usando los mismos totales exactos por producto
+      // Distribuir el débito a las cuentas de inventario sumando los totales por
+      // producto del reparto — sin ajuste propio: ya cuadran con totalA41Credit.
       const byAccount: Record<string, number> = {};
-      costos.forEach(({ product, precioBsTotal }) => {
+      costos.forEach(({ product }) => {
         const cuentaId = resolvedCuentas[product.id] ?? 'A.4.2';
-        const metodo = s.metodo_peso ?? 'automatico';
-        const pesoProducto = getPesoEfectivoPorMetodo(product, metodo) ?? 0;
-        const pesoTotalEmb = s.products.reduce((sum, p) => sum + (getPesoEfectivoPorMetodo(p, metodo) ?? 0), 0);
-
-        const fleteProducto  = pesoTotalEmb > 0 ? (s.flete_total_bs ?? 0) * pesoProducto / pesoTotalEmb : 0;
-        const manipProducto  = pesoTotalEmb > 0 ? totalManipuleo * pesoProducto / pesoTotalEmb : 0;
-        const gaProducto     = product.ga_monto ?? 0;
-
-        const totalProducto = round2(precioBsTotal + fleteProducto + gaProducto + manipProducto);
-        byAccount[cuentaId] = round2((byAccount[cuentaId] ?? 0) + totalProducto);
+        byAccount[cuentaId] = round2((byAccount[cuentaId] ?? 0) + costosRedondeados[product.id]);
       });
-
-      // Ajuste de redondeo: si la suma de byAccount difiere de totalA41Credit,
-      // asignar la diferencia a la cuenta con mayor monto (impacto mínimo)
-      const sumaByAccount = round2(Object.values(byAccount).reduce((a, b) => a + b, 0));
-      const ajuste = round2(totalA41Credit - sumaByAccount);
-      if (Math.abs(ajuste) > 0 && Object.keys(byAccount).length > 0) {
-        const cuentaMayor = Object.entries(byAccount).reduce((a, b) => b[1] > a[1] ? b : a)[0];
-        byAccount[cuentaMayor] = round2(byAccount[cuentaMayor] + ajuste);
-      }
 
       const totalCosto = totalA41Credit; // garantizado que cuadra
 
@@ -497,39 +476,9 @@ export default function ShipmentsPage() {
       setEntries(await adapter.loadEntries());
 
       // 3. Create inventory_lots and inventory_movements (FIFO)
-      // Calcular costo_total exacto por producto — garantiza que la suma del Kárdex
-      // coincida exactamente con el crédito del asiento A.4.1
-      const metodoEmb = s.metodo_peso ?? 'automatico';
-      const pesoTotalEmb = s.products.reduce((sum, p) => sum + (getPesoEfectivoPorMetodo(p, metodoEmb) ?? 0), 0);
-      const fleteExacto = s.flete_total_bs ?? 0;
-      const manipExacto = round2(s.gastos_aduana.reduce((sum, g) => sum + g.monto, 0));
-
-      // Paso 1: calcular el costo total de cada producto sin round2 intermedio
-      const costoTotalPorProducto: Record<string, number> = {};
-      costos.forEach(({ product, precioBsTotal }) => {
-        const pesoProd        = getPesoEfectivoPorMetodo(product, metodoEmb) ?? 0;
-        const fleteProducto   = pesoTotalEmb > 0 ? fleteExacto * pesoProd / pesoTotalEmb : 0;
-        const gaProducto      = product.ga_monto ?? 0;
-        const manipProducto   = pesoTotalEmb > 0 ? manipExacto * pesoProd / pesoTotalEmb : 0;
-        costoTotalPorProducto[product.id] = precioBsTotal + fleteProducto + gaProducto + manipProducto;
-      });
-
-      // Paso 2: aplicar round2 y ajustar la diferencia residual al producto mayor
-      const costosRedondeados: Record<string, number> = {};
-      let sumaRedondeada = 0;
-      costos.forEach(({ product }) => {
-        costosRedondeados[product.id] = round2(costoTotalPorProducto[product.id]);
-        sumaRedondeada = round2(sumaRedondeada + costosRedondeados[product.id]);
-      });
-      const ajusteKardex = round2(totalA41Credit - sumaRedondeada);
-      if (Math.abs(ajusteKardex) >= 0.01) {
-        const prodMayor = costos.reduce((a, b) =>
-          costoTotalPorProducto[b.product.id] > costoTotalPorProducto[a.product.id] ? b : a
-        );
-        costosRedondeados[prodMayor.product.id] = round2(costosRedondeados[prodMayor.product.id] + ajusteKardex);
-      }
-
-      for (const { product, costo_unitario } of costos) {
+      // Los montos ya vienen cuadrados del "Reparto único por producto" de arriba.
+      for (const { product } of costos) {
+        const costo_unitario = costoUnitarioFinal[product.id];
         const link = links.find(l => l.shipmentProductId === product.id);
         const productId = link?.isNew ? newProductIds[product.id] : link?.productId;
         if (!productId) continue;
@@ -580,12 +529,14 @@ export default function ShipmentsPage() {
         ...s,
         status: 'CERRADO',
         journal_entry_ids: newIds,
-        products: costos.map(({ product, costo_unitario, detalle }) => ({
+        products: costos.map(({ product, detalle }) => ({
           ...product,
           peso_volumen: calcPesoVolumen(product),
           costo_envio_unitario: detalle.envioUnitario,
           costo_manipuleo_unitario: detalle.manipuleo,
-          costo_total_unitario: costo_unitario,
+          // Mismo unitario que el lote FIFO — el embarque no puede mostrar un
+          // costo distinto al que quedó valorado en inventario.
+          costo_total_unitario: costoUnitarioFinal[product.id],
         })),
       };
       await persist(closed);

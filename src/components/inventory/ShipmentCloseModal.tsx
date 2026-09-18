@@ -16,7 +16,7 @@ import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { fmt, round2 } from '@/accounting/utils';
 import type { Shipment, ShipmentProduct } from '@/accounting/shipment-types';
 import type { CostoDetalle } from '@/accounting/shipment-utils';
-import { getAllCategories } from '@/accounting/shipment-utils';
+import { getAllCategories, calcRepartoCierre } from '@/accounting/shipment-utils';
 import { RefreshCw } from 'lucide-react';
 import { CONDICION_OPTIONS, condicionCode, tipoInventarioCode } from '@/accounting/product-condicion';
 import { type ProductCategory, fetchNextSkuSequence, buildSku, buildSkuPrefix } from '@/components/inventory/NewProductModal';
@@ -237,8 +237,11 @@ export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCanc
     }
 
     // Entry 4 — Nacionalización (dynamic by cuenta_inventario_id)
+    // Usa el mismo reparto que el cierre real, para que el preview muestre al
+    // centavo los montos que se van a contabilizar.
+    const reparto = calcRepartoCierre(shipment);
     const byAccount: Record<string, number> = {};
-    costos.forEach(({ product, costo_unitario }) => {
+    costos.forEach(({ product }) => {
       const link = links.find(l => l.shipmentProductId === product.id);
       let cuentaId = '';
       if (link) {
@@ -250,9 +253,9 @@ export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCanc
         }
       }
       if (!cuentaId) cuentaId = 'A.4.2'; // fallback
-      byAccount[cuentaId] = round2((byAccount[cuentaId] ?? 0) + costo_unitario * product.cantidad);
+      byAccount[cuentaId] = round2((byAccount[cuentaId] ?? 0) + (reparto.totalPorProducto[product.id] ?? 0));
     });
-    const totalCosto = round2(Object.values(byAccount).reduce((a, b) => a + b, 0));
+    const totalCosto = reparto.totalA41;
 
     if (totalCosto > 0) {
       const nationLines = [

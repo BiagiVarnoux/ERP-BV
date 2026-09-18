@@ -391,6 +391,58 @@ export function calcDesgloseReconciliado(shipment: Shipment): {
   return { filas, totales };
 }
 
+// ─── Reparto del cierre (asiento + lotes FIFO) ───────────────────────────────
+// Fuente ÚNICA de los montos que genera el cierre de un embarque: el débito del
+// asiento de nacionalización, el costo_total del movimiento y el costo_unitario
+// del lote. El unitario se DERIVA del total ya cuadrado, de modo que
+// round2(cantidad × unitario) reproduce exactamente ese total y el inventario
+// valorado coincide al centavo con el asiento. Calcular cada cosa por separado
+// —como se hacía antes— dejaba diferencias de centavos entre libro e inventario.
+
+export interface RepartoCierre {
+  /** Costo total en Bs por producto — Σ = totalA41 exacto */
+  totalPorProducto: Record<string, number>;
+  /** Costo unitario (6 dec) derivado del total — el que va al lote FIFO */
+  unitarioPorProducto: Record<string, number>;
+  /** Crédito exacto a A.4.1: flete + GA + manipuleo + pagos de productos */
+  totalA41: number;
+}
+
+export function calcRepartoCierre(shipment: Shipment): RepartoCierre {
+  const { products, tc_paralelo, flete_total_bs = 0, gastos_aduana } = shipment;
+  const metodo = shipment.metodo_peso ?? 'automatico';
+  const pesoTotal = calcPesoTotalEmbarque(products, metodo);
+  const totalManipuleo = round2(gastos_aduana.reduce((s, g) => s + g.monto, 0));
+  const totalGA = round2(products.reduce((s, p) => s + (p.ga_monto ?? 0), 0));
+
+  // Débitos exactos que ya entraron a A.4.1 en los asientos 1, 2 y 3 más los
+  // pagos de productos. NO se recalcula desde costos unitarios: eso acumula
+  // errores de redondeo.
+  const totalA41 = round2(
+    flete_total_bs +
+    totalGA +
+    totalManipuleo +
+    products.reduce((s, p) => s + calcTotalBsProducto(p, tc_paralelo), 0)
+  );
+
+  const exacto: Record<string, number> = {};
+  for (const p of products) {
+    const part = pesoTotal > 0 ? (getPesoEfectivoPorMetodo(p, metodo) ?? 0) / pesoTotal : 0;
+    exacto[p.id] =
+      calcTotalBsProducto(p, tc_paralelo) +
+      flete_total_bs * part +
+      (p.ga_monto ?? 0) +
+      totalManipuleo * part;
+  }
+
+  const totalPorProducto = repartirReconciliado(products, exacto, totalA41);
+  const unitarioPorProducto: Record<string, number> = {};
+  for (const p of products) {
+    unitarioPorProducto[p.id] = round6(totalPorProducto[p.id] / (p.cantidad || 1));
+  }
+  return { totalPorProducto, unitarioPorProducto, totalA41 };
+}
+
 // ─── Generación de número de embarque ────────────────────────────────────────
 
 export function generateShipmentNumber(existing: Shipment[]): string {
