@@ -547,6 +547,10 @@ export default function ShipmentsPage() {
             cantidad_inicial: product.cantidad,
             cantidad_disponible: product.cantidad,
             costo_unitario: costo_unitario,
+            // Misma cuenta que se debitó en el asiento de nacionalización. El
+            // inventario agrupa los productos FIFO por la cuenta del LOTE, así que
+            // omitirla los deja en "Sin cuenta asignada".
+            cuenta_inventario_id: resolvedCuentas[product.id] ?? 'A.4.2',
             user_id: user.user.id,
             company_id: activeCompanyId,
           })

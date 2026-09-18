@@ -395,7 +395,14 @@ export function calcDesgloseReconciliado(shipment: Shipment): {
 
 export function generateShipmentNumber(existing: Shipment[]): string {
   const year = new Date().getFullYear();
-  const thisYear = existing.filter(s => s.numero.includes(`-${year}-`));
-  const next = String(thisYear.length + 1).padStart(3, '0');
-  return `EMB-${year}-${next}`;
+  // Continúa desde el correlativo más alto del año, no desde la cantidad de
+  // embarques: contar genera duplicados si la numeración no arranca en 001 o si
+  // se borró un embarque intermedio.
+  const prefix = `EMB-${year}-`;
+  const maxCorrelativo = existing.reduce((max, s) => {
+    if (!s.numero.startsWith(prefix)) return max;
+    const n = parseInt(s.numero.slice(prefix.length), 10);
+    return Number.isFinite(n) && n > max ? n : max;
+  }, 0);
+  return `${prefix}${String(maxCorrelativo + 1).padStart(3, '0')}`;
 }
