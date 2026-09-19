@@ -116,6 +116,9 @@ export interface InvestmentAnalysis {
   nombre: string;
   notas?: string;
 
+  // Posición manual de la tarjeta en la lista (drag & drop). Menor = primero.
+  orden: number;
+
   // Parámetros financieros
   costo_capital_anual: number;       // % anual — tasa de descuento para VAN/TIR
   plazo_importacion_meses: number;   // meses desde el pago hasta la mercadería en almacén

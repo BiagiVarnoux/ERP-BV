@@ -52,6 +52,7 @@ function rowToAnalysis(row: Record<string, unknown>): InvestmentAnalysis {
     user_id:                 (row.user_id as string) || undefined,
     nombre:                  (row.nombre as string) || '',
     notas:                   (row.notas as string) || undefined,
+    orden:                   row.orden != null ? Number(row.orden) : 0,
     costo_capital_anual:     row.costo_capital_anual != null ? Number(row.costo_capital_anual) : 12,
     plazo_importacion_meses: row.plazo_importacion_meses != null ? Number(row.plazo_importacion_meses) : 1,
     fuc_pct:                 row.fuc_pct != null ? Number(row.fuc_pct) : 75,
@@ -201,6 +202,7 @@ export const InvestmentStorage = {
       .from('investment_analyses')
       .select('*')
       .eq('company_id', companyId)
+      .order('orden', { ascending: true })
       .order('created_at', { ascending: false });
     if (error) throw error;
     const analyses = (data || []).map(r => rowToAnalysis(r as Record<string, unknown>));
@@ -280,6 +282,22 @@ export const InvestmentStorage = {
       .eq('id', id)
       .eq('company_id', companyId);
     if (error) throw error;
+  },
+
+  /**
+   * Persiste el orden manual de las tarjetas de la lista. `ids` viene en el
+   * orden deseado; la posición del array es el nuevo `orden`.
+   */
+  async reorder(companyId: string, ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await Promise.all(ids.map((id, i) =>
+      supabase
+        .from('investment_analyses')
+        .update({ orden: i })
+        .eq('id', id)
+        .eq('company_id', companyId)
+        .then(({ error }) => { if (error) throw error; }),
+    ));
   },
 
   // ─── Items ────────────────────────────────────────────────────────────────

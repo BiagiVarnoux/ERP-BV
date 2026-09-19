@@ -1090,6 +1090,7 @@ export type Database = {
           id: string
           nombre: string
           notas: string | null
+          orden: number
           plazo_importacion_meses: number
           tc_oficial: number | null
           updated_at: string
@@ -1106,6 +1107,7 @@ export type Database = {
           id?: string
           nombre?: string
           notas?: string | null
+          orden?: number
           plazo_importacion_meses?: number
           tc_oficial?: number | null
           updated_at?: string
@@ -1122,6 +1124,7 @@ export type Database = {
           id?: string
           nombre?: string
           notas?: string | null
+          orden?: number
           plazo_importacion_meses?: number
           tc_oficial?: number | null
           updated_at?: string

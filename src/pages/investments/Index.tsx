@@ -56,6 +56,20 @@ function ListaView() {
     }
   };
 
+  // Reordenar tarjetas: optimista en pantalla, persistido en `orden`.
+  const handleReorder = async (ordered: InvestmentAnalysis[]) => {
+    if (!companyId) return;
+    const previo = analyses;
+    setAnalyses(ordered.map((a, i) => ({ ...a, orden: i })));
+    try {
+      await InvestmentStorage.reorder(companyId, ordered.map(a => a.id));
+    } catch (e) {
+      setAnalyses(previo);
+      toast.error('No se pudo guardar el orden');
+      console.error(e);
+    }
+  };
+
   return (
     <InvestmentsLista
       analyses={analyses}
@@ -64,6 +78,7 @@ function ListaView() {
       onCreated={handleCreated}
       onDelete={handleDelete}
       onOpen={id => navigate(`/investments/${id}`)}
+      onReorder={handleReorder}
     />
   );
 }

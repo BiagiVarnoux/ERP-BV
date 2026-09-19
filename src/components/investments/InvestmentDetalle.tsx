@@ -87,6 +87,10 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
     setHeaderTcEnvio(v);
     setItems(prev => prev.map(it => ({ ...it, tc_envio: v })));
   }, []);
+  // Base de peso para el flete (volumétrico o bruto) en TODOS los productos.
+  const applyPesoModeAll = useCallback((usaBruto: boolean) => {
+    setItems(prev => prev.map(it => it.usa_peso_bruto === usaBruto ? it : { ...it, usa_peso_bruto: usaBruto }));
+  }, []);
   // Duplica un producto: copia con id nuevo justo debajo, renumerando `orden`.
   const duplicateItem = useCallback((id: string) => {
     setItems(prev => {
@@ -277,6 +281,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
             headerTcEnvio={headerTcEnvio}
             onTcCompraAll={applyTcCompraAll}
             onTcEnvioAll={applyTcEnvioAll}
+            onPesoModeAll={applyPesoModeAll}
             onUpdate={updateItem}
             onAdd={addItem}
             onRemove={removeItem}

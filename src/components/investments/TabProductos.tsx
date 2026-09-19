@@ -30,6 +30,8 @@ interface Props {
   headerTcEnvio: number | undefined;
   onTcCompraAll: (v: number | undefined) => void;
   onTcEnvioAll: (v: number | undefined) => void;
+  /** Fija la base de peso del flete (volumétrico / bruto) en todos los productos. */
+  onPesoModeAll: (usaBruto: boolean) => void;
   onUpdate: (id: string, changes: Partial<InvestmentItem>) => void;
   onAdd: () => void;
   onRemove: (id: string) => void;
@@ -43,12 +45,16 @@ interface Props {
 
 export function TabProductos({
   items, calcs, resumen, tcOficial, onTcOficial, fleteCifPct, onFleteCifPct,
-  headerTcCompra, headerTcEnvio, onTcCompraAll, onTcEnvioAll,
+  headerTcCompra, headerTcEnvio, onTcCompraAll, onTcEnvioAll, onPesoModeAll,
   onUpdate, onAdd, onRemove, onDuplicate, onReorder, sharePath, highlightItemId,
 }: Props) {
   // ¿Todos los productos comparten el mismo T/C? (si no, avisamos que hay valores mixtos)
   const allSameTcCompra = items.length <= 1 || items.every(it => it.tc === items[0].tc);
   const allSameTcEnvio  = items.length <= 1 || items.every(it => (it.tc_envio ?? null) === (items[0].tc_envio ?? null));
+  // Base de peso para el flete: mixta mientras los productos no coincidan.
+  const allBruto = items.length > 0 && items.every(it => it.usa_peso_bruto);
+  const allVol   = items.length > 0 && items.every(it => !it.usa_peso_bruto);
+  const pesoModeLabel = allBruto ? 'bruto' : allVol ? 'volumétrico' : 'mixto';
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
@@ -94,9 +100,9 @@ export function TabProductos({
       <div className="space-y-5">
         {/* Tipos de cambio del análisis — se aplican a todos los productos */}
         <FormSection
-          title="Tipos de cambio"
-          hint="compra y envío se aplican a todos los productos"
-          summary={`compra ${headerTcCompra} · aduana ${tcOficial} · CIF ${fleteCifPct}%`}
+          title="Parámetros del análisis"
+          hint="se aplican a todos los productos"
+          summary={`compra ${headerTcCompra} · aduana ${tcOficial} · CIF ${fleteCifPct}% · peso ${pesoModeLabel}`}
         >
           <div className="flex flex-wrap gap-x-6 gap-y-3">
             {/* T/C compra */}
@@ -161,6 +167,40 @@ export function TabProductos({
                 >
                   marít. {FLETE_CIF_PCT_MARITIMO}%
                 </button>
+              </div>
+            </div>
+            {/* Base de peso para el flete — en bloque para todos los productos */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                Peso para flete
+                {!allBruto && !allVol && items.length > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger asChild><span className="text-amber-600 cursor-help">· varios</span></TooltipTrigger>
+                    <TooltipContent>Hay productos con distinta base de peso. Elegir aquí los iguala a todos.</TooltipContent>
+                  </Tooltip>
+                )}
+              </label>
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={allVol ? 'default' : 'outline'}
+                  className="h-9 text-xs px-2.5 gap-1"
+                  onClick={() => onPesoModeAll(false)}
+                  disabled={items.length === 0}
+                >
+                  <Box className="h-3 w-3" /> Volumétrico
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={allBruto ? 'default' : 'outline'}
+                  className="h-9 text-xs px-2.5 gap-1"
+                  onClick={() => onPesoModeAll(true)}
+                  disabled={items.length === 0}
+                >
+                  <Weight className="h-3 w-3" /> Bruto
+                </Button>
               </div>
             </div>
             <div className="flex-1 min-w-[180px] flex items-end">

@@ -7,7 +7,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, TrendingUp, Trash2, Calculator, ListChecks, X, Layers } from 'lucide-react';
+import { Plus, TrendingUp, Trash2, Calculator, ListChecks, X, Layers, GripVertical } from 'lucide-react';
 import {
   InvestmentAnalysis, INVESTMENT_ESTADO_LABELS, INVESTMENT_ESTADO_COLORS,
 } from '@/accounting/investment-types';
@@ -23,14 +23,34 @@ interface Props {
   onCreated: (a: InvestmentAnalysis) => void;
   onDelete: (id: string) => void;
   onOpen: (id: string) => void;
+  /** Persiste el nuevo orden de las tarjetas tras un arrastre. */
+  onReorder: (ordered: InvestmentAnalysis[]) => void;
 }
 
-export function InvestmentsLista({ analyses, loading, companyId, onCreated, onDelete, onOpen }: Props) {
+export function InvestmentsLista({ analyses, loading, companyId, onCreated, onDelete, onOpen, onReorder }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [toDelete, setToDelete] = useState<InvestmentAnalysis | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showConsolidado, setShowConsolidado] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+
+  // ── Reordenar tarjetas (arrastrar desde el asa) ───────────────────────────
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    if (idx !== dragIdx) setOverIdx(idx);
+  };
+  const handleDrop = (idx: number) => {
+    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setOverIdx(null); return; }
+    const reordered = [...analyses];
+    const [moved] = reordered.splice(dragIdx, 1);
+    reordered.splice(idx, 0, moved);
+    setDragIdx(null);
+    setOverIdx(null);
+    onReorder(reordered);
+  };
+  const handleDragEnd = () => { setDragIdx(null); setOverIdx(null); };
 
   const toggleSelectMode = () => {
     setSelectMode(prev => !prev);
@@ -86,14 +106,35 @@ export function InvestmentsLista({ analyses, loading, companyId, onCreated, onDe
         </Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {analyses.map(a => (
+          {analyses.map((a, i) => (
             <Card
               key={a.id}
-              className={`cursor-pointer hover:border-primary/50 transition-colors group ${selectedIds.has(a.id) ? 'border-primary bg-primary/5' : ''}`}
+              className={`drag-card cursor-pointer hover:border-primary/50 transition-colors group ${selectedIds.has(a.id) ? 'border-primary bg-primary/5' : ''}`}
               onClick={() => selectMode ? toggleSelected(a.id) : onOpen(a.id)}
+              onDragStart={() => setDragIdx(i)}
+              onDragOver={e => handleDragOver(e, i)}
+              onDrop={() => handleDrop(i)}
+              onDragEnd={e => { (e.currentTarget as HTMLElement).draggable = false; handleDragEnd(); }}
+              style={{
+                opacity: dragIdx === i ? 0.4 : 1,
+                outline: overIdx === i && dragIdx !== i ? '2px solid hsl(var(--primary))' : undefined,
+                transition: 'opacity 0.15s',
+              }}
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-2">
+                  <span
+                    className="cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-foreground transition-colors shrink-0 mt-0.5"
+                    onClick={e => e.stopPropagation()}
+                    onMouseDown={e => {
+                      e.stopPropagation();
+                      const card = (e.currentTarget as HTMLElement).closest('.drag-card') as HTMLElement | null;
+                      if (card) card.draggable = true;
+                    }}
+                    title="Arrastra para reordenar"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </span>
                   {selectMode && (
                     <input
                       type="checkbox"
