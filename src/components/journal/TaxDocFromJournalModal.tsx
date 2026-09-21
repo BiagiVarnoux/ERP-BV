@@ -21,10 +21,11 @@ import { toast } from 'sonner';
 import { JournalEntry, ModuloVinculado } from '@/accounting/types';
 import { fmt, round2, toDecimal } from '@/accounting/utils';
 import {
-  ALICUOTA_IVA, TIPO_DOCUMENTO_LABEL, calcularBaseEIva, createTaxDocument,
-  formatPeriodo, periodoDeFecha,
-  type TaxTipoDocumento,
+  ALICUOTA_IVA, TIPO_DOCUMENTO_LABEL, adjuntarArchivoAFactura, calcularBaseEIva,
+  createTaxDocument, formatPeriodo, periodoDeFecha,
+  type FacturaExtraida, type TaxTipoDocumento,
 } from '@/domain/taxes';
+import { FacturaUploader } from '@/components/impuestos/FacturaUploader';
 
 export interface TaxLineToProcess {
   lineIndex: number;
@@ -55,6 +56,7 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
   const [autorizacion, setAutorizacion] = useState('');
   const [importeTotal, setImporteTotal] = useState('');
   const [periodo, setPeriodo]           = useState('');
+  const [archivo, setArchivo]           = useState<File | null>(null);
   const [saving, setSaving]             = useState(false);
 
   // Al abrir (o al pasar a la siguiente línea) se precarga desde el asiento.
@@ -68,7 +70,21 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
     // El IVA de la línea "por dentro" implica un importe facturado de iva / 13%.
     setImporteTotal(String(round2(linea.lineAmount / (ALICUOTA_IVA / 100))));
     setPeriodo(periodoDeFecha(journalEntry.date));
+    setArchivo(null);
   }, [isOpen, idx, linea, journalEntry.date]);
+
+  /**
+   * Vuelca lo que la IA leyó de la factura. El importe se respeta tal como
+   * viene del documento: si no cuadra con el asiento, el aviso de descuadre de
+   * más abajo lo hace evidente en vez de taparlo.
+   */
+  function aplicarLectura(d: FacturaExtraida) {
+    if (d.razon_social)        setRazonSocial(d.razon_social);
+    if (d.nit)                 setNit(d.nit);
+    if (d.numero_factura)      setNumero(d.numero_factura);
+    if (d.numero_autorizacion) setAutorizacion(d.numero_autorizacion);
+    if (d.importe_total != null) setImporteTotal(String(d.importe_total));
+  }
 
   const calculado = useMemo(
     () => calcularBaseEIva({ importe_total: toDecimal(importeTotal) }),
@@ -96,7 +112,7 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
 
     setSaving(true);
     try {
-      await createTaxDocument({
+      const creado = await createTaxDocument({
         tipo: esCompra ? 'compra' : 'venta',
         fecha: journalEntry.date,
         periodo,
@@ -108,6 +124,13 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
         importe_total: total,
         journal_entry_id: journalEntry.id,
       }, companyId);
+      if (archivo) {
+        try {
+          await adjuntarArchivoAFactura(archivo, companyId, creado.id);
+        } catch (e: unknown) {
+          toast.error(e instanceof Error ? e.message : 'La factura se registró, pero no se pudo adjuntar el archivo');
+        }
+      }
       toast.success(esCompra ? 'Registrada en el Libro de Compras' : 'Registrada en el Libro de Ventas');
       siguiente();
     } catch (e: unknown) {
@@ -138,6 +161,15 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Adjuntar la factura llena el formulario solo; también se puede a mano. */}
+          <FacturaUploader
+            tipo={esCompra ? 'compra' : 'venta'}
+            file={archivo}
+            onFileChange={setArchivo}
+            onExtraido={aplicarLectura}
+            disabled={saving}
+          />
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">
               <Label>{esCompra ? 'Proveedor (razón social)' : 'Cliente (razón social)'}</Label>

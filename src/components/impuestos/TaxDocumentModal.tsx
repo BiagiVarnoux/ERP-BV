@@ -6,14 +6,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { Loader2, AlertTriangle, Download } from 'lucide-react';
 import { toast } from 'sonner';
-import { fmt, toDecimal, todayISO } from '@/accounting/utils';
+import { fmt, round2, toDecimal, todayISO } from '@/accounting/utils';
 import {
-  ALICUOTA_IVA, TIPO_DOCUMENTO_LABEL, buscarDuplicados, calcularBaseEIva,
-  createTaxDocument, formatPeriodo, periodoDeFecha, updateTaxDocument,
-  type TaxDocTipo, type TaxDocumentRow, type TaxTipoDocumento,
+  ALICUOTA_IVA, TIPO_DOCUMENTO_LABEL, adjuntarArchivoAFactura, buscarDuplicados,
+  calcularBaseEIva, createTaxDocument, formatPeriodo, periodoDeFecha,
+  urlFirmadaFactura, updateTaxDocument,
+  type FacturaExtraida, type TaxDocTipo, type TaxDocumentRow, type TaxTipoDocumento,
 } from '@/domain/taxes';
+import { FacturaUploader } from './FacturaUploader';
+import { openExternalUrl } from '@/lib/open-url';
 
 interface Props {
   open: boolean;
@@ -93,11 +96,13 @@ export function TaxDocumentModal({
   const [form, setForm] = useState<FormState>(() => emptyForm(periodoActual));
   const [saving, setSaving] = useState(false);
   const [duplicados, setDuplicados] = useState<TaxDocumentRow[]>([]);
+  const [archivo, setArchivo] = useState<File | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setForm(editRow ? fromRow(editRow) : emptyForm(periodoActual));
     setDuplicados([]);
+    setArchivo(null);
   }, [open, editRow, periodoActual]);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
@@ -111,6 +116,50 @@ export function TaxDocumentModal({
       periodo: prev.periodo === periodoDeFecha(prev.fecha) ? periodoDeFecha(fecha) : prev.periodo,
     }));
   };
+
+  /**
+   * Vuelca en el formulario lo que la IA leyó. Solo se pisan los campos que el
+   * modelo devolvió con valor: lo que ya escribió el usuario no se pierde.
+   */
+  function aplicarLectura(d: FacturaExtraida) {
+    setForm(prev => {
+      const next = { ...prev };
+      if (d.razon_social)        next.razon_social = d.razon_social;
+      if (d.nit)                 next.nit = d.nit;
+      if (d.numero_factura)      next.numero_factura = d.numero_factura;
+      if (d.numero_autorizacion) next.numero_autorizacion = d.numero_autorizacion;
+      if (d.codigo_control)      next.codigo_control = d.codigo_control;
+      if (d.fecha) {
+        next.fecha = d.fecha;
+        // El período sigue a la fecha salvo que el usuario ya lo haya movido.
+        if (prev.periodo === periodoDeFecha(prev.fecha)) next.periodo = periodoDeFecha(d.fecha);
+      }
+      if (d.importe_total != null) next.importe_total = String(d.importe_total);
+      next.descuentos     = d.descuentos ? String(d.descuentos) : '';
+      next.importe_ice    = d.importe_ice ? String(d.importe_ice) : '';
+      // Cuando la factura trae "IMPORTE BASE CRÉDITO FISCAL", la diferencia
+      // contra el total es justamente lo que no da crédito: se carga como exento.
+      if (d.importe_base_credito_fiscal != null && d.importe_total != null) {
+        const noComputable = round2(
+          d.importe_total - d.importe_base_credito_fiscal - (d.descuentos ?? 0) - (d.importe_ice ?? 0),
+        );
+        next.importe_exento = noComputable > 0 ? String(noComputable) : '';
+      } else {
+        next.importe_exento = d.importe_exento ? String(d.importe_exento) : '';
+      }
+      if (esCompra && d.con_derecho_credito != null) next.con_derecho_credito = d.con_derecho_credito;
+      return next;
+    });
+  }
+
+  async function verAdjunto() {
+    if (!editRow?.archivo_path) return;
+    try {
+      openExternalUrl(await urlFirmadaFactura(editRow.archivo_path));
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo abrir el archivo');
+    }
+  }
 
   const calculado = useMemo(() => calcularBaseEIva({
     importe_total:  toDecimal(form.importe_total),
@@ -166,13 +215,23 @@ export function TaxDocumentModal({
         con_derecho_credito: esCompra ? form.con_derecho_credito : true,
         notas: form.notas.trim() || null,
       };
-      if (editRow) {
-        await updateTaxDocument(editRow.id, payload, companyId);
-        toast.success('Documento actualizado');
-      } else {
-        await createTaxDocument(payload, companyId);
-        toast.success(esCompra ? 'Factura registrada en el Libro de Compras' : 'Factura registrada en el Libro de Ventas');
+      const guardado = editRow
+        ? await updateTaxDocument(editRow.id, payload, companyId)
+        : await createTaxDocument(payload, companyId);
+
+      // El adjunto se sube después: su ruta en el bucket lleva el id del documento.
+      if (archivo) {
+        try {
+          await adjuntarArchivoAFactura(archivo, companyId, guardado.id);
+        } catch (e: unknown) {
+          // La factura ya quedó registrada; solo falló el archivo.
+          toast.error(e instanceof Error ? e.message : 'La factura se registró, pero no se pudo adjuntar el archivo');
+        }
       }
+
+      toast.success(editRow
+        ? 'Documento actualizado'
+        : esCompra ? 'Factura registrada en el Libro de Compras' : 'Factura registrada en el Libro de Ventas');
       onOpenChange(false);
       onSaved();
     } catch (e: unknown) {
@@ -192,6 +251,22 @@ export function TaxDocumentModal({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Archivo de la factura + lectura asistida */}
+          <FacturaUploader
+            tipo={tipo}
+            file={archivo}
+            onFileChange={setArchivo}
+            onExtraido={aplicarLectura}
+            archivoExistente={editRow?.archivo_nombre ?? null}
+            disabled={saving}
+          />
+
+          {editRow?.archivo_path && !archivo && (
+            <Button type="button" variant="outline" size="sm" onClick={verAdjunto}>
+              <Download className="w-3.5 h-3.5 mr-1.5" /> Ver factura adjunta
+            </Button>
+          )}
+
           {/* Contraparte */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">

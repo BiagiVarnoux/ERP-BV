@@ -262,6 +262,8 @@ Storage bucket: `shipment-docs` — paths use `{company_id}/{shipment_id}/filena
 
 `payables.sin_credito_fiscal` (boolean) marca las CxP que no son facturas con crédito fiscal, para sacarlas del importador del Libro de Compras.
 
+Cada fila puede llevar adjunta la factura (`archivo_path`, `archivo_nombre`, `archivo_mime`, `archivo_size`) en el bucket **`tax-docs`**, rutas `{company_id}/{tax_document_id}/{archivo}`. A diferencia de los buckets antiguos, sus políticas de Storage validan el primer segmento de la ruta contra `company_members`: un miembro de otra empresa no puede leerlas. ⚠️ Los binarios NO van en el backup JSON (solo la referencia), misma limitación que `shipment-docs`.
+
 `accounts.modulo_vinculado` acepta `cxp` | `cxc` | `credito_fiscal` | `debito_fiscal`. Los dos últimos hacen que un asiento del Libro Diario que toque esa cuenta ofrezca registrar la factura en el libro fiscal (`TaxDocFromJournalModal`), enlazada por `journal_entry_id`. El índice único parcial `(company_id, journal_entry_id)` garantiza una sola factura por asiento; el importador de Ventas/CxP también excluye los asientos ya usados.
 
 ### System / multi-company
@@ -350,6 +352,8 @@ Each module = one page shell + one component folder (usually). Find any module's
 | `pdfService.ts` | jsPDF-based PDF generation |
 | `auditService.ts` | Write audit log entries |
 | `aiService.ts` | AI chat assistant (Groq) |
+| `src/domain/taxes/facturaAiService.ts` | Lectura asistida de facturas: PDF con capa de texto → texto al modelo; PDF escaneado o foto → imagen al modelo con visión. Llama a la Edge Function `ai-factura` |
+| `src/domain/taxes/taxDocStorage.ts` | Bucket `tax-docs`: subir, URL firmada, descargar y borrar el archivo de la factura |
 | `src/domain/taxes/` | Libros fiscales IVA: `calc.ts` (base imponible, IVA «por dentro» 13%, signo de notas de crédito, totales del libro) y `taxService.ts` (CRUD + importación asistida desde Ventas/CxP) |
 | `licitacionAiService.ts` | AI suggestions for licitaciones |
 
@@ -458,6 +462,18 @@ Never do raw `a + b` on Bs amounts — use `round2(a + b)`.
 ---
 
 ## Supabase Integration
+
+### Edge Functions (Groq)
+
+| Function | Uso | Modelo |
+|---|---|---|
+| `ai-journal` | Asientos contables desde lenguaje natural | `llama-3.3-70b-versatile` |
+| `ai-dbc` | Asistente DBC | — |
+| `ai-factura` | Extrae datos de facturas para el libro fiscal | `openai/gpt-oss-120b` (texto) y `qwen/qwen3.8-27b` (visión) |
+
+⚠️ **La cuenta de Groq no tiene modelos Llama con visión.** Antes de cambiar el modelo de visión, verifica qué hay disponible con `GET https://api.groq.com/openai/v1/models`: `qwen/qwen3.8-27b` es hoy el único de la lista que acepta `image_url`. `openai/gpt-oss-*` y `groq/compound` rechazan contenido multimodal (`messages[0].content must be a string`).
+
+La API key va SIEMPRE en el secreto `GROQ_API_KEY` (Dashboard → Edge Functions → Secrets), nunca en el cliente ni en el repo (S7).
 
 - Client: `src/integrations/supabase/client.ts`
 - Migrations: `supabase/migrations/` — named `YYYYMMDDHHMMSS_description.sql`

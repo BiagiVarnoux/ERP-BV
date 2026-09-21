@@ -39,6 +39,11 @@ export interface TaxDocumentRow {
   payable_id: string | null;
   journal_entry_id: string | null;
   notas: string | null;
+  /** Archivo de la factura en el bucket `tax-docs` (null si no se adjuntó). */
+  archivo_path: string | null;
+  archivo_nombre: string | null;
+  archivo_mime: string | null;
+  archivo_size: number | null;
   created_at: string;
   updated_at: string;
 }

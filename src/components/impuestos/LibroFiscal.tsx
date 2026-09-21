@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/data-card';
 import {
   Plus, Download, Loader2, FileDown, Receipt, Ban, Pencil, Trash2, ArrowDownToLine,
+  Paperclip,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
@@ -22,10 +23,11 @@ import { generateCSV, downloadCSV } from '@/services/exportService';
 import { TaxDocumentModal } from './TaxDocumentModal';
 import { ImportarDialog } from './ImportarDialog';
 import {
-  TIPO_DOCUMENTO_LABEL, anularTaxDocument, deleteTaxDocument, formatPeriodo,
-  listTaxDocuments, periodosRecientes, totalesLibro,
+  TIPO_DOCUMENTO_LABEL, anularTaxDocument, deleteTaxDocument, descargarArchivoFactura,
+  formatPeriodo, listTaxDocuments, periodosRecientes, totalesLibro, urlFirmadaFactura,
   type TaxDocTipo, type TaxDocumentRow,
 } from '@/domain/taxes';
+import { downloadBlob, openExternalUrl } from '@/lib/open-url';
 
 function periodoActualDefault(): string {
   const { year, month } = nowInAppTZ();
@@ -81,6 +83,27 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
 
   const totales = useMemo(() => totalesLibro(rows), [rows]);
 
+  /** Abre la factura adjunta en una pestaña con una URL firmada temporal. */
+  async function verAdjunto(row: TaxDocumentRow) {
+    if (!row.archivo_path) return;
+    try {
+      openExternalUrl(await urlFirmadaFactura(row.archivo_path));
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo abrir el archivo');
+    }
+  }
+
+  /** Descarga el adjunto conservando el nombre original del archivo. */
+  async function descargarAdjunto(row: TaxDocumentRow) {
+    if (!row.archivo_path) return;
+    try {
+      const blob = await descargarArchivoFactura(row.archivo_path);
+      downloadBlob(blob, row.archivo_nombre ?? `factura-${row.numero_factura ?? row.id}`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo descargar el archivo');
+    }
+  }
+
   function abrirNuevo() { setEditRow(null); setShowForm(true); }
   function abrirEditar(row: TaxDocumentRow) { setEditRow(row); setShowForm(true); }
 
@@ -125,6 +148,7 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
       { header: 'Base imponible',   accessor: r => r.base_imponible },
       { header: esCompra ? 'Crédito fiscal' : 'Débito fiscal', accessor: r => r.iva },
       { header: 'Estado',           accessor: 'estado' },
+      { header: 'Archivo adjunto',  accessor: r => r.archivo_nombre ?? '' },
       ...(esCompra ? [{ header: 'Con derecho a crédito', accessor: (r: TaxDocumentRow) => (r.con_derecho_credito ? 'SI' : 'NO') }] : []),
     ], filtered);
     downloadCSV(csv, `libro-${esCompra ? 'compras' : 'ventas'}-${periodo}.csv`);
@@ -251,6 +275,16 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
                   <DataCardField label="Importe">{fmt(row.importe_total)}</DataCardField>
                   <DataCardField label={ivaLabel}><span className="font-semibold">{fmt(row.iva)}</span></DataCardField>
                 </DataCardGrid>
+                {row.archivo_path && (
+                  <DataCardActions className="mt-2 pt-2 border-t">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => verAdjunto(row)}>
+                      <Paperclip className="w-3.5 h-3.5 mr-1.5" /> Ver factura
+                    </Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => descargarAdjunto(row)}>
+                      <Download className="w-3.5 h-3.5 mr-1.5" /> Descargar
+                    </Button>
+                  </DataCardActions>
+                )}
                 {(canEdit || canDelete) && row.estado === 'vigente' && (
                   <DataCardActions className="mt-2 pt-2 border-t">
                     {canEdit && <Button size="sm" variant="outline" className="flex-1" onClick={() => abrirEditar(row)}>Editar</Button>}
@@ -275,6 +309,7 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
                   <TableHead className="text-right">Base</TableHead>
                   <TableHead className="text-right">{ivaLabel}</TableHead>
                   <TableHead className="text-center">Estado</TableHead>
+                  <TableHead className="text-center">Factura</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -297,6 +332,27 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
                         : esCompra && !row.con_derecho_credito
                           ? <Badge className="bg-amber-500 hover:bg-amber-600 text-xs">Sin crédito</Badge>
                           : <Badge variant="outline" className="text-xs">{TIPO_DOCUMENTO_LABEL[row.tipo_documento]}</Badge>}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {row.archivo_path ? (
+                        <div className="flex items-center justify-center">
+                          <Button
+                            size="icon" variant="ghost" className="h-7 w-7"
+                            title={`Ver ${row.archivo_nombre ?? 'la factura'}`}
+                            onClick={() => verAdjunto(row)}
+                          >
+                            <Paperclip className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="icon" variant="ghost" className="h-7 w-7"
+                            title="Descargar" onClick={() => descargarAdjunto(row)}
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
                       {canEdit && row.estado === 'vigente' && (
@@ -366,8 +422,9 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar del libro?</AlertDialogTitle>
             <AlertDialogDescription>
-              Se borra la fila del libro fiscal sin dejar rastro en el período. Si la factura existió
-              y fue anulada, usa «Anular» en lugar de eliminar.
+              Se borra la fila del libro fiscal sin dejar rastro en el período, junto con el archivo
+              de la factura si lo tenía adjunto. Si la factura existió y fue anulada, usa «Anular»
+              en lugar de eliminar.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

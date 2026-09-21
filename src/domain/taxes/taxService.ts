@@ -2,6 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { logAuditEntry } from '@/services/auditService';
 import { round2 } from '@/accounting/utils';
 import { calcularBaseEIva, periodoDeFecha } from './calc';
+import { borrarArchivoFactura, subirArchivoFactura, type ArchivoFactura } from './taxDocStorage';
 import type {
   CreateTaxDocumentInput, CxPPendienteFiscal, TaxDocTipo, TaxDocumentRow,
   UpdateTaxDocumentInput, VentaPendienteFiscal,
@@ -239,6 +240,25 @@ export async function updateTaxDocument(
   return data as TaxDocumentRow;
 }
 
+/**
+ * Sube el archivo de la factura y guarda su referencia en la fila. Se llama
+ * DESPUÉS de crear el documento, porque la ruta del bucket lleva su id.
+ */
+export async function adjuntarArchivoAFactura(
+  file: File,
+  companyId: string,
+  taxDocumentId: string,
+): Promise<ArchivoFactura> {
+  if (!companyId) throw new Error('Empresa activa no resuelta');
+  const archivo = await subirArchivoFactura(file, companyId, taxDocumentId);
+  const { error } = await table()
+    .update({ ...archivo, updated_at: new Date().toISOString() })
+    .eq('id', taxDocumentId)
+    .eq('company_id', companyId);          // defensa en profundidad (S1)
+  if (error) throw new Error(error.message);
+  return archivo;
+}
+
 /** Anula fiscalmente el documento: deja de computar en el libro pero queda el rastro. */
 export async function anularTaxDocument(id: string, companyId: string, motivo?: string): Promise<void> {
   if (!companyId) throw new Error('Empresa activa no resuelta');
@@ -252,8 +272,25 @@ export async function anularTaxDocument(id: string, companyId: string, motivo?: 
 
 export async function deleteTaxDocument(id: string, companyId: string): Promise<void> {
   if (!companyId) throw new Error('Empresa activa no resuelta');
+
+  // Se lee la ruta del adjunto antes de borrar la fila, para no dejar el
+  // archivo huérfano en el bucket.
+  const { data: fila } = await table()
+    .select('archivo_path').eq('id', id).eq('company_id', companyId).maybeSingle();
+
   const { error } = await table().delete().eq('id', id).eq('company_id', companyId);
   if (error) throw new Error(error.message);
+
+  const path = (fila as { archivo_path?: string | null } | null)?.archivo_path;
+  if (path) {
+    // Si el borrado del binario falla, la fila ya se fue: se avisa y sigue.
+    try {
+      await borrarArchivoFactura(path);
+    } catch (e) {
+      console.warn('No se pudo borrar el archivo de la factura:', e);
+    }
+  }
+
   await logAuditEntry('tax_documents', id, 'DELETE', null, null);
 }
 
