@@ -55,6 +55,13 @@ const MODULE_TREE: ModuleDef[] = [
     ],
   },
   {
+    label: 'Impuestos', badge: 'TX',
+    submodules: [
+      { key: 'tax_compras', label: 'Libro de Compras', description: 'Facturas de compra y crédito fiscal IVA' },
+      { key: 'tax_ventas',  label: 'Libro de Ventas',  description: 'Facturas emitidas y débito fiscal IVA' },
+    ],
+  },
+  {
     label: 'Catálogo', badge: 'CAT',
     submodules: [
       { key: 'catalogo_ventas', label: 'Catálogo de Ventas', description: 'Precios, fotos y comisiones para vendedores a comisión' },

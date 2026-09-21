@@ -8,7 +8,7 @@ import { CompanySwitcher } from '@/components/layout/CompanySwitcher';
 import {
   BarChart3, Package, ShoppingCart, Settings,
   Eye, ChevronDown, ChevronRight, Menu, LogOut, Users, Building2, FileText, TrendingUp,
-  PanelLeftClose, PanelLeftOpen, RotateCw,
+  PanelLeftClose, PanelLeftOpen, RotateCw, Receipt,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +18,7 @@ const MODULE_PATHS: Record<string, string[]> = {
   SD:           ['/dashboard', '/sales', '/customers', '/catalogo'],
   LICITACIONES: ['/licitaciones'],
   INVESTMENTS:  ['/investments'],
+  TX:           ['/impuestos'],
   SETTINGS:     ['/settings', '/fiscal-years'],
   HOLDING:      ['/holding'],
 };
@@ -313,6 +314,17 @@ function SidebarContent({ onClose, collapsed = false, onSetCollapsed }: {
             onToggle={() => toggle('INVESTMENTS')} onIconClick={() => iconClick('INVESTMENTS')}
           >
             <NavItem path="/investments" label="Análisis de Inversión" currentPath={location.pathname} onClick={close} />
+          </ModuleSection>
+        )}
+
+        {!loading && (v('taxes', 'tax_compras') || v('taxes', 'tax_ventas')) && (
+          <ModuleSection
+            label="Impuestos" badge="TX" icon={Receipt}
+            isExpanded={expanded.has('TX')} collapsed={collapsed}
+            onToggle={() => toggle('TX')} onIconClick={() => iconClick('TX')}
+          >
+            {v('taxes', 'tax_compras') && <NavItem path="/impuestos/compras" label="Libro de Compras" currentPath={location.pathname} onClick={close} />}
+            {v('taxes', 'tax_ventas')  && <NavItem path="/impuestos/ventas"  label="Libro de Ventas"  currentPath={location.pathname} onClick={close} />}
           </ModuleSection>
         )}
 

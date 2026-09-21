@@ -209,6 +209,8 @@ export interface BackupData {
   // v3.2 fields — análisis de inversión
   investment_analyses?: any[];
   investment_analysis_items?: any[];
+  /** v3.6: Libro de Compras/Ventas IVA (módulo Impuestos). */
+  tax_documents?: any[];
   // v3.3 fields — configuración de cuentas de venta
   company_sale_account_config?: any[];
   // v3.5 fields — canales de venta configurables
@@ -263,6 +265,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     company_sale_channel_config,
     product_fotos,
     product_publicaciones,
+    tax_documents,
   ] = await Promise.all([
     fetchAllCompanyRows('accounts', companyId),
     fetchAllCompanyRows('journal_entries', companyId),
@@ -318,6 +321,8 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     fetchAllProductFotos(companyId),
     // v3.5: marcas "publicado" por vendedor
     fetchAllCompanyRows('product_publicaciones', companyId),
+    // v3.6: libro fiscal de compras y ventas (módulo Impuestos)
+    fetchAllCompanyRows('tax_documents', companyId),
   ]);
 
   return {
@@ -360,6 +365,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     company_sale_channel_config,
     product_fotos,
     product_publicaciones,
+    tax_documents,
   };
 }
 
@@ -450,6 +456,9 @@ async function _performRestoreInternal(
   await safeDeleteCompany('investment_analyses', companyId);
   await safeDeleteCompany('company_sale_account_config', companyId);
   await safeDeleteCompany('company_sale_channel_config', companyId);
+
+  // tax_documents referencia sales y payables → se borra antes que ellos
+  await safeDeleteCompany('tax_documents', companyId);
 
   await safeDeleteCompany('shipments', companyId);
   await safeDeleteCompany('debt_payments', companyId);
@@ -719,6 +728,20 @@ async function _performRestoreInternal(
     if (safe.length > 0) await chunkedInsert('investment_analysis_items', safe);
   }
 
+  // v3.6: libro fiscal — después de sales y payables (FK sale_id / payable_id)
+  if (backup.tax_documents?.length) {
+    const ventasValidas = new Set((backup.sales ?? []).map((v: any) => v.id));
+    const cxpValidas    = new Set((backup.payables ?? []).map((p: any) => p.id));
+    await chunkedInsert('tax_documents', backup.tax_documents.map((d: any) => ({
+      ...d,
+      company_id: companyId,
+      user_id: userId,
+      // Si el origen no viajó en el backup, la fila entra sin enlace en vez de romper el FK.
+      sale_id:    d.sale_id    && ventasValidas.has(d.sale_id) ? d.sale_id : null,
+      payable_id: d.payable_id && cxpValidas.has(d.payable_id) ? d.payable_id : null,
+    })));
+  }
+
   // v3.3: configuración de cuentas de venta (UNIQUE company_id + tipo_pago → upsert)
   if (backup.company_sale_account_config?.length) {
     const { error } = await supabase
@@ -866,6 +889,7 @@ export function validateBackupFile(data: any): { valid: boolean; error?: string 
     'company_sale_channel_config',
     'product_fotos',
     'product_publicaciones',
+    'tax_documents',
   ];
 
   for (const key of optionalArrays) {

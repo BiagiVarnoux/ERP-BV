@@ -132,7 +132,8 @@ UserAccessContext
 type ErpModule =
   | 'accounts' | 'journal' | 'ledger' | 'auxiliary_ledgers' | 'reports'
   | 'fiscal_years' | 'inventory' | 'sales' | 'customers' | 'receivables'
-  | 'payables' | 'shipments' | 'settings' | 'holding' | 'licitaciones';
+  | 'payables' | 'shipments' | 'settings' | 'holding' | 'licitaciones'
+  | 'investments' | 'catalogo_ventas' | 'taxes';
 ```
 
 ### `ModuleAction` enum
@@ -253,6 +254,14 @@ Storage bucket: `shipment-docs` — paths use `{company_id}/{shipment_id}/filena
 | `licitacion_productos` | via `licitaciones` | child (join) | ✅ | Quoted products per tender |
 | `licitacion_documentos` | via `licitaciones` | child (join) | ✅ | Attached documents |
 
+### Impuestos (módulo TX)
+
+| Table | `company_id` | RLS policy type | In backup | Notes |
+|---|---|---|---|---|
+| `tax_documents` | direct | company_member | ✅ | Libro de Compras (crédito fiscal) y de Ventas (débito fiscal) IVA. `tipo` ∈ `{compra,venta}`. Enlaces OPCIONALES `sale_id` / `payable_id` (índice único parcial en cada uno: una venta o CxP genera a lo sumo una fila) y `journal_entry_id` (texto, sin FK). Se borra ANTES que `sales`/`payables` en el restore y se inserta DESPUÉS |
+
+`payables.sin_credito_fiscal` (boolean) marca las CxP que no son facturas con crédito fiscal, para sacarlas del importador del Libro de Compras.
+
 ### System / multi-company
 
 | Table | Ownership | RLS policy type | In backup | Notes |
@@ -295,6 +304,8 @@ Each module = one page shell + one component folder (usually). Find any module's
 | Payables (Pagos) | `/payables` | `src/pages/payables/Index.tsx` | `src/components/` (inline) | `src/accounting/domain/payables.ts` |
 | Shipments (Embarques) | `/shipments` | `src/pages/shipments/Index.tsx` | `src/components/shipments/` | `shipment-types.ts`, `shipment-utils.ts`, `shipment-storage.ts` |
 | Licitaciones | `/licitaciones` | `src/pages/licitaciones/Index.tsx` | `src/components/licitaciones/` | `licitacion-types.ts`, `licitacion-utils.ts`, `licitacion-storage.ts` |
+| Impuestos — Libro de Compras | `/impuestos/compras` | `src/pages/impuestos/Index.tsx` | `src/components/impuestos/` | `src/domain/taxes/` |
+| Impuestos — Libro de Ventas | `/impuestos/ventas` | `src/pages/impuestos/Index.tsx` | `src/components/impuestos/` | `src/domain/taxes/` |
 
 ### Admin modules
 
@@ -337,6 +348,7 @@ Each module = one page shell + one component folder (usually). Find any module's
 | `pdfService.ts` | jsPDF-based PDF generation |
 | `auditService.ts` | Write audit log entries |
 | `aiService.ts` | AI chat assistant (Groq) |
+| `src/domain/taxes/` | Libros fiscales IVA: `calc.ts` (base imponible, IVA «por dentro» 13%, signo de notas de crédito, totales del libro) y `taxService.ts` (CRUD + importación asistida desde Ventas/CxP) |
 | `licitacionAiService.ts` | AI suggestions for licitaciones |
 
 ---
