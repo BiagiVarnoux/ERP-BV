@@ -68,6 +68,22 @@ export async function listPeriodosConDocumentos(companyId: string, tipo: TaxDocT
 }
 
 /**
+ * ¿Este asiento ya generó una fila del libro fiscal? Se consulta antes de
+ * ofrecer el modal del Libro Diario, para no cargar la misma factura dos veces
+ * al reeditar un asiento ya procesado.
+ */
+export async function hasTaxDocumentForEntry(companyId: string, journalEntryId: string): Promise<boolean> {
+  if (!companyId || !journalEntryId) return false;
+  const { data, error } = await table()
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('journal_entry_id', journalEntryId)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  return (data ?? []).length > 0;
+}
+
+/**
  * Busca duplicados del mismo documento: mismo NIT + mismo nº de factura.
  * El SIN rechaza el crédito fiscal de una factura declarada dos veces, así que
  * esto se consulta antes de guardar. `excluirId` permite editar sin auto-chocar.
@@ -243,6 +259,16 @@ export async function deleteTaxDocument(id: string, companyId: string): Promise<
 
 // ─── Importación asistida ─────────────────────────────────────────────────────
 
+/** Asientos que ya tienen una factura en el libro (por el modal del Diario). */
+async function asientosYaEnLibro(companyId: string): Promise<Set<string>> {
+  const { data, error } = await table()
+    .select('journal_entry_id')
+    .eq('company_id', companyId)
+    .not('journal_entry_id', 'is', null);
+  if (error) throw new Error(error.message);
+  return new Set((data ?? []).map((r: { journal_entry_id: string }) => r.journal_entry_id));
+}
+
 /**
  * Ventas con factura del período que todavía no están en el Libro de Ventas.
  * Las anuladas (`voided`) quedan fuera: su factura se anula por nota de crédito.
@@ -274,7 +300,9 @@ export async function listVentasPendientes(
   if (errYa) throw new Error(errYa.message);
 
   const cargadas = new Set((yaCargadas ?? []).map((r: { sale_id: string }) => r.sale_id));
-  return ventas.filter(v => !cargadas.has(v.id));
+  const asientosUsados = await asientosYaEnLibro(companyId);
+  return ventas.filter(v =>
+    !cargadas.has(v.id) && !(v.journal_entry_id && asientosUsados.has(v.journal_entry_id)));
 }
 
 /**
@@ -309,7 +337,9 @@ export async function listCxPPendientes(
   if (errYa) throw new Error(errYa.message);
 
   const cargadas = new Set((yaCargadas ?? []).map((r: { payable_id: string }) => r.payable_id));
-  return cxp.filter(p => !cargadas.has(p.id));
+  const asientosUsados = await asientosYaEnLibro(companyId);
+  return cxp.filter(p =>
+    !cargadas.has(p.id) && !(p.journal_entry_id && asientosUsados.has(p.journal_entry_id)));
 }
 
 /** Marca (o desmarca) una CxP como obligación sin factura, para sacarla del importador. */

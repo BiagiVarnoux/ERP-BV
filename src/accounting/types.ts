@@ -27,6 +27,9 @@ export type ClasificacionResultado = typeof CLASIFICACION_RESULTADO[number];
 export type SubclasificacionResultado = typeof SUBCLASIFICACION_RESULTADO[number];
 export type ClasificacionFlujo = typeof CLASIFICACION_FLUJO[number];
 
+/** Módulos a los que puede vincularse una cuenta desde el Libro Diario. */
+export type ModuloVinculado = 'cxp' | 'cxc' | 'credito_fiscal' | 'debito_fiscal';
+
 export interface Account {
   id: string;
   name: string;
@@ -48,9 +51,10 @@ export interface Account {
   es_financiera?: boolean;
   es_extraordinaria?: boolean;
   afecta_ebitda?: boolean;
-  // Vínculo con Cuentas por Pagar/Cobrar: si un asiento del Libro Diario toca
-  // esta cuenta, se ofrece registrar/vincular el CxP o CxC correspondiente.
-  modulo_vinculado?: 'cxp' | 'cxc' | null;
+  // Vínculo con otro módulo: si un asiento del Libro Diario toca esta cuenta, se
+  // ofrece registrar/vincular el documento correspondiente — el CxP o CxC, o la
+  // factura del Libro de Compras ('credito_fiscal') / de Ventas ('debito_fiscal').
+  modulo_vinculado?: ModuloVinculado | null;
 }
 
 export interface JournalLine { 

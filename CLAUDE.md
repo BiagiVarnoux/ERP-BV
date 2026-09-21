@@ -262,6 +262,8 @@ Storage bucket: `shipment-docs` — paths use `{company_id}/{shipment_id}/filena
 
 `payables.sin_credito_fiscal` (boolean) marca las CxP que no son facturas con crédito fiscal, para sacarlas del importador del Libro de Compras.
 
+`accounts.modulo_vinculado` acepta `cxp` | `cxc` | `credito_fiscal` | `debito_fiscal`. Los dos últimos hacen que un asiento del Libro Diario que toque esa cuenta ofrezca registrar la factura en el libro fiscal (`TaxDocFromJournalModal`), enlazada por `journal_entry_id`. El índice único parcial `(company_id, journal_entry_id)` garantiza una sola factura por asiento; el importador de Ventas/CxP también excluye los asientos ya usados.
+
 ### System / multi-company
 
 | Table | Ownership | RLS policy type | In backup | Notes |

@@ -25,7 +25,14 @@ import {
   CLASIFICACION_RESULTADO, ClasificacionResultado, CLASIFICACION_RESULTADO_LABELS,
   CLASIFICACION_FLUJO, ClasificacionFlujo, CLASIFICACION_FLUJO_LABELS,
   SUBCLASIFICACION_RESULTADO, SUBCLASIFICACION_RESULTADO_LABELS,
+  ModuloVinculado,
 } from '@/accounting/types';
+
+// Tipo de cuenta que admite cada vínculo de módulo. Al cambiar el tipo de una
+// cuenta, el vínculo se conserva solo si sigue siendo válido.
+const MODULO_VINCULADO_TIPO: Record<string, string> = {
+  cxp: 'PASIVO', cxc: 'ACTIVO', credito_fiscal: 'ACTIVO', debito_fiscal: 'PASIVO',
+};
 
 // Which clasificacion_resultado options are valid per account type
 const CLASIFICACION_POR_TIPO: Record<string, ClasificacionResultado[]> = {
@@ -239,7 +246,7 @@ export default function AccountsPage() {
                       clasificacion_resultado: null,
                       subclasificacion_resultado: null,
                       clasificacion_flujo: (v === 'INGRESO' || v === 'GASTO') ? 'no_aplica' : (p.clasificacion_flujo ?? 'no_aplica'),
-                      modulo_vinculado: (v === 'PASIVO' && p.modulo_vinculado === 'cxp') || (v === 'ACTIVO' && p.modulo_vinculado === 'cxc')
+                      modulo_vinculado: MODULO_VINCULADO_TIPO[p.modulo_vinculado ?? ''] === v
                         ? p.modulo_vinculado : null,
                     }))}
                   >
@@ -352,23 +359,26 @@ export default function AccountsPage() {
                   </div>
                 )}
 
-                {/* Vínculo con Cuentas por Pagar/Cobrar */}
+                {/* Vínculo con otro módulo (CxP/CxC o libros fiscales de IVA) */}
                 {(accDraft.type === 'PASIVO' || accDraft.type === 'ACTIVO') && (
                   <div>
                     <Label>Vínculo con módulo</Label>
                     <Select
                       value={accDraft.modulo_vinculado ?? '_none'}
-                      onValueChange={(v) => setAccDraft(p => ({...p, modulo_vinculado: v === '_none' ? null : v as 'cxp' | 'cxc'}))}
+                      onValueChange={(v) => setAccDraft(p => ({...p, modulo_vinculado: v === '_none' ? null : v as ModuloVinculado}))}
                     >
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="_none">Ninguno</SelectItem>
                         {accDraft.type === 'PASIVO' && <SelectItem value="cxp">Cuentas por Pagar</SelectItem>}
                         {accDraft.type === 'ACTIVO' && <SelectItem value="cxc">Cuentas por Cobrar</SelectItem>}
+                        {accDraft.type === 'ACTIVO' && <SelectItem value="credito_fiscal">Libro de Compras IVA (crédito fiscal)</SelectItem>}
+                        {accDraft.type === 'PASIVO' && <SelectItem value="debito_fiscal">Libro de Ventas IVA (débito fiscal)</SelectItem>}
                       </SelectContent>
                     </Select>
                     <p className="text-[11px] text-muted-foreground mt-1">
-                      Si un asiento del Libro Diario toca esta cuenta, se ofrecerá registrar/vincular el CxP o CxC.
+                      Si un asiento del Libro Diario toca esta cuenta, se ofrecerá registrar/vincular el documento
+                      correspondiente: el CxP/CxC, o la factura en el libro fiscal de IVA.
                     </p>
                   </div>
                 )}

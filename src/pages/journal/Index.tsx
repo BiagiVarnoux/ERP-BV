@@ -28,6 +28,8 @@ import { JournalFiltersComponent, JournalFilters, defaultFilters } from '@/compo
 import { InlineKardexPopup, KardexData } from '@/components/kardex/InlineKardexPopup';
 import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLedgerModal';
 import { CxpCxcModal, CxpCxcLineToProcess } from '@/components/journal/CxpCxcModal';
+import { TaxDocFromJournalModal, TaxLineToProcess } from '@/components/journal/TaxDocFromJournalModal';
+import { hasTaxDocumentForEntry } from '@/domain/taxes';
 import { InventoryExitModal } from '@/components/inventory/InventoryExitModal';
 import { FifoExitModal } from '@/components/inventory/FifoExitModal';
 import { InventoryLot } from '@/components/inventory/fifo-utils';
@@ -88,6 +90,11 @@ export default function JournalPage() {
   const [cxpCxcModalState, setCxpCxcModalState] = useState<{
     isOpen: boolean;
     linesToProcess: CxpCxcLineToProcess[];
+    journalEntry: JournalEntry | null;
+  }>({ isOpen: false, linesToProcess: [], journalEntry: null });
+  const [taxDocModalState, setTaxDocModalState] = useState<{
+    isOpen: boolean;
+    linesToProcess: TaxLineToProcess[];
     journalEntry: JournalEntry | null;
   }>({ isOpen: false, linesToProcess: [], journalEntry: null });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -219,6 +226,24 @@ export default function JournalPage() {
     return lines;
   }
 
+  /**
+   * Líneas que tocan una cuenta vinculada a los libros fiscales de IVA. El
+   * importe de la línea ES el IVA del documento; el modal deduce el importe
+   * facturado a partir de él.
+   */
+  function detectTaxLines(je: JournalEntry): TaxLineToProcess[] {
+    const lines: TaxLineToProcess[] = [];
+    je.lines.forEach((line, index) => {
+      const account = accounts.find(a => a.id === line.account_id);
+      const modulo = account?.modulo_vinculado;
+      if (modulo !== 'credito_fiscal' && modulo !== 'debito_fiscal') return;
+      const lineAmount = line.debit || line.credit;
+      if (lineAmount <= 0) return;
+      lines.push({ lineIndex: index, accountId: line.account_id, accountName: account.name, lineAmount, modulo });
+    });
+    return lines;
+  }
+
   async function saveEntry() {
     const je = form.validateAndBuildEntry();
     if (!je) return;
@@ -295,6 +320,18 @@ export default function JournalPage() {
       const cxpCxcLines = detectCxpCxcLines(je);
       if (cxpCxcLines.length > 0) {
         setCxpCxcModalState({ isOpen: true, linesToProcess: cxpCxcLines, journalEntry: je });
+      }
+
+      // Detect lines touching accounts vinculadas a los libros fiscales de IVA.
+      // Si el asiento ya tiene una factura en el libro (p.ej. se está editando
+      // uno ya procesado), no se vuelve a ofrecer: cargarla dos veces haría que
+      // el SIN rechace el crédito fiscal.
+      const taxLines = detectTaxLines(je);
+      if (taxLines.length > 0 && activeCompanyId) {
+        const yaRegistrado = await hasTaxDocumentForEntry(activeCompanyId, je.id);
+        if (!yaRegistrado) {
+          setTaxDocModalState({ isOpen: true, linesToProcess: taxLines, journalEntry: je });
+        }
       }
     } catch (e: any) {
       toast.error(e.message || 'Error guardando asiento');
@@ -485,6 +522,16 @@ export default function JournalPage() {
           journalEntry={cxpCxcModalState.journalEntry}
           companyId={activeCompanyId}
           onDone={() => setCxpCxcModalState({ isOpen: false, linesToProcess: [], journalEntry: null })}
+        />
+      )}
+
+      {taxDocModalState.isOpen && taxDocModalState.journalEntry && (
+        <TaxDocFromJournalModal
+          isOpen={taxDocModalState.isOpen}
+          linesToProcess={taxDocModalState.linesToProcess}
+          journalEntry={taxDocModalState.journalEntry}
+          companyId={activeCompanyId}
+          onDone={() => setTaxDocModalState({ isOpen: false, linesToProcess: [], journalEntry: null })}
         />
       )}
 
