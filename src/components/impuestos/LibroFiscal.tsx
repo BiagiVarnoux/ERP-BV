@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/data-card';
 import {
   Plus, Download, Loader2, FileDown, Receipt, Ban, Pencil, Trash2, ArrowDownToLine,
-  Paperclip,
+  Paperclip, FilePlus2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUserAccess, useActiveCompanyId } from '@/contexts/UserAccessContext';
@@ -23,8 +23,9 @@ import { generateCSV, downloadCSV } from '@/services/exportService';
 import { TaxDocumentModal } from './TaxDocumentModal';
 import { ImportarDialog } from './ImportarDialog';
 import {
-  TIPO_DOCUMENTO_LABEL, anularTaxDocument, deleteTaxDocument, descargarArchivoFactura,
-  formatPeriodo, listTaxDocuments, periodosRecientes, totalesLibro, urlFirmadaFactura,
+  MIMES_ACEPTADOS, TIPO_DOCUMENTO_LABEL, adjuntarArchivoAFactura, anularTaxDocument,
+  deleteTaxDocument, descargarArchivoFactura, formatPeriodo, listTaxDocuments,
+  periodosRecientes, totalesLibro, urlFirmadaFactura,
   type TaxDocTipo, type TaxDocumentRow,
 } from '@/domain/taxes';
 import { downloadBlob, openExternalUrl } from '@/lib/open-url';
@@ -54,6 +55,11 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
   const [anularTarget, setAnularTarget]   = useState<TaxDocumentRow | null>(null);
   const [deleteTarget, setDeleteTarget]   = useState<TaxDocumentRow | null>(null);
 
+  // Adjuntar el respaldo de una fila ya registrada, sin pasar por la IA.
+  const adjuntarInputRef = useRef<HTMLInputElement>(null);
+  const filaParaAdjuntar = useRef<TaxDocumentRow | null>(null);
+  const [subiendoId, setSubiendoId] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
@@ -82,6 +88,36 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
   }, [rows, search]);
 
   const totales = useMemo(() => totalesLibro(rows), [rows]);
+
+  /**
+   * Adjunta (o reemplaza) el archivo de una fila ya registrada. No llama a la
+   * IA: aquí el documento es solo respaldo de algo que ya se cargó a mano.
+   */
+  function pedirArchivo(row: TaxDocumentRow) {
+    filaParaAdjuntar.current = row;
+    adjuntarInputRef.current?.click();
+  }
+
+  async function subirArchivoDeFila(file: File) {
+    const row = filaParaAdjuntar.current;
+    filaParaAdjuntar.current = null;
+    if (!row || !companyId) return;
+
+    if (!MIMES_ACEPTADOS.includes(file.type)) {
+      toast.error('Formato no soportado. Adjunta un PDF o una imagen (JPG, PNG o WEBP).');
+      return;
+    }
+    setSubiendoId(row.id);
+    try {
+      await adjuntarArchivoAFactura(file, companyId, row.id);
+      toast.success('Archivo adjunto al documento');
+      load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo adjuntar el archivo');
+    } finally {
+      setSubiendoId(null);
+    }
+  }
 
   /** Abre la factura adjunta en una pestaña con una URL firmada temporal. */
   async function verAdjunto(row: TaxDocumentRow) {
@@ -275,13 +311,25 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
                   <DataCardField label="Importe">{fmt(row.importe_total)}</DataCardField>
                   <DataCardField label={ivaLabel}><span className="font-semibold">{fmt(row.iva)}</span></DataCardField>
                 </DataCardGrid>
-                {row.archivo_path && (
+                {row.archivo_path ? (
                   <DataCardActions className="mt-2 pt-2 border-t">
                     <Button size="sm" variant="outline" className="flex-1" onClick={() => verAdjunto(row)}>
                       <Paperclip className="w-3.5 h-3.5 mr-1.5" /> Ver factura
                     </Button>
                     <Button size="sm" variant="outline" className="flex-1" onClick={() => descargarAdjunto(row)}>
                       <Download className="w-3.5 h-3.5 mr-1.5" /> Descargar
+                    </Button>
+                  </DataCardActions>
+                ) : canEdit && (
+                  <DataCardActions className="mt-2 pt-2 border-t">
+                    <Button
+                      size="sm" variant="outline" className="flex-1"
+                      onClick={() => pedirArchivo(row)} disabled={subiendoId === row.id}
+                    >
+                      {subiendoId === row.id
+                        ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                        : <FilePlus2 className="w-3.5 h-3.5 mr-1.5" />}
+                      Adjuntar factura
                     </Button>
                   </DataCardActions>
                 )}
@@ -350,6 +398,17 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
                             <Download className="w-3.5 h-3.5" />
                           </Button>
                         </div>
+                      ) : canEdit ? (
+                        <Button
+                          size="icon" variant="ghost" className="h-7 w-7"
+                          title="Adjuntar el archivo de la factura (sin análisis)"
+                          onClick={() => pedirArchivo(row)}
+                          disabled={subiendoId === row.id}
+                        >
+                          {subiendoId === row.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <FilePlus2 className="w-3.5 h-3.5" />}
+                        </Button>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
@@ -378,6 +437,18 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
           </div>
         </>
       )}
+
+      <input
+        ref={adjuntarInputRef}
+        type="file"
+        accept={MIMES_ACEPTADOS.join(',')}
+        className="hidden"
+        onChange={e => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) subirArchivoDeFila(f);
+        }}
+      />
 
       {companyId && (
         <>

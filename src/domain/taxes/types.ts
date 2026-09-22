@@ -33,6 +33,8 @@ export interface TaxDocumentRow {
   base_imponible: number;
   alicuota: number;
   iva: number;
+  /** true = el IVA viene del documento (DIM/DUI) y no se recalcula. */
+  usa_iva_manual: boolean;
   estado: TaxDocEstado;
   con_derecho_credito: boolean;
   sale_id: string | null;
@@ -55,6 +57,12 @@ export interface TaxAmountsInput {
   importe_exento?: number;
   descuentos?: number;
   alicuota?: number;
+  /**
+   * IVA exacto del documento. Cuando viene, manda sobre el cálculo: es el caso
+   * de las DIM, donde la Aduana liquida el IVA "por fuera" (14,94% sobre
+   * CIF + GA) y el crédito fiscal es el importe impreso, no uno recalculado.
+   */
+  iva_manual?: number | null;
 }
 
 export interface CreateTaxDocumentInput extends TaxAmountsInput {

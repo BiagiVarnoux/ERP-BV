@@ -262,6 +262,8 @@ Storage bucket: `shipment-docs` — paths use `{company_id}/{shipment_id}/filena
 
 `payables.sin_credito_fiscal` (boolean) marca las CxP que no son facturas con crédito fiscal, para sacarlas del importador del Libro de Compras.
 
+**DIM / DUI (importaciones)**: el IVA NO es el 13% "por dentro". La Aduana lo liquida "por fuera" sobre CIF + GA con tasa efectiva 14,94% (13/87) y lo imprime en la DIM. Por eso existe `usa_iva_manual`: cuando es `true`, `iva` es el importe del documento y NO se recalcula desde `base_imponible × alicuota`. Recalcularlo a 13% pierde crédito fiscal (en una DIM real de prueba, Bs 1.303,45 de diferencia). La fila se guarda con `tipo_documento='dui'`, `importe_total = CIF + GA`, `alicuota = 14,94` (informativa) e `iva` exacto.
+
 Cada fila puede llevar adjunta la factura (`archivo_path`, `archivo_nombre`, `archivo_mime`, `archivo_size`) en el bucket **`tax-docs`**, rutas `{company_id}/{tax_document_id}/{archivo}`. A diferencia de los buckets antiguos, sus políticas de Storage validan el primer segmento de la ruta contra `company_members`: un miembro de otra empresa no puede leerlas. ⚠️ Los binarios NO van en el backup JSON (solo la referencia), misma limitación que `shipment-docs`.
 
 `accounts.modulo_vinculado` acepta `cxp` | `cxc` | `credito_fiscal` | `debito_fiscal`. Los dos últimos hacen que un asiento del Libro Diario que toque esa cuenta ofrezca registrar la factura en el libro fiscal (`TaxDocFromJournalModal`), enlazada por `journal_entry_id`. El índice único parcial `(company_id, journal_entry_id)` garantiza una sola factura por asiento; el importador de Ventas/CxP también excluye los asientos ya usados.
@@ -469,7 +471,9 @@ Never do raw `a + b` on Bs amounts — use `round2(a + b)`.
 |---|---|---|
 | `ai-journal` | Asientos contables desde lenguaje natural | `llama-3.3-70b-versatile` |
 | `ai-dbc` | Asistente DBC | — |
-| `ai-factura` | Extrae datos de facturas para el libro fiscal | `openai/gpt-oss-120b` (texto) y `qwen/qwen3.8-27b` (visión) |
+| `ai-factura` | Extrae datos de facturas y DIM para el libro fiscal | `openai/gpt-oss-120b` (texto) y `qwen/qwen3.8-27b` (visión) |
+
+⚠️ **Límite de 8.000 tokens por minuto** en esta cuenta de Groq. Una DIM completa (5 páginas) gasta ~5.000 y hace saltar el límite con dos seguidas, por eso `textoParaAnalizar()` manda **solo la primera página** cuando detecta una DIM: ahí están la identificación (A), los operadores (B), los totales (F) y la tabla de tributos con el IVA. Baja el envío de 17.000 a 3.600 caracteres sin perder ningún dato.
 
 ⚠️ **La cuenta de Groq no tiene modelos Llama con visión.** Antes de cambiar el modelo de visión, verifica qué hay disponible con `GET https://api.groq.com/openai/v1/models`: `qwen/qwen3.8-27b` es hoy el único de la lista que acepta `image_url`. `openai/gpt-oss-*` y `groq/compound` rechazan contenido multimodal (`messages[0].content must be a string`).
 

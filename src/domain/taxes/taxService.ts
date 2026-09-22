@@ -134,6 +134,7 @@ function normalizar(input: CreateTaxDocumentInput, companyId: string, userId: st
     base_imponible,
     alicuota:            input.alicuota ?? 13,
     iva,
+    usa_iva_manual:      input.iva_manual != null,
     con_derecho_credito: input.tipo === 'compra' ? (input.con_derecho_credito ?? true) : true,
     sale_id:             input.sale_id ?? null,
     payable_id:          input.payable_id ?? null,
@@ -217,6 +218,11 @@ export async function updateTaxDocument(
     importe_exento:      patch.importe_exento ?? antes.importe_exento,
     descuentos:          patch.descuentos ?? antes.descuentos,
     alicuota:            patch.alicuota ?? antes.alicuota,
+    // Si la fila guardaba un IVA propio del documento (DIM), se conserva salvo
+    // que la edición mande uno nuevo — nunca se vuelve a derivar por su cuenta.
+    iva_manual:          patch.iva_manual !== undefined
+                           ? patch.iva_manual
+                           : (antes.usa_iva_manual ? antes.iva : null),
     con_derecho_credito: patch.con_derecho_credito ?? antes.con_derecho_credito,
     notas:               patch.notas ?? antes.notas,
   };

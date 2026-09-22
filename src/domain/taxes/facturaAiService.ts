@@ -30,6 +30,18 @@ export interface FacturaExtraida {
   /** "IMPORTE BASE CRÉDITO FISCAL" cuando la factura lo trae explícito. */
   importe_base_credito_fiscal: number | null;
   con_derecho_credito: boolean | null;
+  /** true = el documento es una DIM/DUI de la Aduana, no una factura comercial. */
+  es_dim: boolean;
+  /** Solo DIM: "Total valor CIF aduana (BOB)" (campo F10). */
+  valor_cif_bob: number | null;
+  /** Solo DIM: gravamen arancelario determinado. */
+  gravamen_arancelario: number | null;
+  /**
+   * Solo DIM: el IVA que liquidó la Aduana. Es el crédito fiscal exacto —
+   * NO se recalcula, porque en importaciones el IVA va "por fuera" (14,94%
+   * sobre CIF + GA) y recalcularlo daría otro número al declarado.
+   */
+  iva_pagado: number | null;
   confianza: 'alta' | 'media' | 'baja';
   /** Cómo se leyó el documento, para poder avisar al usuario. */
   via: 'texto' | 'imagen';
@@ -56,18 +68,34 @@ async function loadPdfjs() {
   return pdfjs;
 }
 
-/** Texto de todas las páginas del PDF, o '' si el PDF no tiene capa de texto. */
-async function extraerTextoPdf(file: File): Promise<string> {
+/** Marca de una DIM/DUI. Su primera página ya trae todo lo que necesita el libro. */
+const PATRON_DIM = /DECLARACI[ÓO]N DE MERCANC[ÍI]AS DE IMPORTACI[ÓO]N|DIM R-505/i;
+
+/** Texto por página del PDF; array vacío de páginas si no hay capa de texto. */
+async function extraerPaginasPdf(file: File): Promise<string[]> {
   const pdfjs = await loadPdfjs();
   const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-  let texto = '';
+  const paginas: string[] = [];
   for (let p = 1; p <= doc.numPages; p++) {
     const contenido = await (await doc.getPage(p)).getTextContent();
-    texto += contenido.items
-      .map(i => ('str' in i ? i.str : ''))
-      .join(' ') + '\n';
+    paginas.push(
+      contenido.items.map(i => ('str' in i ? i.str : '')).join(' ').replace(/\s+/g, ' ').trim(),
+    );
   }
-  return texto.replace(/\s+/g, ' ').trim();
+  return paginas;
+}
+
+/**
+ * Texto que se manda al modelo. En una DIM se manda SOLO la primera página:
+ * ahí están la identificación (A), los operadores (B), los totales (F) y la
+ * tabla de liquidación de tributos con el IVA. Las páginas siguientes son el
+ * detalle de ítems y solo sirven para gastar tokens — la cuenta de Groq tiene
+ * un límite de 8.000 tokens por minuto y una DIM completa se come la mitad.
+ */
+function textoParaAnalizar(paginas: string[]): string {
+  const completo = paginas.join('\n').trim();
+  if (paginas.length > 1 && PATRON_DIM.test(paginas[0])) return paginas[0];
+  return completo;
 }
 
 /** Primera página del PDF rasterizada a PNG (respaldo para PDFs escaneados). */
@@ -151,6 +179,10 @@ function normalizar(crudo: Record<string, unknown>, via: 'texto' | 'imagen'): Fa
     importe_ice:         aNumero(crudo.importe_ice) ?? 0,
     importe_base_credito_fiscal: aNumero(crudo.importe_base_credito_fiscal),
     con_derecho_credito: typeof crudo.con_derecho_credito === 'boolean' ? crudo.con_derecho_credito : null,
+    es_dim:               crudo.es_dim === true,
+    valor_cif_bob:        aNumero(crudo.valor_cif_bob),
+    gravamen_arancelario: aNumero(crudo.gravamen_arancelario),
+    iva_pagado:           aNumero(crudo.iva_pagado),
     confianza: confianzaCruda === 'alta' || confianzaCruda === 'media' || confianzaCruda === 'baja'
       ? confianzaCruda
       // Una lectura por imagen sin autoevaluación se trata como dudosa: el
@@ -178,7 +210,7 @@ export async function extraerDatosDeFactura(file: File, tipo: TaxDocTipo): Promi
   let via: 'texto' | 'imagen';
 
   if (file.type === 'application/pdf') {
-    const texto = await extraerTextoPdf(file);
+    const texto = textoParaAnalizar(await extraerPaginasPdf(file));
     // Un PDF escaneado devuelve una capa de texto vacía o casi vacía; por
     // debajo de este umbral no hay nada que interpretar y se pasa a visión.
     if (texto.length >= 80) {

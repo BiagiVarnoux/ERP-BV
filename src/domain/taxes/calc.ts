@@ -3,8 +3,15 @@ import type {
   LibroTotales, TaxAmountsInput, TaxDocumentRow, TaxTipoDocumento,
 } from './types';
 
-/** Alícuota general del IVA en Bolivia (Ley 843). */
+/** Alícuota general del IVA en Bolivia (Ley 843), "por dentro" de la factura. */
 export const ALICUOTA_IVA = 13;
+
+/**
+ * Tasa efectiva del IVA en importaciones: la Aduana lo liquida "por fuera"
+ * sobre CIF + GA, así que 13/87 = 14,94%. Solo se usa como referencia al
+ * mostrar una DIM — el crédito fiscal que vale es el importe impreso en ella.
+ */
+export const ALICUOTA_IVA_IMPORTACION = 14.94;
 
 /**
  * Base imponible e IVA de un documento fiscal.
@@ -19,7 +26,12 @@ export function calcularBaseEIva(a: TaxAmountsInput): { base_imponible: number; 
     a.importe_total - (a.importe_ice ?? 0) - (a.importe_exento ?? 0) - (a.descuentos ?? 0)
   );
   const baseNoNegativa = base > 0 ? base : 0;
-  return { base_imponible: baseNoNegativa, iva: round2(baseNoNegativa * (alicuota / 100)) };
+  // Un IVA explícito (DIM) gana siempre: recalcularlo daría un importe distinto
+  // al que la Aduana liquidó y al que se declara ante el SIN.
+  const iva = a.iva_manual != null
+    ? round2(a.iva_manual)
+    : round2(baseNoNegativa * (alicuota / 100));
+  return { base_imponible: baseNoNegativa, iva };
 }
 
 /**

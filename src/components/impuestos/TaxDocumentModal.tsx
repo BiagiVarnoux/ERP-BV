@@ -10,7 +10,7 @@ import { Loader2, AlertTriangle, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { fmt, round2, toDecimal, todayISO } from '@/accounting/utils';
 import {
-  ALICUOTA_IVA, TIPO_DOCUMENTO_LABEL, adjuntarArchivoAFactura, buscarDuplicados,
+  ALICUOTA_IVA, ALICUOTA_IVA_IMPORTACION, TIPO_DOCUMENTO_LABEL, adjuntarArchivoAFactura, buscarDuplicados,
   calcularBaseEIva, createTaxDocument, formatPeriodo, periodoDeFecha,
   urlFirmadaFactura, updateTaxDocument,
   type FacturaExtraida, type TaxDocTipo, type TaxDocumentRow, type TaxTipoDocumento,
@@ -44,6 +44,8 @@ interface FormState {
   importe_exento: string;
   descuentos: string;
   alicuota: string;
+  /** IVA tomado del documento (DIM); '' = se calcula desde la base. */
+  iva_manual: string;
   con_derecho_credito: boolean;
   notas: string;
 }
@@ -64,6 +66,7 @@ function emptyForm(periodo: string): FormState {
     importe_exento: '',
     descuentos: '',
     alicuota: String(ALICUOTA_IVA),
+    iva_manual: '',
     con_derecho_credito: true,
     notas: '',
   };
@@ -84,6 +87,7 @@ function fromRow(r: TaxDocumentRow): FormState {
     importe_exento: r.importe_exento ? String(r.importe_exento) : '',
     descuentos: r.descuentos ? String(r.descuentos) : '',
     alicuota: String(r.alicuota),
+    iva_manual: r.usa_iva_manual ? String(r.iva) : '',
     con_derecho_credito: r.con_derecho_credito,
     notas: r.notas ?? '',
   };
@@ -122,6 +126,32 @@ export function TaxDocumentModal({
    * modelo devolvió con valor: lo que ya escribió el usuario no se pierde.
    */
   function aplicarLectura(d: FacturaExtraida) {
+    // Una DIM no es una factura: el IVA lo liquidó la Aduana "por fuera" sobre
+    // CIF + GA, así que se toma el importe impreso en vez de recalcularlo.
+    if (d.es_dim) {
+      const cif = d.valor_cif_bob ?? 0;
+      const ga  = d.gravamen_arancelario ?? 0;
+      setForm(prev => ({
+        ...prev,
+        tipo_documento: 'dui',
+        razon_social: d.razon_social ?? prev.razon_social,
+        nit: '',                       // el proveedor del exterior no tiene NIT boliviano
+        numero_factura: d.numero_factura ?? prev.numero_factura,
+        numero_autorizacion: '',
+        codigo_control: '',
+        fecha: d.fecha ?? prev.fecha,
+        periodo: d.fecha ? periodoDeFecha(d.fecha) : prev.periodo,
+        importe_total: cif || ga ? String(round2(cif + ga)) : prev.importe_total,
+        importe_ice: '',
+        importe_exento: '',
+        descuentos: '',
+        alicuota: String(ALICUOTA_IVA_IMPORTACION),
+        iva_manual: d.iva_pagado != null ? String(d.iva_pagado) : prev.iva_manual,
+        con_derecho_credito: true,
+      }));
+      return;
+    }
+
     setForm(prev => {
       const next = { ...prev };
       if (d.razon_social)        next.razon_social = d.razon_social;
@@ -161,13 +191,17 @@ export function TaxDocumentModal({
     }
   }
 
+  const usaIvaManual = form.iva_manual.trim() !== '';
+
   const calculado = useMemo(() => calcularBaseEIva({
     importe_total:  toDecimal(form.importe_total),
     importe_ice:    toDecimal(form.importe_ice),
     importe_exento: toDecimal(form.importe_exento),
     descuentos:     toDecimal(form.descuentos),
     alicuota:       toDecimal(form.alicuota) || ALICUOTA_IVA,
-  }), [form.importe_total, form.importe_ice, form.importe_exento, form.descuentos, form.alicuota]);
+    iva_manual:     usaIvaManual ? toDecimal(form.iva_manual) : null,
+  }), [form.importe_total, form.importe_ice, form.importe_exento, form.descuentos,
+       form.alicuota, form.iva_manual, usaIvaManual]);
 
   // Aviso de factura duplicada: el SIN rechaza el crédito fiscal declarado dos veces.
   useEffect(() => {
@@ -212,6 +246,7 @@ export function TaxDocumentModal({
         importe_exento: toDecimal(form.importe_exento),
         descuentos: toDecimal(form.descuentos),
         alicuota: toDecimal(form.alicuota) || ALICUOTA_IVA,
+        iva_manual: usaIvaManual ? toDecimal(form.iva_manual) : null,
         con_derecho_credito: esCompra ? form.con_derecho_credito : true,
         notas: form.notas.trim() || null,
       };
@@ -371,10 +406,37 @@ export function TaxDocumentModal({
             <div>
               <div className="text-muted-foreground text-xs">
                 {esCompra ? 'Crédito fiscal' : 'Débito fiscal'}
+                {usaIvaManual && <span className="ml-1 opacity-70">(del documento)</span>}
               </div>
-              <div className="font-mono font-semibold">Bs {fmt(calculado.iva)}</div>
+              {usaIvaManual ? (
+                <Input
+                  inputMode="decimal"
+                  value={form.iva_manual}
+                  onChange={e => set('iva_manual', e.target.value)}
+                  className="h-7 text-right font-mono font-semibold"
+                />
+              ) : (
+                <div className="font-mono font-semibold">Bs {fmt(calculado.iva)}</div>
+              )}
             </div>
           </div>
+
+          {/* En importaciones el IVA no se deriva de la base: lo liquida la Aduana. */}
+          {form.tipo_documento === 'dui' && (
+            <div className="flex items-start justify-between gap-3 rounded-md border p-3">
+              <div>
+                <Label>Usar el IVA liquidado en la DIM</Label>
+                <p className="text-xs text-muted-foreground">
+                  En importaciones el IVA va «por fuera» ({fmt(ALICUOTA_IVA_IMPORTACION)}% sobre CIF + GA),
+                  así que el crédito fiscal es el importe impreso en la DIM, no uno recalculado.
+                </p>
+              </div>
+              <Switch
+                checked={usaIvaManual}
+                onCheckedChange={v => set('iva_manual', v ? String(calculado.iva) : '')}
+              />
+            </div>
+          )}
 
           {esCompra && (
             <div className="flex items-center justify-between rounded-md border p-3">

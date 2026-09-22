@@ -8,7 +8,7 @@
 import React, { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Upload, Sparkles, FileText, X, AlertTriangle } from 'lucide-react';
+import { Loader2, Upload, Sparkles, FileText, X, AlertTriangle, Paperclip } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
@@ -39,6 +39,7 @@ export function FacturaUploader({
   tipo, file, onFileChange, onExtraido, archivoExistente, disabled,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const soloAdjuntarRef = useRef(false);
   const [dragging, setDragging] = useState(false);
   const [leyendo, setLeyendo] = useState(false);
   const [ultimaLectura, setUltimaLectura] = useState<FacturaExtraida | null>(null);
@@ -55,11 +56,19 @@ export function FacturaUploader({
     return true;
   }
 
-  /** Al elegir el archivo se lee de inmediato: es lo que el usuario espera. */
-  async function aceptar(f: File) {
+  /**
+   * Al elegir el archivo se lee de inmediato, que es lo que el usuario espera.
+   * `soloAdjuntar` salta el análisis: sirve para guardar el respaldo de una
+   * factura que ya se cargó a mano, sin gastar una llamada a la IA.
+   */
+  async function aceptar(f: File, soloAdjuntar = false) {
     if (!validar(f)) return;
     onFileChange(f);
     setUltimaLectura(null);
+    if (soloAdjuntar) {
+      toast.success('Archivo adjunto. Se guardará al registrar.');
+      return;
+    }
     await leer(f);
   }
 
@@ -97,7 +106,9 @@ export function FacturaUploader({
         className="hidden"
         onChange={e => {
           const f = e.target.files?.[0];
-          if (f) aceptar(f);
+          const solo = soloAdjuntarRef.current;
+          soloAdjuntarRef.current = false;
+          if (f) aceptar(f, solo);
         }}
       />
 
@@ -133,7 +144,7 @@ export function FacturaUploader({
             {leyendo
               ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
               : <Sparkles className="w-3.5 h-3.5" />}
-            <span className="ml-1.5 hidden sm:inline">Releer</span>
+            <span className="ml-1.5 hidden sm:inline">{ultimaLectura ? 'Releer' : 'Analizar'}</span>
           </Button>
           <Button
             type="button" size="icon" variant="ghost" className="h-7 w-7 shrink-0"
@@ -176,6 +187,17 @@ export function FacturaUploader({
             </>
           )}
         </button>
+      )}
+
+      {/* Para guardar el respaldo de algo ya cargado a mano, sin llamar a la IA. */}
+      {!file && (
+        <Button
+          type="button" variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground"
+          disabled={disabled || leyendo}
+          onClick={() => { soloAdjuntarRef.current = true; inputRef.current?.click(); }}
+        >
+          <Paperclip className="w-3 h-3 mr-1.5" /> Solo adjuntar, sin analizar
+        </Button>
       )}
 
       {archivoExistente && !file && (
