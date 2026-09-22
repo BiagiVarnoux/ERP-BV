@@ -27,6 +27,11 @@ const MODELO_VISION = "qwen/qwen3.8-27b";
 const MAX_TEXTO = 40000;   // una DIM ocupa varias páginas
 const MAX_IMAGEN_BASE64 = 8_000_000; // ~6 MB de archivo original
 
+// gpt-oss razona antes de escribir el JSON y ese razonamiento consume tokens de
+// respuesta: con 1000 se quedaba corto en una DIM y Groq devolvía
+// json_validate_failed ("max completion tokens reached"). Con 4000 sobra margen.
+const MAX_TOKENS_RESPUESTA = 4000;
+
 function buildSystemPrompt(tipo: string): string {
   const emisor = tipo === "compra"
     ? "El EMISOR es el PROVEEDOR que nos cobra. Extrae SIEMPRE sus datos, no los del cliente."
@@ -181,7 +186,11 @@ serve(async (req) => {
       body: JSON.stringify({
         model,
         temperature: 0,
-        max_tokens: 1000,
+        max_tokens: MAX_TOKENS_RESPUESTA,
+        // Extraer campos de un documento no necesita razonamiento largo. Bajarlo
+        // recorta los tokens de respuesta ~70% (1314 → 431 en una DIM real), lo
+        // que además da aire al límite de 8.000 tokens por minuto de la cuenta.
+        ...(model === MODELO_TEXTO ? { reasoning_effort: "low" } : {}),
         response_format: { type: "json_object" },
         messages: [{ role: "system", content: buildSystemPrompt(tipo) }, userMessage],
       }),
@@ -190,7 +199,16 @@ serve(async (req) => {
     if (!response.ok) {
       const err = await response.text();
       console.error("Groq API error:", response.status, err);
-      return new Response(JSON.stringify({ error: `Error de API Groq: ${response.status}` }), {
+      // Se traduce a algo accionable: el estado solo no le dice nada al usuario.
+      let detalle = `Error de la IA (${response.status})`;
+      if (response.status === 429) {
+        detalle = "La IA está saturada (límite de tokens por minuto). Espera un minuto y vuelve a intentar.";
+      } else if (err.includes("json_validate_failed")) {
+        detalle = "La IA no pudo estructurar el documento. Intenta de nuevo o carga los datos a mano.";
+      } else if (response.status === 401 || response.status === 403) {
+        detalle = "La API key de Groq no es válida. Revisa el secreto GROQ_API_KEY.";
+      }
+      return new Response(JSON.stringify({ error: detalle }), {
         status: response.status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

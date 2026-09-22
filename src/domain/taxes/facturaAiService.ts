@@ -237,7 +237,21 @@ export async function extraerDatosDeFactura(file: File, tipo: TaxDocTipo): Promi
   }
 
   const { data, error } = await supabase.functions.invoke('ai-factura', { body: payload });
-  if (error) throw new Error(`No se pudo leer la factura: ${error.message}`);
+  if (error) {
+    // `invoke` solo da "non-2xx status code"; el motivo real viaja en el cuerpo
+    // de la respuesta, así que se lee de ahí para poder mostrarlo.
+    let detalle = error.message;
+    const contexto = (error as { context?: Response }).context;
+    if (contexto && typeof contexto.json === 'function') {
+      try {
+        const cuerpo = await contexto.json();
+        if (cuerpo?.error) detalle = cuerpo.error;
+      } catch {
+        // El cuerpo no era JSON; se queda el mensaje genérico.
+      }
+    }
+    throw new Error(detalle);
+  }
   if (data?.error) throw new Error(data.error);
 
   const contenido = data?.choices?.[0]?.message?.content;
