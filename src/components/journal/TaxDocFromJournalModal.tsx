@@ -21,7 +21,8 @@ import { toast } from 'sonner';
 import { JournalEntry, ModuloVinculado } from '@/accounting/types';
 import { fmt, round2, toDecimal } from '@/accounting/utils';
 import {
-  ALICUOTA_IVA, TIPO_DOCUMENTO_LABEL, adjuntarArchivoAFactura, calcularBaseEIva,
+  ALICUOTA_IVA, ALICUOTA_IVA_IMPORTACION, DIM_NUMERO_AUTORIZACION, DIM_NUMERO_FACTURA,
+  TIPO_DOCUMENTO_LABEL, adjuntarArchivoAFactura, calcularBaseEIva,
   createTaxDocument, formatPeriodo, periodoDeFecha,
   type FacturaExtraida, type TaxTipoDocumento,
 } from '@/domain/taxes';
@@ -56,6 +57,9 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
   const [autorizacion, setAutorizacion] = useState('');
   const [importeTotal, setImporteTotal] = useState('');
   const [periodo, setPeriodo]           = useState('');
+  /** IVA tomado del documento (DIM); '' = se calcula desde el importe. */
+  const [ivaManual, setIvaManual]       = useState('');
+  const [notas, setNotas]               = useState('');
   const [archivo, setArchivo]           = useState<File | null>(null);
   const [saving, setSaving]             = useState(false);
 
@@ -70,6 +74,8 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
     // El IVA de la línea "por dentro" implica un importe facturado de iva / 13%.
     setImporteTotal(String(round2(linea.lineAmount / (ALICUOTA_IVA / 100))));
     setPeriodo(periodoDeFecha(journalEntry.date));
+    setIvaManual('');
+    setNotas('');
     setArchivo(null);
   }, [isOpen, idx, linea, journalEntry.date]);
 
@@ -79,6 +85,24 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
    * más abajo lo hace evidente en vez de taparlo.
    */
   function aplicarLectura(d: FacturaExtraida) {
+    // Una DIM no es una factura: se registra a nombre del declarante, sin número
+    // de factura ni autorización propios (van 0 y 3), y el IVA es el que liquidó
+    // la Aduana "por fuera" sobre CIF + GA — no se recalcula.
+    if (d.es_dim) {
+      const cif = d.valor_cif_bob ?? 0;
+      const ga  = d.gravamen_arancelario ?? 0;
+      setTipoDoc('dui');
+      if (d.razon_social) setRazonSocial(d.razon_social);
+      if (d.nit) setNit(d.nit);
+      setNumero(DIM_NUMERO_FACTURA);
+      setAutorizacion(DIM_NUMERO_AUTORIZACION);
+      if (d.fecha) setPeriodo(periodoDeFecha(d.fecha));
+      if (cif || ga) setImporteTotal(String(round2(cif + ga)));
+      if (d.iva_pagado != null) setIvaManual(String(d.iva_pagado));
+      if (d.numero_declaracion) setNotas(`DIM ${d.numero_declaracion}`);
+      return;
+    }
+
     if (d.razon_social)        setRazonSocial(d.razon_social);
     if (d.nit)                 setNit(d.nit);
     if (d.numero_factura)      setNumero(d.numero_factura);
@@ -86,9 +110,15 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
     if (d.importe_total != null) setImporteTotal(String(d.importe_total));
   }
 
+  const usaIvaManual = ivaManual.trim() !== '';
+
   const calculado = useMemo(
-    () => calcularBaseEIva({ importe_total: toDecimal(importeTotal) }),
-    [importeTotal],
+    () => calcularBaseEIva({
+      importe_total: toDecimal(importeTotal),
+      alicuota: usaIvaManual ? ALICUOTA_IVA_IMPORTACION : ALICUOTA_IVA,
+      iva_manual: usaIvaManual ? toDecimal(ivaManual) : null,
+    }),
+    [importeTotal, ivaManual, usaIvaManual],
   );
 
   // El IVA que resulta del importe capturado debería coincidir con la línea del
@@ -122,6 +152,9 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
         numero_factura: numeroFactura.trim() || null,
         numero_autorizacion: autorizacion.trim() || null,
         importe_total: total,
+        alicuota: usaIvaManual ? ALICUOTA_IVA_IMPORTACION : ALICUOTA_IVA,
+        iva_manual: usaIvaManual ? toDecimal(ivaManual) : null,
+        notas: notas.trim() || null,
         journal_entry_id: journalEntry.id,
       }, companyId);
       if (archivo) {
@@ -219,10 +252,29 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
               <p className="text-xs text-muted-foreground mt-1">{formatPeriodo(periodo)}</p>
             </div>
             <div>
-              <Label>{esCompra ? 'Crédito fiscal' : 'Débito fiscal'}</Label>
-              <div className="h-10 flex items-center font-mono font-semibold">Bs {fmt(calculado.iva)}</div>
+              <Label>
+                {esCompra ? 'Crédito fiscal' : 'Débito fiscal'}
+                {usaIvaManual && <span className="ml-1 text-xs font-normal opacity-70">(del documento)</span>}
+              </Label>
+              {usaIvaManual ? (
+                <Input
+                  inputMode="decimal"
+                  value={ivaManual}
+                  onChange={e => setIvaManual(e.target.value)}
+                  className="text-right font-mono font-semibold"
+                />
+              ) : (
+                <div className="h-10 flex items-center font-mono font-semibold">Bs {fmt(calculado.iva)}</div>
+              )}
             </div>
           </div>
+
+          {usaIvaManual && (
+            <p className="text-xs text-muted-foreground">
+              DIM: el crédito fiscal es el IVA liquidado por la Aduana ({fmt(ALICUOTA_IVA_IMPORTACION)}% sobre
+              CIF + GA), tomado tal cual del documento. El importe de arriba es CIF + GA, la base imponible.
+            </p>
+          )}
 
           {Math.abs(descuadre) >= 0.01 && (
             <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm flex gap-2">

@@ -262,7 +262,13 @@ Storage bucket: `shipment-docs` — paths use `{company_id}/{shipment_id}/filena
 
 `payables.sin_credito_fiscal` (boolean) marca las CxP que no son facturas con crédito fiscal, para sacarlas del importador del Libro de Compras.
 
-**DIM / DUI (importaciones)**: el IVA NO es el 13% "por dentro". La Aduana lo liquida "por fuera" sobre CIF + GA con tasa efectiva 14,94% (13/87) y lo imprime en la DIM. Por eso existe `usa_iva_manual`: cuando es `true`, `iva` es el importe del documento y NO se recalcula desde `base_imponible × alicuota`. Recalcularlo a 13% pierde crédito fiscal (en una DIM real de prueba, Bs 1.303,45 de diferencia). La fila se guarda con `tipo_documento='dui'`, `importe_total = CIF + GA`, `alicuota = 14,94` (informativa) e `iva` exacto.
+**DIM / DUI (importaciones)** — convenciones del Libro de Compras, confirmadas por el usuario:
+la fila se registra a nombre del **DECLARANTE** (la agencia despachante, campo B2 de la DIM),
+NO del proveedor del exterior (E1) ni del importador (B1); `numero_factura` va **'0'** y
+`numero_autorizacion` va **'3'** (constantes `DIM_NUMERO_FACTURA` / `DIM_NUMERO_AUTORIZACION`);
+el N° de declaración (campo A1) no tiene columna propia y se guarda en `notas` como `DIM <n°>`.
+
+El IVA NO es el 13% "por dentro". La Aduana lo liquida "por fuera" sobre CIF + GA con tasa efectiva 14,94% (13/87) y lo imprime en la DIM. Por eso existe `usa_iva_manual`: cuando es `true`, `iva` es el importe del documento y NO se recalcula desde `base_imponible × alicuota`. Recalcularlo a 13% pierde crédito fiscal (en una DIM real de prueba, Bs 1.303,45 de diferencia). La fila se guarda con `tipo_documento='dui'`, `importe_total = CIF + GA`, `alicuota = 14,94` (informativa) e `iva` exacto.
 
 Cada fila puede llevar adjunta la factura (`archivo_path`, `archivo_nombre`, `archivo_mime`, `archivo_size`) en el bucket **`tax-docs`**, rutas `{company_id}/{tax_document_id}/{archivo}`. A diferencia de los buckets antiguos, sus políticas de Storage validan el primer segmento de la ruta contra `company_members`: un miembro de otra empresa no puede leerlas. ⚠️ Los binarios NO van en el backup JSON (solo la referencia), misma limitación que `shipment-docs`.
 

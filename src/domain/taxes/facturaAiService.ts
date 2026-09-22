@@ -32,6 +32,8 @@ export interface FacturaExtraida {
   con_derecho_credito: boolean | null;
   /** true = el documento es una DIM/DUI de la Aduana, no una factura comercial. */
   es_dim: boolean;
+  /** Solo DIM: "N° de declaración" del campo A1 (ej. DI-2026-211-2343756). */
+  numero_declaracion: string | null;
   /** Solo DIM: "Total valor CIF aduana (BOB)" (campo F10). */
   valor_cif_bob: number | null;
   /** Solo DIM: gravamen arancelario determinado. */
@@ -54,6 +56,14 @@ export const MIMES_ACEPTADOS = ['application/pdf', 'image/jpeg', 'image/png', 'i
 
 /** Lado mayor al que se reescala una imagen antes de mandarla al modelo. */
 const MAX_LADO_IMAGEN = 1600;
+
+/**
+ * Convenciones del Libro de Compras IVA para una DIM/DUI: no lleva número de
+ * factura ni código de autorización propios — se registra con 0 y 3
+ * respectivamente (3 identifica al documento de importación).
+ */
+export const DIM_NUMERO_FACTURA = '0';
+export const DIM_NUMERO_AUTORIZACION = '3';
 
 // ─── Extracción del contenido del archivo ─────────────────────────────────────
 
@@ -180,6 +190,7 @@ function normalizar(crudo: Record<string, unknown>, via: 'texto' | 'imagen'): Fa
     importe_base_credito_fiscal: aNumero(crudo.importe_base_credito_fiscal),
     con_derecho_credito: typeof crudo.con_derecho_credito === 'boolean' ? crudo.con_derecho_credito : null,
     es_dim:               crudo.es_dim === true,
+    numero_declaracion:   aTexto(crudo.numero_declaracion),
     valor_cif_bob:        aNumero(crudo.valor_cif_bob),
     gravamen_arancelario: aNumero(crudo.gravamen_arancelario),
     iva_pagado:           aNumero(crudo.iva_pagado),

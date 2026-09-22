@@ -53,19 +53,28 @@ Devuelve ÚNICAMENTE un JSON válido, sin markdown ni texto adicional, con estas
 Además, SIEMPRE incluye:
 - "es_dim": true si el documento es una DECLARACIÓN DE MERCANCÍAS DE IMPORTACIÓN (DIM/DUI) de la Aduana Nacional; false si es una factura comercial.
 
-Si "es_dim" es true, el documento NO es una factura y se llenan así:
-- "numero_factura": el "N° de declaración" del campo A1 (ej. DI-2026-211-2343756).
+Si "es_dim" es true, el documento NO es una factura. En el Libro de Compras la DIM se
+registra a nombre del DECLARANTE (la agencia despachante de aduana), NO del proveedor
+del exterior. Se llenan así:
+- "razon_social": el nombre del DECLARANTE, campo B2 ("Declarante"). NO uses el campo
+  E1 "Datos del Proveedor" ni el B1 "Importador": el proveedor del exterior y el
+  importador son otra cosa y no van en este campo. Devuelve SOLO la razón social, sin
+  la dirección que viene a continuación: de "AGENCIA X S.R.L. - COMERCIO, 830, CENTRAL,
+  LA PAZ, BOLIVIA, 2406607" devuelve exactamente "AGENCIA X S.R.L.".
+- "nit": el NIT del DECLARANTE, el número que aparece en ese mismo campo B2.
+- "numero_declaracion": el "N° de declaración" del campo A1 (ej. DI-2026-211-2343756).
+- "numero_factura" y "numero_autorizacion": null. El cliente les pone el valor que
+  corresponde por convención.
+- "codigo_control": null.
 - "fecha": la "Fecha de aceptación" del campo A2.
-- "razon_social": el proveedor extranjero del campo E1 ("Datos del Proveedor"). Si hay varias facturas en la DIM, el de la primera.
-- "nit": null. El proveedor extranjero no tiene NIT boliviano.
-- "numero_autorizacion" y "codigo_control": null.
 - "valor_cif_bob": el "Total valor CIF aduana (BOB)" del campo F10, como número.
 - "gravamen_arancelario": el importe de la fila "GA GRAVAMEN ARANCELARIO" en la tabla de liquidación de tributos, columna "Tributos determinados", como número.
 - "iva_pagado": el importe de la fila "IVA IMPUESTO AL VALOR AGREGADO" en esa misma tabla y columna, como número. Este es el dato MÁS importante de una DIM.
 - "importe_total": déjalo en null; se calcula aparte.
 - "con_derecho_credito": true.
 
-Si "es_dim" es false, deja "valor_cif_bob", "gravamen_arancelario" e "iva_pagado" en null.
+Si "es_dim" es false, deja "valor_cif_bob", "gravamen_arancelario", "iva_pagado" y
+"numero_declaracion" en null.
 
 Reglas: no inventes datos. Si un campo no está o no se lee con seguridad, devuelve null.
 Los importes son números, sin separador de miles ni símbolo de moneda. Ojo con el formato

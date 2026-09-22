@@ -10,7 +10,8 @@ import { Loader2, AlertTriangle, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { fmt, round2, toDecimal, todayISO } from '@/accounting/utils';
 import {
-  ALICUOTA_IVA, ALICUOTA_IVA_IMPORTACION, TIPO_DOCUMENTO_LABEL, adjuntarArchivoAFactura, buscarDuplicados,
+  ALICUOTA_IVA, ALICUOTA_IVA_IMPORTACION, DIM_NUMERO_AUTORIZACION, DIM_NUMERO_FACTURA,
+  TIPO_DOCUMENTO_LABEL, adjuntarArchivoAFactura, buscarDuplicados,
   calcularBaseEIva, createTaxDocument, formatPeriodo, periodoDeFecha,
   urlFirmadaFactura, updateTaxDocument,
   type FacturaExtraida, type TaxDocTipo, type TaxDocumentRow, type TaxTipoDocumento,
@@ -134,10 +135,13 @@ export function TaxDocumentModal({
       setForm(prev => ({
         ...prev,
         tipo_documento: 'dui',
+        // En el Libro de Compras la DIM se registra a nombre del DECLARANTE
+        // (la agencia despachante), no del proveedor del exterior.
         razon_social: d.razon_social ?? prev.razon_social,
-        nit: '',                       // el proveedor del exterior no tiene NIT boliviano
-        numero_factura: d.numero_factura ?? prev.numero_factura,
-        numero_autorizacion: '',
+        nit: d.nit ?? prev.nit,
+        // Una DIM no tiene número de factura ni autorización propios: van 0 y 3.
+        numero_factura: DIM_NUMERO_FACTURA,
+        numero_autorizacion: DIM_NUMERO_AUTORIZACION,
         codigo_control: '',
         fecha: d.fecha ?? prev.fecha,
         periodo: d.fecha ? periodoDeFecha(d.fecha) : prev.periodo,
@@ -148,6 +152,9 @@ export function TaxDocumentModal({
         alicuota: String(ALICUOTA_IVA_IMPORTACION),
         iva_manual: d.iva_pagado != null ? String(d.iva_pagado) : prev.iva_manual,
         con_derecho_credito: true,
+        // El N° de declaración no tiene campo propio en el libro; se guarda en
+        // notas para no perder la referencia a la DIM.
+        notas: d.numero_declaracion ? `DIM ${d.numero_declaracion}` : prev.notas,
       }));
       return;
     }
