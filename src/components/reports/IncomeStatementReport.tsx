@@ -207,7 +207,10 @@ export function computeIncomeStatement(
   }
 
   const filterAndSort = (map: Map<string, AccountDetail>) =>
-    Array.from(map.values()).filter(x => x.amount !== 0).sort((a, b) => a.id.localeCompare(b.id));
+    Array.from(map.values())
+      .map(x => ({ ...x, amount: round2(x.amount) }))
+      .filter(x => x.amount !== 0)
+      .sort((a, b) => a.id.localeCompare(b.id));
 
   const ingresosOperativos = filterAndSort(maps.ingreso_operativo);
   const devoluciones = filterAndSort(maps.ingreso_operativo_devolucion);
