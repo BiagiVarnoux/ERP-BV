@@ -253,11 +253,6 @@ function CatalogCard({ item, unidades, publicado, onTogglePublicado }: { item: C
         <div>
           <div className="flex items-center gap-1.5 flex-wrap">
             <p className="font-semibold">{item.nombre}</p>
-            {item.link_producto && /^https?:\/\//i.test(item.link_producto) && (
-              <a href={item.link_producto} target="_blank" rel="noopener noreferrer" title="Ver producto">
-                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-              </a>
-            )}
             {item.condicion && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{condicionLabel(item.condicion)}</Badge>}
             {publicado && <Badge className="text-[10px] px-1.5 py-0 h-4 bg-green-600 hover:bg-green-600">Publicado</Badge>}
           </div>
@@ -327,6 +322,14 @@ function CatalogCard({ item, unidades, publicado, onTogglePublicado }: { item: C
             </div>
           )}
         </div>
+
+        {item.link_producto && /^https?:\/\//i.test(item.link_producto) && (
+          <Button className="w-full" size="sm" variant="outline" asChild>
+            <a href={item.link_producto} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4 mr-1.5" /> Link del producto
+            </a>
+          </Button>
+        )}
 
         {sesionActual && sesionActual.fotos.length > 0 && (
           <div className="space-y-2">
