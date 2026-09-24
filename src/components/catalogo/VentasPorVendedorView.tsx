@@ -28,6 +28,7 @@ interface VentaItemRow {
   product_id: string;
   product_nombre: string;
   cantidad: number;
+  precio_unitario_neto: number;
 }
 
 interface MemberLite {
@@ -60,7 +61,7 @@ export function VentasPorVendedorView() {
     try {
       const [ventasRes, productsRes, membersRes] = await Promise.all([
         supabase.rpc('get_ventas_por_vendedor', { p_company_id: companyId }),
-        supabase.from('products').select('id, comision_bs').eq('company_id', companyId),
+        supabase.from('products').select('id, comision_bs, comision_variable_pct, precio_minimo_negociacion').eq('company_id', companyId),
         // get_company_members_basic (no get_company_members_detail): este último
         // está restringido a owners, así que para un no-owner el mapa de nombres
         // quedaba vacío y todo salía como "Vendedor desconocido". El resolector
@@ -71,9 +72,13 @@ export function VentasPorVendedorView() {
       if (productsRes.error) throw productsRes.error;
       if (membersRes.error) throw membersRes.error;
 
-      const comisionByProduct = new Map<string, number>(
-        ((productsRes.data ?? []) as Array<{ id: string; comision_bs: number | null }>)
-          .map(p => [p.id, Number(p.comision_bs) || 0])
+      const productInfoById = new Map<string, { comisionBs: number; comisionVariablePct: number; precioMinimo: number | null }>(
+        ((productsRes.data ?? []) as Array<{ id: string; comision_bs: number | null; comision_variable_pct: number | null; precio_minimo_negociacion: number | null }>)
+          .map(p => [p.id, {
+            comisionBs: Number(p.comision_bs) || 0,
+            comisionVariablePct: Number(p.comision_variable_pct) || 0,
+            precioMinimo: p.precio_minimo_negociacion,
+          }])
       );
       const nombreByMember = new Map<string, string>(
         ((membersRes.data ?? []) as MemberLite[]).map(m => [m.member_id, m.display_name || m.email])
@@ -94,7 +99,14 @@ export function VentasPorVendedorView() {
       const rows: VentaFila[] = Array.from(bySale.values()).map(grupo => {
         const first = grupo[0];
         const comision = round2(
-          grupo.reduce((sum, it) => sum + (comisionByProduct.get(it.product_id) ?? 0) * it.cantidad, 0)
+          grupo.reduce((sum, it) => {
+            const info = productInfoById.get(it.product_id);
+            if (!info) return sum;
+            const fija = info.comisionBs * it.cantidad;
+            const baseVariable = Math.max(it.precio_unitario_neto - (info.precioMinimo ?? it.precio_unitario_neto), 0);
+            const variable = (info.comisionVariablePct / 100) * baseVariable * it.cantidad;
+            return sum + fija + variable;
+          }, 0)
         );
         return {
           id: first.sale_id,

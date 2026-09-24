@@ -11,10 +11,10 @@ import JSZip from 'jszip';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Copy, ArrowUp, ArrowDown, Check } from 'lucide-react';
+import { Copy, ArrowUp, ArrowDown, Check, ExternalLink } from 'lucide-react';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 import { supabase } from '@/integrations/supabase/client';
-import { fmt } from '@/accounting/utils';
+import { fmt, round2 } from '@/accounting/utils';
 import { condicionLabel } from '@/accounting/product-condicion';
 import { ProductFotoStorage, FotoSesion } from '@/accounting/product-foto-storage';
 
@@ -27,6 +27,8 @@ interface CatalogItem {
   precio_lista: number | null;
   precio_minimo_negociacion: number | null;
   comision_bs: number | null;
+  comision_variable_pct: number | null;
+  link_producto: string | null;
   precio_con_factura: number | null;
   precio_lista_anterior: number | null;
   precio_actualizado_at: string | null;
@@ -251,6 +253,11 @@ function CatalogCard({ item, unidades, publicado, onTogglePublicado }: { item: C
         <div>
           <div className="flex items-center gap-1.5 flex-wrap">
             <p className="font-semibold">{item.nombre}</p>
+            {item.link_producto && /^https?:\/\//i.test(item.link_producto) && (
+              <a href={item.link_producto} target="_blank" rel="noopener noreferrer" title="Ver producto">
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+              </a>
+            )}
             {item.condicion && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{condicionLabel(item.condicion)}</Badge>}
             {publicado && <Badge className="text-[10px] px-1.5 py-0 h-4 bg-green-600 hover:bg-green-600">Publicado</Badge>}
           </div>
@@ -304,8 +311,19 @@ function CatalogCard({ item, unidades, publicado, onTogglePublicado }: { item: C
           )}
           {item.comision_bs != null && (
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Tu comisión</span>
+              <span className="text-muted-foreground">Tu comisión fija</span>
               <span className="font-semibold text-green-600">Bs {fmt(item.comision_bs)}</span>
+            </div>
+          )}
+          {item.comision_variable_pct != null && item.comision_variable_pct > 0
+            && item.precio_lista != null && item.precio_minimo_negociacion != null && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground" title="Se paga sobre lo que realmente cobres por encima del precio mínimo — mientras más cerca del precio de lista vendas, más ganas">
+                Variable ({fmt(item.comision_variable_pct)}%)
+              </span>
+              <span className="font-semibold text-green-600">
+                hasta Bs {fmt(round2(item.comision_variable_pct / 100 * Math.max(item.precio_lista - item.precio_minimo_negociacion, 0)))} si vendes al precio de lista
+              </span>
             </div>
           )}
         </div>

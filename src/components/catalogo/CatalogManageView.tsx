@@ -30,6 +30,8 @@ interface ProductRow {
   precio_lista: number | null;
   precio_minimo_negociacion: number | null;
   comision_bs: number | null;
+  comision_variable_pct: number | null;
+  link_producto: string | null;
   costo_con_iva_bs: number | null;
   iva_importado_bs: number | null;
   descripcion_catalogo: string | null;
@@ -41,6 +43,8 @@ interface Draft {
   precio_lista: string;
   precio_minimo_negociacion: string;
   comision_bs: string;
+  comision_variable_pct: string;
+  link_producto: string;
   costo_con_iva_bs: string;
   iva_importado_bs: string;
   descripcion_catalogo: string;
@@ -53,6 +57,8 @@ function toDraft(p: ProductRow): Draft {
     precio_lista: p.precio_lista != null ? String(p.precio_lista) : '',
     precio_minimo_negociacion: p.precio_minimo_negociacion != null ? String(p.precio_minimo_negociacion) : '',
     comision_bs: p.comision_bs != null ? String(p.comision_bs) : '',
+    comision_variable_pct: p.comision_variable_pct != null ? String(p.comision_variable_pct) : '',
+    link_producto: p.link_producto ?? '',
     costo_con_iva_bs: p.costo_con_iva_bs != null ? String(p.costo_con_iva_bs) : '',
     iva_importado_bs: p.iva_importado_bs != null ? String(p.iva_importado_bs) : '',
     descripcion_catalogo: p.descripcion_catalogo ?? '',
@@ -108,7 +114,7 @@ export function CatalogManageView() {
       const [{ data: prods, error: prodErr }, { data: stockRows, error: stockErr }, { data: costoRows, error: costoErr }] = await Promise.all([
         supabase
           .from('products')
-          .select('id, nombre, especificacion, condicion, precio_lista, precio_minimo_negociacion, comision_bs, costo_con_iva_bs, iva_importado_bs, descripcion_catalogo, mostrar_en_catalogo, oculto_en_gestion')
+          .select('id, nombre, especificacion, condicion, precio_lista, precio_minimo_negociacion, comision_bs, comision_variable_pct, link_producto, costo_con_iva_bs, iva_importado_bs, descripcion_catalogo, mostrar_en_catalogo, oculto_en_gestion')
           .eq('company_id', companyId)
           .eq('status', 'activo')
           .order('nombre'),
@@ -164,6 +170,8 @@ export function CatalogManageView() {
           precio_lista: d.precio_lista !== '' ? toDecimal(d.precio_lista) : null,
           precio_minimo_negociacion: d.precio_minimo_negociacion !== '' ? toDecimal(d.precio_minimo_negociacion) : null,
           comision_bs: d.comision_bs !== '' ? toDecimal(d.comision_bs) : null,
+          comision_variable_pct: d.comision_variable_pct !== '' ? toDecimal(d.comision_variable_pct) : null,
+          link_producto: d.link_producto.trim() || null,
           costo_con_iva_bs: d.costo_con_iva_bs !== '' ? toDecimal(d.costo_con_iva_bs) : null,
           iva_importado_bs: d.iva_importado_bs !== '' ? toDecimal(d.iva_importado_bs) : null,
           descripcion_catalogo: d.descripcion_catalogo.trim() || null,
@@ -234,7 +242,7 @@ export function CatalogManageView() {
               <TableHead className="w-28">Ganancia neta/bruta</TableHead>
               <TableHead className="w-24">Precio c/factura</TableHead>
               <TableHead className="w-24">Precio mín.</TableHead>
-              <TableHead className="w-20">Comisión</TableHead>
+              <TableHead className="w-28">Comisión fija / var. %</TableHead>
               <TableHead className="w-16 text-center">Catálogo</TableHead>
               <TableHead className="w-40"></TableHead>
             </TableRow>
@@ -329,11 +337,18 @@ export function CatalogManageView() {
                     />
                   </TableCell>
                   <TableCell>
-                    <Input
-                      type="number" step="0.01" className="h-8 w-20"
-                      value={d.comision_bs}
-                      onChange={e => updateDraft(p.id, { comision_bs: e.target.value })}
-                    />
+                    <div className="space-y-1">
+                      <Input
+                        type="number" step="0.01" className="h-8 w-24" placeholder="Bs fija" title="Comisión fija (Bs)"
+                        value={d.comision_bs}
+                        onChange={e => updateDraft(p.id, { comision_bs: e.target.value })}
+                      />
+                      <Input
+                        type="number" step="0.01" min="0" max="100" className="h-8 w-24" placeholder="% variable" title="Comisión variable (% sobre precio venta − precio mínimo)"
+                        value={d.comision_variable_pct}
+                        onChange={e => updateDraft(p.id, { comision_variable_pct: e.target.value })}
+                      />
+                    </div>
                   </TableCell>
                   <TableCell className="text-center">
                     <Checkbox
@@ -432,10 +447,16 @@ export function CatalogManageView() {
                     onChange={e => updateDraft(p.id, { iva_importado_bs: e.target.value })} />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Comisión</Label>
+                  <Label className="text-xs text-muted-foreground">Comisión fija (Bs)</Label>
                   <Input type="number" step="0.01" className="h-9"
                     value={d.comision_bs}
                     onChange={e => updateDraft(p.id, { comision_bs: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Comisión variable (%)</Label>
+                  <Input type="number" step="0.01" min="0" max="100" className="h-9"
+                    value={d.comision_variable_pct}
+                    onChange={e => updateDraft(p.id, { comision_variable_pct: e.target.value })} />
                 </div>
               </div>
 
@@ -495,6 +516,15 @@ export function CatalogManageView() {
                 rows={4}
                 value={drafts[detalleProduct.id]?.descripcion_catalogo ?? ''}
                 onChange={e => updateDraft(detalleProduct.id, { descripcion_catalogo: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Link del producto (Amazon, eBay, ficha del fabricante, etc.)</Label>
+              <Input
+                type="url"
+                placeholder="https://..."
+                value={drafts[detalleProduct.id]?.link_producto ?? ''}
+                onChange={e => updateDraft(detalleProduct.id, { link_producto: e.target.value })}
               />
             </div>
             <DialogFooter>

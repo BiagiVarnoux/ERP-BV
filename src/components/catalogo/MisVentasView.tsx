@@ -17,6 +17,8 @@ interface VentaFila {
   fecha: string;
   numero: string;
   productos: string;
+  comision_fija: number;
+  comision_variable: number;
   comision: number;
 }
 
@@ -45,15 +47,29 @@ export function MisVentasView() {
 
   if (loading) return <p className="text-sm text-muted-foreground">Cargando...</p>;
 
+  const totalFija = round2(filas.reduce((s, f) => s + f.comision_fija, 0));
+  const totalVariable = round2(filas.reduce((s, f) => s + f.comision_variable, 0));
   const totalComision = round2(filas.reduce((s, f) => s + f.comision, 0));
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Ventas registradas</p>
             <p className="text-lg font-semibold">{filas.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Comisión fija</p>
+            <p className="text-lg font-semibold">Bs {fmt(totalFija)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Comisión variable</p>
+            <p className="text-lg font-semibold">Bs {fmt(totalVariable)}</p>
           </CardContent>
         </Card>
         <Card>

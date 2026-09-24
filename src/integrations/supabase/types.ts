@@ -1960,6 +1960,7 @@ export type Database = {
           numero_documento: string
           proveedor_nit: string | null
           proveedor_nombre: string
+          sin_credito_fiscal: boolean
           updated_at: string
           user_id: string
         }
@@ -1980,6 +1981,7 @@ export type Database = {
           numero_documento: string
           proveedor_nit?: string | null
           proveedor_nombre: string
+          sin_credito_fiscal?: boolean
           updated_at?: string
           user_id: string
         }
@@ -2000,6 +2002,7 @@ export type Database = {
           numero_documento?: string
           proveedor_nit?: string | null
           proveedor_nombre?: string
+          sin_credito_fiscal?: boolean
           updated_at?: string
           user_id?: string
         }
@@ -2187,6 +2190,7 @@ export type Database = {
           category_id: string | null
           codigo: string
           comision_bs: number | null
+          comision_variable_pct: number | null
           company_id: string
           condicion: string | null
           costo_con_iva_bs: number | null
@@ -2198,6 +2202,7 @@ export type Database = {
           id: string
           is_active: boolean
           iva_importado_bs: number | null
+          link_producto: string | null
           metodo_valuacion: string
           mostrar_en_catalogo: boolean
           nombre: string
@@ -2220,6 +2225,7 @@ export type Database = {
           category_id?: string | null
           codigo: string
           comision_bs?: number | null
+          comision_variable_pct?: number | null
           company_id: string
           condicion?: string | null
           costo_con_iva_bs?: number | null
@@ -2231,6 +2237,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           iva_importado_bs?: number | null
+          link_producto?: string | null
           metodo_valuacion?: string
           mostrar_en_catalogo?: boolean
           nombre: string
@@ -2253,6 +2260,7 @@ export type Database = {
           category_id?: string | null
           codigo?: string
           comision_bs?: number | null
+          comision_variable_pct?: number | null
           company_id?: string
           condicion?: string | null
           costo_con_iva_bs?: number | null
@@ -2264,6 +2272,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           iva_importado_bs?: number | null
+          link_producto?: string | null
           metodo_valuacion?: string
           mostrar_en_catalogo?: boolean
           nombre?: string
@@ -2705,6 +2714,133 @@ export type Database = {
           },
         ]
       }
+      tax_documents: {
+        Row: {
+          alicuota: number
+          archivo_mime: string | null
+          archivo_nombre: string | null
+          archivo_path: string | null
+          archivo_size: number | null
+          base_imponible: number
+          codigo_control: string | null
+          company_id: string
+          con_derecho_credito: boolean
+          created_at: string
+          descuentos: number
+          estado: string
+          fecha: string
+          id: string
+          importe_exento: number
+          importe_ice: number
+          importe_total: number
+          iva: number
+          journal_entry_id: string | null
+          nit: string | null
+          notas: string | null
+          numero_autorizacion: string | null
+          numero_factura: string | null
+          payable_id: string | null
+          periodo: string
+          razon_social: string
+          sale_id: string | null
+          tipo: string
+          tipo_documento: string
+          updated_at: string
+          usa_iva_manual: boolean
+          user_id: string | null
+        }
+        Insert: {
+          alicuota?: number
+          archivo_mime?: string | null
+          archivo_nombre?: string | null
+          archivo_path?: string | null
+          archivo_size?: number | null
+          base_imponible?: number
+          codigo_control?: string | null
+          company_id: string
+          con_derecho_credito?: boolean
+          created_at?: string
+          descuentos?: number
+          estado?: string
+          fecha: string
+          id?: string
+          importe_exento?: number
+          importe_ice?: number
+          importe_total?: number
+          iva?: number
+          journal_entry_id?: string | null
+          nit?: string | null
+          notas?: string | null
+          numero_autorizacion?: string | null
+          numero_factura?: string | null
+          payable_id?: string | null
+          periodo: string
+          razon_social?: string
+          sale_id?: string | null
+          tipo: string
+          tipo_documento?: string
+          updated_at?: string
+          usa_iva_manual?: boolean
+          user_id?: string | null
+        }
+        Update: {
+          alicuota?: number
+          archivo_mime?: string | null
+          archivo_nombre?: string | null
+          archivo_path?: string | null
+          archivo_size?: number | null
+          base_imponible?: number
+          codigo_control?: string | null
+          company_id?: string
+          con_derecho_credito?: boolean
+          created_at?: string
+          descuentos?: number
+          estado?: string
+          fecha?: string
+          id?: string
+          importe_exento?: number
+          importe_ice?: number
+          importe_total?: number
+          iva?: number
+          journal_entry_id?: string | null
+          nit?: string | null
+          notas?: string | null
+          numero_autorizacion?: string | null
+          numero_factura?: string | null
+          payable_id?: string | null
+          periodo?: string
+          razon_social?: string
+          sale_id?: string | null
+          tipo?: string
+          tipo_documento?: string
+          updated_at?: string
+          usa_iva_manual?: boolean
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tax_documents_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tax_documents_payable_id_fkey"
+            columns: ["payable_id"]
+            isOneToOne: false
+            referencedRelation: "payables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tax_documents_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           company_id: string
@@ -2908,10 +3044,12 @@ export type Database = {
         Args: { p_company_id: string }
         Returns: {
           comision_bs: number
+          comision_variable_pct: number
           condicion: string
           descripcion_catalogo: string
           especificacion: string
           id: string
+          link_producto: string
           nombre: string
           precio_actualizado_at: string
           precio_con_factura: number
@@ -3050,6 +3188,8 @@ export type Database = {
         Args: { p_company_id: string }
         Returns: {
           comision: number
+          comision_fija: number
+          comision_variable: number
           fecha: string
           numero: string
           productos: string
@@ -3105,6 +3245,7 @@ export type Database = {
           cantidad: number
           fecha: string
           numero: string
+          precio_unitario_neto: number
           product_id: string
           product_nombre: string
           sale_id: string
@@ -3237,6 +3378,7 @@ export type Database = {
         | "licitaciones"
         | "investments"
         | "catalogo_ventas"
+        | "taxes"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3391,6 +3533,7 @@ export const Constants = {
         "licitaciones",
         "investments",
         "catalogo_ventas",
+        "taxes",
       ],
     },
   },
