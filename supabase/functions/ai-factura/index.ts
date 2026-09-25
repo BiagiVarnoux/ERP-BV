@@ -227,6 +227,27 @@ serve(async (req) => {
     }
 
     const data = await response.json();
+
+    // El modelo devuelve emisor y cliente por separado. Aquí se resuelve además
+    // `razon_social`/`nit` según el libro, por dos razones:
+    //   1. Un cliente desplegado ANTES que esta función sigue leyendo esas claves
+    //      y seguiría funcionando: la función y el cliente no se despliegan a la
+    //      vez, y romper el contrato deja el proveedor vacío mientras tanto.
+    //   2. Deja la respuesta autoexplicativa para cualquier otro consumidor.
+    try {
+      const contenido = data?.choices?.[0]?.message?.content;
+      if (typeof contenido === "string") {
+        const j = JSON.parse(contenido);
+        // Una DIM se registra siempre a nombre del declarante (el emisor).
+        const usarEmisor = tipo === "compra" || j.es_dim === true;
+        j.razon_social = usarEmisor ? j.razon_social_emisor ?? null : j.razon_social_cliente ?? null;
+        j.nit = usarEmisor ? j.nit_emisor ?? null : j.nit_cliente ?? null;
+        data.choices[0].message.content = JSON.stringify(j);
+      }
+    } catch {
+      // Si el contenido no era JSON, se devuelve tal cual y el cliente decide.
+    }
+
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
