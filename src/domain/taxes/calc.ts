@@ -14,6 +14,25 @@ export const ALICUOTA_IVA = 13;
 export const ALICUOTA_IVA_IMPORTACION = 14.94;
 
 /**
+ * Base imponible que implica el IVA liquidado por la Aduana.
+ *
+ * Sirve de control cruzado: si el CIF + GA que se leyó del documento no se
+ * parece a esto, es que se tomó un campo equivocado. Pasó con una DIMS R-510,
+ * donde el lector agarró el GA (285) creyendo que era el CIF: la base quedó en
+ * 285 cuando el IVA de 1.864 implicaba ~12.477.
+ */
+export function baseImplicitaPorIva(iva: number): number {
+  return round2(iva / (ALICUOTA_IVA_IMPORTACION / 100));
+}
+
+/** ¿La base declarada es coherente con el IVA de la DIM? Tolerancia del 2%. */
+export function baseCoherenteConIva(base: number, iva: number): boolean {
+  if (!(iva > 0) || !(base > 0)) return true;   // sin datos no se opina
+  const esperada = baseImplicitaPorIva(iva);
+  return Math.abs(base - esperada) <= esperada * 0.02;
+}
+
+/**
  * Base imponible e IVA de un documento fiscal.
  *
  * En Bolivia el IVA es "por dentro": el importe facturado ya lo incluye, y el

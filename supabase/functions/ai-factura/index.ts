@@ -67,14 +67,17 @@ Devuelve ÚNICAMENTE un JSON válido, sin markdown ni texto adicional, con estas
 - "confianza": "alta", "media" o "baja", según lo legible y completo que estaba el documento.
 
 Además, SIEMPRE incluye:
-- "es_dim": true si el documento es una DECLARACIÓN DE MERCANCÍAS DE IMPORTACIÓN (DIM/DUI) de la Aduana Nacional; false si es una factura comercial.
+- "es_dim": true si el documento es una DECLARACIÓN DE MERCANCÍAS DE IMPORTACIÓN de la Aduana
+  Nacional; false si es una factura comercial. Hay DOS formularios y ambos cuentan:
+  la DIM completa ("DIM R-505") y la simplificada ("DIMS R-510", despacho de menor cuantía).
 
 Si "es_dim" es true, el documento NO es una factura. En el Libro de Compras la DIM se
-registra a nombre del DECLARANTE (la agencia despachante de aduana), NO del proveedor
-del exterior. Se llenan así:
-- "razon_social_emisor": el nombre del DECLARANTE, campo B2 ("Declarante"). NO uses el campo
-  E1 "Datos del Proveedor" ni el B1 "Importador": el proveedor del exterior y el
-  importador son otra cosa y no van en este campo. Devuelve SOLO la razón social, sin
+registra a nombre del DECLARANTE, NO del proveedor del exterior. El declarante suele ser
+la agencia despachante de aduana, pero en una DIMS simplificada puede ser el propio
+importador: en ese caso B1 y B2 coinciden y está bien que coincidan. Se llenan así:
+- "razon_social_emisor": el nombre del DECLARANTE, campo B2 ("Declarante"). Cópialo del
+  campo B2 aunque sea igual al B1. NO uses el campo E1 "Datos del Proveedor": el proveedor
+  del exterior no va nunca en este campo. Devuelve SOLO la razón social, sin
   la dirección que viene a continuación: de "AGENCIA X S.R.L. - COMERCIO, 830, CENTRAL,
   LA PAZ, BOLIVIA, 2406607" devuelve exactamente "AGENCIA X S.R.L.".
 - "nit_emisor": el NIT del DECLARANTE, el número que aparece en ese mismo campo B2.
@@ -84,9 +87,28 @@ del exterior. Se llenan así:
   corresponde por convención.
 - "codigo_control": null.
 - "fecha": la "Fecha de aceptación" del campo A2.
-- "valor_cif_bob": el "Total valor CIF aduana (BOB)" del campo F10, como número.
-- "gravamen_arancelario": el importe de la fila "GA GRAVAMEN ARANCELARIO" en la tabla de liquidación de tributos, columna "Tributos determinados", como número.
-- "iva_pagado": el importe de la fila "IVA IMPUESTO AL VALOR AGREGADO" en esa misma tabla y columna, como número. Este es el dato MÁS importante de una DIM.
+- "valor_cif_bob": el valor CIF total expresado en BOLIVIANOS. El rótulo cambia según el
+  formulario: en la DIM R-505 es "Total valor CIF aduana (BOB)" (campo F10) y en la DIMS
+  R-510 es "Valor CIF total (Bs)" (campo E7).
+  ⚠️ En la DIMS R-510 esa tabla viene con los RÓTULOS en una línea y los VALORES en la
+  línea siguiente, alineados por posición. Por ejemplo:
+      "E6. Valor CIF Aduana E7. Valor CIF total (Bs) E8.Cantidad de bultos ..."
+      "1012.816 12194.305 2.0 ..."
+  Ahí "E7. Valor CIF total (Bs)" es el SEGUNDO rótulo, así que su valor es el SEGUNDO
+  número de la línea siguiente: 12194.305. Cuenta las posiciones para emparejarlos.
+  ⚠️ NO uses el "Valor CIF Aduana" en DÓLARES que aparece justo antes (E6): necesitas el
+  de bolivianos, que es bastante mayor. Nunca uses el GA como si fuera el CIF.
+  COMPROBACIÓN: el IVA de importación es el 14,94% de (CIF + GA), así que "valor_cif_bob"
+  debe rondar (iva_pagado / 0.1494) − gravamen_arancelario. Si el número que elegiste no
+  se parece a eso, elegiste el campo equivocado: vuelve a buscarlo.
+- "gravamen_arancelario": el GA de la tabla "Liquidación TOTAL de tributos" de la declaración,
+  columna "Tributos determinados", que es SIEMPRE EL ÚLTIMO número de esa fila. El número de
+  columnas cambia entre formularios: "GA 2268 0 0 2268" → 2268, y "GA 285 0 285" → 285.
+- "iva_pagado": el IVA de esa MISMA tabla y columna (también el último número de su fila).
+  Es el dato MÁS importante de una declaración de importación.
+  ⚠️ Usa la tabla de liquidación TOTAL de la declaración, la que aparece ANTES del detalle
+  por ítem. NO uses las tablas "Liquidación de tributos ... del ítem" que vienen después:
+  esas son parciales y dan un importe mucho menor.
 - "importe_total": déjalo en null; se calcula aparte.
 - "con_derecho_credito": true.
 

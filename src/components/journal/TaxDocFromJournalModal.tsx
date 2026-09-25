@@ -22,7 +22,8 @@ import { JournalEntry, ModuloVinculado } from '@/accounting/types';
 import { fmt, round2, toDecimal } from '@/accounting/utils';
 import {
   ALICUOTA_IVA, ALICUOTA_IVA_IMPORTACION, DIM_NUMERO_AUTORIZACION, DIM_NUMERO_FACTURA,
-  TIPO_DOCUMENTO_LABEL, adjuntarArchivoAFactura, calcularBaseEIva,
+  TIPO_DOCUMENTO_LABEL, adjuntarArchivoAFactura, baseCoherenteConIva,
+  baseImplicitaPorIva, calcularBaseEIva,
   createTaxDocument, formatPeriodo, periodoDeFecha,
   type FacturaExtraida, type TaxTipoDocumento,
 } from '@/domain/taxes';
@@ -59,6 +60,7 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
   const [periodo, setPeriodo]           = useState('');
   /** IVA tomado del documento (DIM); '' = se calcula desde el importe. */
   const [ivaManual, setIvaManual]       = useState('');
+  const [numeroDeclaracion, setNumDecl] = useState('');
   const [notas, setNotas]               = useState('');
   const [archivo, setArchivo]           = useState<File | null>(null);
   const [saving, setSaving]             = useState(false);
@@ -75,6 +77,7 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
     setImporteTotal(String(round2(linea.lineAmount / (ALICUOTA_IVA / 100))));
     setPeriodo(periodoDeFecha(journalEntry.date));
     setIvaManual('');
+    setNumDecl('');
     setNotas('');
     setArchivo(null);
   }, [isOpen, idx, linea, journalEntry.date]);
@@ -99,7 +102,7 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
       if (d.fecha) setPeriodo(periodoDeFecha(d.fecha));
       if (cif || ga) setImporteTotal(String(round2(cif + ga)));
       if (d.iva_pagado != null) setIvaManual(String(d.iva_pagado));
-      if (d.numero_declaracion) setNotas(`DIM ${d.numero_declaracion}`);
+      if (d.numero_declaracion) setNumDecl(d.numero_declaracion);
       return;
     }
 
@@ -154,6 +157,7 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
         importe_total: total,
         alicuota: usaIvaManual ? ALICUOTA_IVA_IMPORTACION : ALICUOTA_IVA,
         iva_manual: usaIvaManual ? toDecimal(ivaManual) : null,
+        numero_declaracion: numeroDeclaracion.trim() || null,
         notas: notas.trim() || null,
         journal_entry_id: journalEntry.id,
       }, companyId);
@@ -268,6 +272,32 @@ export function TaxDocFromJournalModal({ isOpen, linesToProcess, journalEntry, c
               )}
             </div>
           </div>
+
+          {tipoDocumento === 'dui' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label>N° de DIM / declaración</Label>
+                <Input
+                  value={numeroDeclaracion}
+                  onChange={e => setNumDecl(e.target.value)}
+                  className="font-mono"
+                  placeholder="DI-2026-211-2343756"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Control cruzado: la base debe ser coherente con el IVA de la Aduana. */}
+          {usaIvaManual && !baseCoherenteConIva(calculado.base_imponible, toDecimal(ivaManual)) && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm flex gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span className="text-amber-800 dark:text-amber-200">
+                El importe no cuadra con el IVA de la declaración: un IVA de Bs {fmt(toDecimal(ivaManual))}
+                {' '}corresponde a una base de ~Bs {fmt(baseImplicitaPorIva(toDecimal(ivaManual)))} (CIF + GA),
+                no a Bs {fmt(calculado.base_imponible)}. Revisa el importe contra la DIM.
+              </span>
+            </div>
+          )}
 
           {usaIvaManual && (
             <p className="text-xs text-muted-foreground">

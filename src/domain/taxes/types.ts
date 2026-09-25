@@ -26,6 +26,8 @@ export interface TaxDocumentRow {
   numero_factura: string | null;
   numero_autorizacion: string | null;
   codigo_control: string | null;
+  /** N° de declaración de la DIM/DIMS (campo A1). Solo en tipo_documento='dui'. */
+  numero_declaracion: string | null;
   importe_total: number;
   importe_ice: number;
   importe_exento: number;
@@ -75,6 +77,7 @@ export interface CreateTaxDocumentInput extends TaxAmountsInput {
   numero_factura?: string | null;
   numero_autorizacion?: string | null;
   codigo_control?: string | null;
+  numero_declaracion?: string | null;
   con_derecho_credito?: boolean;
   sale_id?: string | null;
   payable_id?: string | null;

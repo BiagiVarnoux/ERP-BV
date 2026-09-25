@@ -83,7 +83,8 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
       r.razon_social.toLowerCase().includes(q) ||
       (r.nit ?? '').toLowerCase().includes(q) ||
       (r.numero_factura ?? '').toLowerCase().includes(q) ||
-      (r.numero_autorizacion ?? '').toLowerCase().includes(q)
+      (r.numero_autorizacion ?? '').toLowerCase().includes(q) ||
+      (r.numero_declaracion ?? '').toLowerCase().includes(q)
     );
   }, [rows, search]);
 
@@ -177,6 +178,7 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
       { header: 'Nº Factura',       accessor: r => r.numero_factura ?? '' },
       { header: 'Nº Autorización',  accessor: r => r.numero_autorizacion ?? '' },
       { header: 'Código de control', accessor: r => r.codigo_control ?? '' },
+      { header: 'Nº DIM',           accessor: r => r.numero_declaracion ?? '' },
       { header: 'Importe total',    accessor: r => r.importe_total },
       { header: 'ICE/IEHD',         accessor: r => r.importe_ice },
       { header: 'Exento',           accessor: r => r.importe_exento },
@@ -265,7 +267,7 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
         </Select>
         <Input
           className="w-full sm:max-w-xs"
-          placeholder="Buscar por NIT, razón social o Nº de factura..."
+          placeholder="Buscar por NIT, razón social, Nº de factura o Nº de DIM..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
@@ -367,7 +369,11 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
                     <TableCell className="whitespace-nowrap">{row.fecha}</TableCell>
                     <TableCell className="font-mono text-xs">{row.nit ?? '—'}</TableCell>
                     <TableCell className="max-w-[200px] truncate" title={row.razon_social}>{row.razon_social}</TableCell>
-                    <TableCell className="font-mono text-xs">{row.numero_factura ?? '—'}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {row.numero_declaracion
+                        ? <span title={`DIM ${row.numero_declaracion}`}>{row.numero_declaracion}</span>
+                        : row.numero_factura ?? '—'}
+                    </TableCell>
                     <TableCell className="font-mono text-xs max-w-[140px] truncate" title={row.numero_autorizacion ?? ''}>
                       {row.numero_autorizacion ?? '—'}
                     </TableCell>

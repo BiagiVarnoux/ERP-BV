@@ -11,7 +11,8 @@ import { toast } from 'sonner';
 import { fmt, round2, toDecimal, todayISO } from '@/accounting/utils';
 import {
   ALICUOTA_IVA, ALICUOTA_IVA_IMPORTACION, DIM_NUMERO_AUTORIZACION, DIM_NUMERO_FACTURA,
-  TIPO_DOCUMENTO_LABEL, adjuntarArchivoAFactura, buscarDuplicados,
+  TIPO_DOCUMENTO_LABEL, adjuntarArchivoAFactura, baseCoherenteConIva,
+  baseImplicitaPorIva, buscarDuplicados,
   calcularBaseEIva, createTaxDocument, formatPeriodo, periodoDeFecha,
   urlFirmadaFactura, updateTaxDocument,
   type FacturaExtraida, type TaxDocTipo, type TaxDocumentRow, type TaxTipoDocumento,
@@ -40,6 +41,7 @@ interface FormState {
   numero_factura: string;
   numero_autorizacion: string;
   codigo_control: string;
+  numero_declaracion: string;
   importe_total: string;
   importe_ice: string;
   importe_exento: string;
@@ -62,6 +64,7 @@ function emptyForm(periodo: string): FormState {
     numero_factura: '',
     numero_autorizacion: '',
     codigo_control: '',
+    numero_declaracion: '',
     importe_total: '',
     importe_ice: '',
     importe_exento: '',
@@ -83,6 +86,7 @@ function fromRow(r: TaxDocumentRow): FormState {
     numero_factura: r.numero_factura ?? '',
     numero_autorizacion: r.numero_autorizacion ?? '',
     codigo_control: r.codigo_control ?? '',
+    numero_declaracion: r.numero_declaracion ?? '',
     importe_total: String(r.importe_total),
     importe_ice: r.importe_ice ? String(r.importe_ice) : '',
     importe_exento: r.importe_exento ? String(r.importe_exento) : '',
@@ -152,9 +156,7 @@ export function TaxDocumentModal({
         alicuota: String(ALICUOTA_IVA_IMPORTACION),
         iva_manual: d.iva_pagado != null ? String(d.iva_pagado) : prev.iva_manual,
         con_derecho_credito: true,
-        // El N° de declaración no tiene campo propio en el libro; se guarda en
-        // notas para no perder la referencia a la DIM.
-        notas: d.numero_declaracion ? `DIM ${d.numero_declaracion}` : prev.notas,
+        numero_declaracion: d.numero_declaracion ?? prev.numero_declaracion,
       }));
       return;
     }
@@ -248,6 +250,7 @@ export function TaxDocumentModal({
         numero_factura: form.numero_factura.trim() || null,
         numero_autorizacion: form.numero_autorizacion.trim() || null,
         codigo_control: form.codigo_control.trim() || null,
+        numero_declaracion: form.numero_declaracion.trim() || null,
         importe_total: total,
         importe_ice: toDecimal(form.importe_ice),
         importe_exento: toDecimal(form.importe_exento),
@@ -427,6 +430,30 @@ export function TaxDocumentModal({
               )}
             </div>
           </div>
+
+          {form.tipo_documento === 'dui' && (
+            <div>
+              <Label>N° de DIM / declaración</Label>
+              <Input
+                value={form.numero_declaracion}
+                onChange={e => set('numero_declaracion', e.target.value)}
+                className="font-mono"
+                placeholder="DI-2026-211-2343756"
+              />
+            </div>
+          )}
+
+          {/* Control cruzado: la base debe ser coherente con el IVA de la Aduana. */}
+          {usaIvaManual && !baseCoherenteConIva(calculado.base_imponible, toDecimal(form.iva_manual)) && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm flex gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span className="text-amber-800 dark:text-amber-200">
+                El importe no cuadra con el IVA de la declaración: un IVA de Bs {fmt(toDecimal(form.iva_manual))}
+                {' '}corresponde a una base de ~Bs {fmt(baseImplicitaPorIva(toDecimal(form.iva_manual)))} (CIF + GA),
+                no a Bs {fmt(calculado.base_imponible)}. Revisa el importe contra la DIM.
+              </span>
+            </div>
+          )}
 
           {/* En importaciones el IVA no se deriva de la base: lo liquida la Aduana. */}
           {form.tipo_documento === 'dui' && (
