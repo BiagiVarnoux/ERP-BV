@@ -17,8 +17,19 @@ import type { TaxDocTipo } from './types';
 
 /** Lo que el modelo devuelve, ya normalizado y listo para precargar el formulario. */
 export interface FacturaExtraida {
+  /**
+   * Contraparte que corresponde al libro: el EMISOR en compras, el CLIENTE en
+   * ventas. Se resuelve aquí a partir de los cuatro campos de abajo — el modelo
+   * extrae ambas partes por separado y no decide cuál va.
+   */
   razon_social: string | null;
   nit: string | null;
+  /** Quien emite y cobra la factura (la cabecera, sin etiqueta). */
+  razon_social_emisor: string | null;
+  nit_emisor: string | null;
+  /** Quien compra: lo que sigue a "Nombre/Razón Social:" y "NIT/CI/CEX:". */
+  razon_social_cliente: string | null;
+  nit_cliente: string | null;
   numero_factura: string | null;
   numero_autorizacion: string | null;
   codigo_control: string | null;
@@ -173,12 +184,32 @@ function aFecha(v: unknown): string | null {
   return null;
 }
 
-function normalizar(crudo: Record<string, unknown>, via: 'texto' | 'imagen'): FacturaExtraida {
+function normalizar(
+  crudo: Record<string, unknown>,
+  via: 'texto' | 'imagen',
+  tipo: TaxDocTipo,
+): FacturaExtraida {
   const confianzaCruda = aTexto(crudo.confianza)?.toLowerCase();
+
+  const razonEmisor  = aTexto(crudo.razon_social_emisor);
+  // El NIT llega a veces con puntos o guiones; el libro lo guarda solo con dígitos.
+  const nitEmisor    = aTexto(crudo.nit_emisor)?.replace(/\D/g, '') || null;
+  const razonCliente = aTexto(crudo.razon_social_cliente);
+  const nitCliente   = aTexto(crudo.nit_cliente)?.replace(/\D/g, '') || null;
+
+  // Quién es la contraparte depende del libro, no del documento: en compras es
+  // quien nos cobra (emisor), en ventas es a quien le cobramos (cliente). Una
+  // DIM solo existe en compras, y ahí la contraparte es el declarante (emisor).
+  const esDim = crudo.es_dim === true;
+  const usarEmisor = tipo === 'compra' || esDim;
+
   return {
-    razon_social:        aTexto(crudo.razon_social),
-    // El NIT llega a veces con puntos o guiones; el libro lo guarda solo con dígitos.
-    nit:                 aTexto(crudo.nit)?.replace(/\D/g, '') || null,
+    razon_social: usarEmisor ? razonEmisor : razonCliente,
+    nit:          usarEmisor ? nitEmisor : nitCliente,
+    razon_social_emisor:  razonEmisor,
+    nit_emisor:           nitEmisor,
+    razon_social_cliente: razonCliente,
+    nit_cliente:          nitCliente,
     numero_factura:      aTexto(crudo.numero_factura),
     numero_autorizacion: aTexto(crudo.numero_autorizacion)?.replace(/\s/g, '') || null,
     codigo_control:      aTexto(crudo.codigo_control),
@@ -189,7 +220,7 @@ function normalizar(crudo: Record<string, unknown>, via: 'texto' | 'imagen'): Fa
     importe_ice:         aNumero(crudo.importe_ice) ?? 0,
     importe_base_credito_fiscal: aNumero(crudo.importe_base_credito_fiscal),
     con_derecho_credito: typeof crudo.con_derecho_credito === 'boolean' ? crudo.con_derecho_credito : null,
-    es_dim:               crudo.es_dim === true,
+    es_dim:               esDim,
     numero_declaracion:   aTexto(crudo.numero_declaracion),
     valor_cif_bob:        aNumero(crudo.valor_cif_bob),
     gravamen_arancelario: aNumero(crudo.gravamen_arancelario),
@@ -264,5 +295,5 @@ export async function extraerDatosDeFactura(file: File, tipo: TaxDocTipo): Promi
     throw new Error('La IA no devolvió un JSON válido');
   }
 
-  return normalizar(crudo, via);
+  return normalizar(crudo, via, tipo);
 }

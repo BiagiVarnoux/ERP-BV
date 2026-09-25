@@ -32,17 +32,28 @@ const MAX_IMAGEN_BASE64 = 8_000_000; // ~6 MB de archivo original
 // json_validate_failed ("max completion tokens reached"). Con 4000 sobra margen.
 const MAX_TOKENS_RESPUESTA = 4000;
 
-function buildSystemPrompt(tipo: string): string {
-  const emisor = tipo === "compra"
-    ? "El EMISOR es el PROVEEDOR que nos cobra. Extrae SIEMPRE sus datos, no los del cliente."
-    : "El EMISOR somos nosotros; extrae los datos del CLIENTE (comprador) que aparece en la factura.";
-
+function buildSystemPrompt(_tipo: string): string {
   return `Eres un asistente que extrae datos de facturas bolivianas (Ley 843) para el libro fiscal de IVA.
-${emisor}
+
+Una factura boliviana tiene SIEMPRE dos partes que se confunden con facilidad. Extrae las dos
+POR SEPARADO y no decidas tú cuál importa: de eso se encarga quien te llama.
+
+1. EMISOR (quien emite y cobra la factura). Sus datos están ARRIBA DEL TODO, en la cabecera,
+   y NO llevan una etiqueta que diga "Razón Social": el nombre suele ser literalmente la
+   primera línea del documento, y su NIT aparece poco después como "NIT 154422029", justo
+   antes de "FACTURA N°".
+2. CLIENTE (quien compra). Sus datos van DESPUÉS de la fecha, y SÍ llevan etiquetas
+   explícitas: "NIT/CI/CEX:" y "Nombre/Razón Social:".
+
+⚠️ TRAMPA FRECUENTE: la etiqueta "Nombre/Razón Social:" pertenece SIEMPRE al CLIENTE, nunca al
+emisor. No la uses para el emisor solo porque diga "Razón Social". El nombre del emisor no
+tiene etiqueta.
 
 Devuelve ÚNICAMENTE un JSON válido, sin markdown ni texto adicional, con estas claves:
-- "razon_social": nombre o razón social de la contraparte indicada arriba. null si no aparece.
-- "nit": su NIT/CI, solo dígitos. null si no aparece.
+- "razon_social_emisor": el nombre de la cabecera, sin etiqueta (ej. "BOLIVIANA DE AVIACIÓN - BOA"). null si no aparece.
+- "nit_emisor": el NIT que aparece como "NIT <número>" en la cabecera, antes de "FACTURA N°". Solo dígitos. null si no aparece.
+- "razon_social_cliente": lo que sigue a la etiqueta "Nombre/Razón Social:". null si no aparece.
+- "nit_cliente": lo que sigue a la etiqueta "NIT/CI/CEX:". Solo dígitos. null si no aparece.
 - "numero_factura": el número que sigue a "FACTURA N°". null si no aparece.
 - "numero_autorizacion": el código de autorización o CUF, sin espacios ni saltos. null si no aparece.
 - "codigo_control": el código de control si aparece (facturas antiguas). null si no.
@@ -61,12 +72,13 @@ Además, SIEMPRE incluye:
 Si "es_dim" es true, el documento NO es una factura. En el Libro de Compras la DIM se
 registra a nombre del DECLARANTE (la agencia despachante de aduana), NO del proveedor
 del exterior. Se llenan así:
-- "razon_social": el nombre del DECLARANTE, campo B2 ("Declarante"). NO uses el campo
+- "razon_social_emisor": el nombre del DECLARANTE, campo B2 ("Declarante"). NO uses el campo
   E1 "Datos del Proveedor" ni el B1 "Importador": el proveedor del exterior y el
   importador son otra cosa y no van en este campo. Devuelve SOLO la razón social, sin
   la dirección que viene a continuación: de "AGENCIA X S.R.L. - COMERCIO, 830, CENTRAL,
   LA PAZ, BOLIVIA, 2406607" devuelve exactamente "AGENCIA X S.R.L.".
-- "nit": el NIT del DECLARANTE, el número que aparece en ese mismo campo B2.
+- "nit_emisor": el NIT del DECLARANTE, el número que aparece en ese mismo campo B2.
+- "razon_social_cliente" y "nit_cliente": los del IMPORTADOR, campo B1.
 - "numero_declaracion": el "N° de declaración" del campo A1 (ej. DI-2026-211-2343756).
 - "numero_factura" y "numero_autorizacion": null. El cliente les pone el valor que
   corresponde por convención.

@@ -479,6 +479,8 @@ Never do raw `a + b` on Bs amounts — use `round2(a + b)`.
 | `ai-dbc` | Asistente DBC | — |
 | `ai-factura` | Extrae datos de facturas y DIM para el libro fiscal | `openai/gpt-oss-120b` (texto) y `qwen/qwen3.8-27b` (visión) |
 
+⚠️ **Emisor vs cliente en una factura boliviana.** El modelo extrae `razon_social_emisor`/`nit_emisor` y `razon_social_cliente`/`nit_cliente` **por separado**, y `normalizar()` en `facturaAiService.ts` resuelve cuál va según el libro (compras → emisor, ventas → cliente; una DIM siempre usa el emisor/declarante). No pedirle al modelo que "elija la contraparte": el emisor **no tiene etiqueta** en la factura (es la primera línea), mientras que el cliente lleva literalmente `Nombre/Razón Social:` y `NIT/CI/CEX:`. Pedirle que decida hace que a veces gane el match léxico con esa etiqueta y registre al cliente como proveedor — pasó en producción con una factura de BOA.
+
 ⚠️ **Límite de 8.000 tokens por minuto** en esta cuenta de Groq. Una DIM completa (5 páginas) gasta ~5.000 y hace saltar el límite con dos seguidas, por eso `textoParaAnalizar()` manda **solo la primera página** cuando detecta una DIM: ahí están la identificación (A), los operadores (B), los totales (F) y la tabla de tributos con el IVA. Baja el envío de 17.000 a 3.600 caracteres sin perder ningún dato.
 
 ⚠️ **La cuenta de Groq no tiene modelos Llama con visión.** Antes de cambiar el modelo de visión, verifica qué hay disponible con `GET https://api.groq.com/openai/v1/models`: `qwen/qwen3.8-27b` es hoy el único de la lista que acepta `image_url`. `openai/gpt-oss-*` y `groq/compound` rechazan contenido multimodal (`messages[0].content must be a string`).
