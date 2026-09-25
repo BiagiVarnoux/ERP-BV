@@ -45,6 +45,7 @@ import {
 import { ShipmentCloseModal, ProductLink } from '@/components/inventory/ShipmentCloseModal';
 import { FileAttachments } from '@/components/shipments/FileAttachments';
 import { exportShipmentToPDF, ShipmentPDFData, previewNextPdf } from '@/services/pdfService';
+import { ShipmentQuoteDialog } from '@/components/shipments/ShipmentQuoteDialog';
 import { useProductCategories, ProductCategoryRow } from '@/hooks/useProductCategories';
 
 // Dropdown de categoría: lee de las categorías de Configuración (product_categories).
@@ -919,6 +920,11 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
   onClose: () => void;
 }) {
   const isClosed = s.status === 'CERRADO';
+  const { can } = useUserAccess();
+  const activeCompanyId = useActiveCompanyId();
+  const canEditShipment = can('shipments', 'edit');
+  const canDeleteShipment = can('shipments', 'delete');
+  const [quoteDialogOpen, setQuoteDialogOpen] = useState(false);
 
   const totalManipuleo = round2(s.gastos_aduana.reduce((sum, g) => sum + g.monto, 0));
   const totalGA = round2(s.products.reduce((sum, p) => sum + (p.ga_monto ?? 0), 0));
@@ -1005,6 +1011,12 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
                   </>
                 );
               })()}
+              {isClosed && (
+                <Button size="sm" variant="outline" onClick={() => setQuoteDialogOpen(true)}>
+                  <FileText className="w-4 h-4 mr-1.5" />
+                  Generar cotización
+                </Button>
+              )}
               {!isReadOnly && (
                 <>
                   <Button size="sm" variant="ghost" onClick={onDelete} className="text-destructive hover:text-destructive">
@@ -1119,6 +1131,17 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
           )}
         </Tabs>
       </CardContent>
+
+      {quoteDialogOpen && activeCompanyId && (
+        <ShipmentQuoteDialog
+          shipment={s}
+          open={quoteDialogOpen}
+          onOpenChange={setQuoteDialogOpen}
+          companyId={activeCompanyId}
+          canEdit={canEditShipment}
+          canDelete={canDeleteShipment}
+        />
+      )}
     </Card>
   );
 }

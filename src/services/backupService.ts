@@ -219,6 +219,8 @@ export interface BackupData {
   product_fotos?: any[];
   // v3.5 fields — marcas "publicado" por vendedor
   product_publicaciones?: any[];
+  // v3.7 fields — cotizaciones/proformas de cliente por embarque
+  shipment_cotizaciones?: any[];
 }
 
 export async function createFullBackup(activeCompanyId?: string): Promise<BackupData> {
@@ -266,6 +268,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     product_fotos,
     product_publicaciones,
     tax_documents,
+    shipment_cotizaciones,
   ] = await Promise.all([
     fetchAllCompanyRows('accounts', companyId),
     fetchAllCompanyRows('journal_entries', companyId),
@@ -323,6 +326,8 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     fetchAllCompanyRows('product_publicaciones', companyId),
     // v3.6: libro fiscal de compras y ventas (módulo Impuestos)
     fetchAllCompanyRows('tax_documents', companyId),
+    // v3.7: cotizaciones/proformas de cliente por embarque
+    fetchAllCompanyRows('shipment_cotizaciones', companyId),
   ]);
 
   return {
@@ -366,6 +371,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     product_fotos,
     product_publicaciones,
     tax_documents,
+    shipment_cotizaciones,
   };
 }
 
@@ -460,6 +466,8 @@ async function _performRestoreInternal(
   // tax_documents referencia sales y payables → se borra antes que ellos
   await safeDeleteCompany('tax_documents', companyId);
 
+  // shipment_cotizaciones referencia shipments (ON DELETE CASCADE) → se borra antes.
+  await safeDeleteCompany('shipment_cotizaciones', companyId);
   await safeDeleteCompany('shipments', companyId);
   await safeDeleteCompany('debt_payments', companyId);
   await safeDeleteCompany('receivables', companyId);
@@ -591,6 +599,13 @@ async function _performRestoreInternal(
       return { id, user_id: userId, numero, status, data: rest };
     });
     await chunkedInsert('shipments', shipmentRows);
+  }
+  if (backup.shipment_cotizaciones?.length) {
+    const validShipmentIds = new Set((backup.shipments ?? []).map((s: any) => s.id));
+    const safe = backup.shipment_cotizaciones
+      .filter((c: any) => validShipmentIds.has(c.shipment_id))
+      .map(({ id: _id, ...c }: any) => ({ ...c, company_id: companyId }));
+    if (safe.length > 0) await chunkedInsert('shipment_cotizaciones', safe);
   }
   if (backup.inventory_lots?.length) {
     await chunkedInsert('inventory_lots', backup.inventory_lots.map(l => ({ ...l, user_id: userId })));
@@ -890,6 +905,7 @@ export function validateBackupFile(data: any): { valid: boolean; error?: string 
     'product_fotos',
     'product_publicaciones',
     'tax_documents',
+    'shipment_cotizaciones',
   ];
 
   for (const key of optionalArrays) {

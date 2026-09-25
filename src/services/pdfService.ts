@@ -1,7 +1,7 @@
 // src/services/pdfService.ts
 import jsPDF from 'jspdf';
 import autoTable, { RowInput } from 'jspdf-autotable';
-import { fmt } from '@/accounting/utils';
+import { fmt, round2 } from '@/accounting/utils';
 import { downloadBlob, openExternalUrl, isMobilePWA } from '@/lib/open-url';
 import { viewGeneratedPdf } from '@/lib/generated-pdf-viewer';
 
@@ -1503,6 +1503,154 @@ export function exportCotizacionToPDF(data: CotizacionPDFData): void {
     ? data.licitacion.numero_sicoes.toLowerCase().replace(/\s+/g, '-')
     : 'cotizacion';
   emitPdf(doc, `cotizacion-${slug}-${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+// ─── Exportar Cotización/Proforma de Embarque a PDF ───────────────────────────
+// Documento de cara al cliente: a diferencia de exportCotizacionToPDF (una
+// sola tabla con columnas fijas), acá cada producto puede tener conceptos
+// distintos (selección por producto individual), así que se arma un bloque
+// de tabla por producto en vez de una grilla única con columnas compartidas.
+
+export interface ProformaConceptoPDF {
+  nombre: string;
+  valor_unitario: number;
+}
+
+export interface ProformaProductoPDF {
+  nombre: string;
+  especificacion?: string;
+  cantidad: number;
+  conceptos: ProformaConceptoPDF[]; // ya filtrados a los incluidos
+  subtotal: number;
+}
+
+export interface ProformaEmbarquePDFData {
+  shipment_numero: string;
+  numero: string;
+  cliente_nombre?: string;
+  fecha: string; // ISO date
+  productos: ProformaProductoPDF[];
+  total_general: number;
+}
+
+const PROF_CLR = {
+  navy:      [15, 52, 96]    as [number, number, number],
+  teal:      [14, 116, 144]  as [number, number, number],
+  lightgray: [243, 244, 246] as [number, number, number],
+  totalrow:  [209, 233, 222] as [number, number, number],
+};
+
+export function exportProformaEmbarqueToPDF(data: ProformaEmbarquePDFData): void {
+  const doc = new jsPDF('p', 'mm', 'letter');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const ML = 14;
+  const MR = 14;
+
+  const fmtN = (n: number) =>
+    n.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // ── ENCABEZADO ───────────────────────────────────────────────────────────────
+  doc.setFillColor(...PROF_CLR.navy);
+  doc.rect(0, 0, pageWidth, 26, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(255, 255, 255);
+  doc.text('Cotización', ML, 12);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(180, 210, 235);
+  doc.text(`N° ${data.numero}   ·   Embarque ${data.shipment_numero}`, ML, 19);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(255, 255, 255);
+  doc.text(`Fecha: ${data.fecha}`, pageWidth - MR, 12, { align: 'right' });
+  if (data.cliente_nombre) {
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Cliente: ${data.cliente_nombre}`, pageWidth - MR, 19, { align: 'right' });
+  }
+  doc.setTextColor(0, 0, 0);
+
+  let y = 34;
+  const ensureSpace = (needed: number) => {
+    const pageHeight = doc.internal.pageSize.getHeight();
+    if (y + needed > pageHeight - 18) {
+      doc.addPage();
+      y = 20;
+    }
+  };
+
+  // ── UN BLOQUE POR PRODUCTO ────────────────────────────────────────────────────
+  data.productos.forEach((p, idx) => {
+    ensureSpace(10 + (p.conceptos.length + 1) * 7);
+
+    doc.setFillColor(...PROF_CLR.teal);
+    doc.rect(ML, y, pageWidth - ML - MR, 7, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(255, 255, 255);
+    const titulo = `${idx + 1}. ${p.nombre}${p.especificacion ? ' — ' + p.especificacion : ''}`;
+    doc.text(titulo, ML + 2, y + 5);
+    doc.text(`Cant: ${p.cantidad}`, pageWidth - MR - 2, y + 5, { align: 'right' });
+    doc.setTextColor(0, 0, 0);
+    y += 9;
+
+    const body: RowInput[] = p.conceptos.map(c => [
+      c.nombre,
+      { content: `Bs ${fmtN(c.valor_unitario)}`, styles: { halign: 'right' as const } },
+      { content: `Bs ${fmtN(round2(c.valor_unitario * p.cantidad))}`, styles: { halign: 'right' as const } },
+    ]);
+    body.push([
+      { content: 'Subtotal', styles: { fontStyle: 'bold' as const, fillColor: PROF_CLR.totalrow } },
+      { content: '', styles: { fillColor: PROF_CLR.totalrow } },
+      { content: `Bs ${fmtN(p.subtotal)}`, styles: { halign: 'right' as const, fontStyle: 'bold' as const, fillColor: PROF_CLR.totalrow } },
+    ]);
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Concepto', 'Unitario (Bs)', 'Total (Bs)']],
+      body,
+      headStyles: { fillColor: PROF_CLR.lightgray, textColor: [40, 40, 40], fontSize: 8.5 },
+      styles: { fontSize: 9, cellPadding: 2.2 },
+      columnStyles: { 1: { cellWidth: 35 }, 2: { cellWidth: 35 } },
+      margin: { left: ML, right: MR },
+    });
+    // @ts-ignore
+    y = doc.lastAutoTable.finalY + 6;
+  });
+
+  // ── TOTAL GENERAL ────────────────────────────────────────────────────────────
+  ensureSpace(14);
+  doc.setFillColor(...PROF_CLR.navy);
+  doc.rect(ML, y, pageWidth - ML - MR, 10, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(255, 255, 255);
+  doc.text('TOTAL GENERAL', ML + 3, y + 6.5);
+  doc.text(`Bs ${fmtN(data.total_general)}`, pageWidth - MR - 3, y + 6.5, { align: 'right' });
+  doc.setTextColor(0, 0, 0);
+
+  // ── PIE DE PÁGINA ────────────────────────────────────────────────────────────
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    const ph = doc.internal.pageSize.getHeight();
+    doc.setFillColor(...PROF_CLR.navy);
+    doc.rect(0, ph - 9, pageWidth, 9, 'F');
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(180, 210, 235);
+    doc.text(
+      `Cotización ${data.numero}  ·  Página ${i} de ${pageCount}  ·  ERP BV  ·  ${new Date().toLocaleString('es-BO')}`,
+      pageWidth / 2,
+      ph - 3,
+      { align: 'center' }
+    );
+    doc.setTextColor(0, 0, 0);
+  }
+
+  const slug = data.numero.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'cotizacion';
+  emitPdf(doc, `${slug}.pdf`);
 }
 
 // ─── Análisis de Inversión ──────────────────────────────────────────────────────

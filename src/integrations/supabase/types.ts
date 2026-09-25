@@ -2673,6 +2673,57 @@ export type Database = {
         }
         Relationships: []
       }
+      shipment_cotizaciones: {
+        Row: {
+          cliente_nombre: string | null
+          company_id: string
+          created_at: string
+          fecha: string
+          id: string
+          numero: string
+          productos: Json
+          shipment_id: string
+          total_general: number
+        }
+        Insert: {
+          cliente_nombre?: string | null
+          company_id: string
+          created_at?: string
+          fecha: string
+          id?: string
+          numero: string
+          productos: Json
+          shipment_id: string
+          total_general?: number
+        }
+        Update: {
+          cliente_nombre?: string | null
+          company_id?: string
+          created_at?: string
+          fecha?: string
+          id?: string
+          numero?: string
+          productos?: Json
+          shipment_id?: string
+          total_general?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipment_cotizaciones_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_cotizaciones_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shipments: {
         Row: {
           company_id: string
