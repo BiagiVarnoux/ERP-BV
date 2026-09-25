@@ -169,6 +169,20 @@ export function ShipmentQuoteDialog({ shipment, open, onOpenChange, companyId, c
   const productosResueltos = useMemo(() => resolverProductos(productos), [productos]);
   const totalGeneral = useMemo(() => calcTotalGeneral(productosResueltos), [productosResueltos]);
 
+  // Cuánto de cada producto ya se cotizó en cotizaciones anteriores de este embarque
+  // (sin importar qué conceptos tenía activados esa vez) — para avisar antes de
+  // cotizarlo de nuevo, no para bloquearlo (a veces se cotiza el mismo producto
+  // a más de un cliente).
+  const cantidadCotizadaPorProducto = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const q of quotes) {
+      for (const p of q.productos) {
+        map[p.shipment_product_id] = (map[p.shipment_product_id] ?? 0) + p.cantidad;
+      }
+    }
+    return map;
+  }, [quotes]);
+
   function emitirPDF(quote: Pick<ShipmentQuote, 'numero' | 'cliente_nombre' | 'fecha' | 'productos' | 'total_general'>, mode: 'view' | 'save') {
     const data = quoteToPdfData(shipment, quote);
     if (mode === 'view') previewNextPdf(() => exportProformaEmbarqueToPDF(data));
@@ -313,8 +327,12 @@ export function ShipmentQuoteDialog({ shipment, open, onOpenChange, companyId, c
                     cantidad: toDecimal(p.cantidad_str),
                     conceptos: p.conceptos.map(c => ({ ...c, valor_unitario: toDecimal(c.valor_str) })),
                   });
+                  const yaCotizado = cantidadCotizadaPorProducto[p.shipment_product_id];
                   return (
-                    <div key={p.id} className="border rounded-lg">
+                    <div
+                      key={p.id}
+                      className={`border rounded-lg ${yaCotizado ? 'border-l-4 border-l-amber-500' : ''}`}
+                    >
                       <div className="flex items-center gap-2 p-2.5">
                         <Checkbox
                           checked={p.incluido}
@@ -326,7 +344,17 @@ export function ShipmentQuoteDialog({ shipment, open, onOpenChange, companyId, c
                           disabled={!p.incluido}
                           onClick={() => updateProducto(p.id, { expanded: !p.expanded })}
                         >
-                          <p className="text-sm font-medium truncate">{p.nombre}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-medium truncate">{p.nombre}</p>
+                            {yaCotizado > 0 && (
+                              <span
+                                className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                                title="Unidades ya incluidas en cotizaciones anteriores de este embarque"
+                              >
+                                Ya cotizado: {yaCotizado} u.
+                              </span>
+                            )}
+                          </div>
                           {p.especificacion && <p className="text-xs text-muted-foreground truncate">{p.especificacion}</p>}
                         </button>
                         {p.incluido && (
