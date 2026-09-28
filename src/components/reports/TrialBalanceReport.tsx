@@ -11,8 +11,6 @@ import { fmt, nowInAppTZ } from '@/accounting/utils';
 import { Quarter, isDateInQuarter } from '@/accounting/quarterly-utils';
 import { parseMonthString, isDateInMonth, isDateInYear, getYearPeriod } from '@/accounting/period-utils';
 import { exportTrialBalanceToPDF, previewNextPdf } from '@/services/pdfService';
-import { useIsMobile } from '@/hooks/use-mobile';
-import { DataCards, DataCard, DataRow } from '@/components/shared/ResponsiveTable';
 
 interface TrialBalanceReportProps {
   accounts: Account[];
@@ -125,8 +123,6 @@ export function TrialBalanceReport({
 
   const cerrarSeleccion = () => { setSeleccionando(false); setSeleccionadas(new Set()); };
 
-  const isMobile = useIsMobile();
-
   const handleExportPDF = (mode: 'save' | 'view' = 'save') => {
     const pdfRows = trialRows.rows.map(r => ({
       id: r.id, name: r.name, debit: r.debit, credit: r.credit,
@@ -173,41 +169,8 @@ export function TrialBalanceReport({
           currentQuarter={currentQuarter}
           currentYear={getYearPeriod(selectedYear)}
         />
-        {isMobile ? (
-          <DataCards>
-            {trialRows.rows.map(r => {
-              const saldo = r.side === 'DEBE' ? r.debit - r.credit : r.credit - r.debit;
-              const sel = seleccionadas.has(r.id);
-              return (
-                <DataCard
-                  key={r.id}
-                  onClick={seleccionando ? () => toggleSel(r.id) : undefined}
-                  className={sel ? 'ring-2 ring-primary bg-primary/5' : undefined}
-                  title={
-                    <span className="flex items-center gap-2">
-                      {seleccionando && (
-                        <Checkbox checked={sel} aria-label={`Seleccionar ${r.name}`} className="pointer-events-none" />
-                      )}
-                      {r.name}
-                    </span>
-                  }
-                  subtitle={<span className="font-mono">{r.id}</span>}
-                >
-                  <DataRow label="Debe" value={r.debit ? fmt(r.debit) : '—'} align="right" />
-                  <DataRow label="Haber" value={r.credit ? fmt(r.credit) : '—'} align="right" />
-                  <DataRow label="Saldo" value={fmt(saldo)} align="right" strong />
-                </DataCard>
-              );
-            })}
-            <DataCard className="bg-muted/60" title="Totales">
-              <DataRow label="Debe" value={fmt(trialRows.totals.debit)} align="right" strong />
-              <DataRow label="Haber" value={fmt(trialRows.totals.credit)} align="right" strong />
-              <DataRow label="Saldo" value={fmt(trialRows.totals.debit - trialRows.totals.credit)} align="right" strong />
-            </DataCard>
-          </DataCards>
-        ) : (
         <div className="border rounded-xl overflow-hidden">
-          <Table>
+          <Table className="text-xs sm:text-sm [&_td]:p-2 [&_th]:h-9 [&_th]:px-2 sm:[&_td]:p-4 sm:[&_th]:h-12 sm:[&_th]:px-4">
             <TableHeader>
               <TableRow>
                 {seleccionando && (
@@ -260,7 +223,6 @@ export function TrialBalanceReport({
             </TableBody>
           </Table>
         </div>
-        )}
 
         {/* Barra de suma de las cuentas seleccionadas (inline, sin popup) */}
         {seleccionando && (
