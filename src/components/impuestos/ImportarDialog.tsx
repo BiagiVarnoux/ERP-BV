@@ -171,7 +171,7 @@ export function ImportarDialog({ open, onOpenChange, tipo, companyId, periodo, o
           </div>
         ) : (
           <div className="rounded-md border overflow-x-auto">
-            <Table>
+            <Table className="text-xs sm:text-sm [&_td]:p-2 [&_th]:h-9 [&_th]:px-2 sm:[&_td]:p-4 sm:[&_th]:h-12 sm:[&_th]:px-4">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-10">

@@ -347,7 +347,7 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
 
           {/* Escritorio */}
           <div className="rounded-md border hidden sm:block overflow-x-auto">
-            <Table>
+            <Table className="text-xs md:text-sm [&_td]:p-2 [&_th]:h-9 [&_th]:px-2 md:[&_td]:p-4 md:[&_th]:h-12 md:[&_th]:px-4">
               <TableHeader>
                 <TableRow>
                   <TableHead>Fecha</TableHead>
