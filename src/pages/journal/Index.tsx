@@ -314,7 +314,7 @@ export default function JournalPage() {
       const costLines = je.lines
         .map(line => {
           const acct = accounts.find(a => a.id === line.account_id);
-          if (acct && (acct as any).clasificacion_resultado === 'costo_ventas') {
+          if (acct && acct.clasificacion_resultado === 'costo_ventas') {
             return { accountId: line.account_id, amount: line.debit || line.credit };
           }
           return null;
@@ -351,8 +351,8 @@ export default function JournalPage() {
           setTaxDocModalState({ isOpen: true, linesToProcess: taxLines, journalEntry: je });
         }
       }
-    } catch (e: any) {
-      toast.error(e.message || 'Error guardando asiento');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error && e.message ? e.message : 'Error guardando asiento');
     }
   }
 
@@ -364,7 +364,7 @@ export default function JournalPage() {
         const je = pendingSavedEntry;
         for (const line of je.lines) {
           const acct = accounts.find(a => a.id === line.account_id);
-          if (acct && (acct as any).clasificacion_resultado === 'costo_ventas') {
+          if (acct && acct.clasificacion_resultado === 'costo_ventas') {
             // Update the debit on cost-of-sales line
             await supabase
               .from('journal_lines')
@@ -376,7 +376,7 @@ export default function JournalPage() {
         // Reload entries to reflect updated amounts
         setEntries(await adapter.loadEntries());
         toast.info(`Monto de costo de ventas actualizado a ${totalCosto.toFixed(2)}`);
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error('Error updating journal amounts:', e);
       }
     }
@@ -399,8 +399,8 @@ export default function JournalPage() {
       toast.success('Asiento eliminado');
       setDeleteDialogOpen(false);
       setEntryToDelete(null);
-    } catch (e: any) {
-      toast.error(e.message || 'No se pudo eliminar asiento');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error && e.message ? e.message : 'No se pudo eliminar asiento');
       setDeleteDialogOpen(false);
       setEntryToDelete(null);
     }
@@ -422,8 +422,8 @@ export default function JournalPage() {
       });
       setEntries(await adapter.loadEntries());
       toast.success(`Asiento ${orig.id} anulado con ${inv.id}`);
-    } catch (e: any) {
-      toast.error(e.message || 'No se pudo anular');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error && e.message ? e.message : 'No se pudo anular');
     }
   }
 
