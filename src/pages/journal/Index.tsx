@@ -1,5 +1,5 @@
 // src/pages/journal/Index.tsx
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Download, FileText, Filter } from 'lucide-react';
@@ -29,7 +29,7 @@ import { InlineKardexPopup, KardexData } from '@/components/kardex/InlineKardexP
 import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLedgerModal';
 import { CxpCxcModal, CxpCxcLineToProcess } from '@/components/journal/CxpCxcModal';
 import { TaxDocFromJournalModal, TaxLineToProcess } from '@/components/journal/TaxDocFromJournalModal';
-import { hasTaxDocumentForEntry } from '@/domain/taxes';
+import { hasTaxDocumentForEntry, listArchivosPorAsiento, type ArchivoDeAsiento } from '@/domain/taxes';
 import { InventoryExitModal } from '@/components/inventory/InventoryExitModal';
 import { FifoExitModal } from '@/components/inventory/FifoExitModal';
 import { InventoryLot } from '@/components/inventory/fifo-utils';
@@ -50,7 +50,7 @@ import { useJournalForm, LineDraft } from '@/hooks/useJournalForm';
 
 export default function JournalPage() {
   const { accounts, entries, setEntries, adapter, auxiliaryDefinitions, kardexDefinitions, fiscalYears } = useAccounting();
-  const { can } = useUserAccess();
+  const { can, canView } = useUserAccess();
   const canCreate  = can('journal', 'create');
   const canEdit    = can('journal', 'edit');
   const isReadOnly = !canCreate && !canEdit;
@@ -183,6 +183,24 @@ export default function JournalPage() {
   }, [entries, resolvedPeriod, filters]);
 
   const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
+
+  // Facturas del libro fiscal adjuntas a un asiento, para marcarlas en la lista.
+  // Solo se cargan si el usuario puede ver el módulo de Impuestos: el adjunto es
+  // un documento fiscal y sigue los permisos de su módulo, no los del Diario.
+  const [adjuntosFiscales, setAdjuntosFiscales] = useState<Record<string, ArchivoDeAsiento>>({});
+  const puedeVerAdjuntos = canView('taxes');
+
+  const cargarAdjuntos = useCallback(async () => {
+    if (!activeCompanyId || !puedeVerAdjuntos) { setAdjuntosFiscales({}); return; }
+    try {
+      setAdjuntosFiscales(await listArchivosPorAsiento(activeCompanyId));
+    } catch (e) {
+      // Un fallo aquí no debe romper el Diario: solo se pierden los iconos.
+      console.warn('No se pudieron cargar los adjuntos fiscales:', e);
+    }
+  }, [activeCompanyId, puedeVerAdjuntos]);
+
+  useEffect(() => { cargarAdjuntos(); }, [cargarAdjuntos]);
 
   useEffect(() => {
     localStorage.setItem('journal-show-line-memos', showLineMemos.toString());
@@ -493,6 +511,7 @@ export default function JournalPage() {
         onEdit={form.editEntry}
         onVoid={voidEntry}
         onDelete={handleDeleteClick}
+        adjuntos={adjuntosFiscales}
       />
 
       {kardexPopupState && (
@@ -531,7 +550,10 @@ export default function JournalPage() {
           linesToProcess={taxDocModalState.linesToProcess}
           journalEntry={taxDocModalState.journalEntry}
           companyId={activeCompanyId}
-          onDone={() => setTaxDocModalState({ isOpen: false, linesToProcess: [], journalEntry: null })}
+          onDone={() => {
+            setTaxDocModalState({ isOpen: false, linesToProcess: [], journalEntry: null });
+            cargarAdjuntos();
+          }}
         />
       )}
 

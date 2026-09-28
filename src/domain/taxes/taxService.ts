@@ -68,6 +68,51 @@ export async function listPeriodosConDocumentos(companyId: string, tipo: TaxDocT
   return [...set].sort().reverse();
 }
 
+/** Archivo fiscal adjunto a un asiento, para mostrarlo en el Libro Diario. */
+export interface ArchivoDeAsiento {
+  tax_document_id: string;
+  tipo: TaxDocTipo;
+  archivo_path: string;
+  archivo_nombre: string | null;
+  /** Identificación del documento, para el tooltip: nº de factura o de DIM. */
+  referencia: string | null;
+}
+
+/**
+ * Adjuntos del libro fiscal indexados por asiento. El Libro Diario lo usa para
+ * marcar qué asientos tienen su factura guardada y poder abrirla desde ahí.
+ * Una consulta única para toda la empresa: son pocas filas y evita una llamada
+ * por asiento al pintar la lista.
+ */
+export async function listArchivosPorAsiento(
+  companyId: string,
+): Promise<Record<string, ArchivoDeAsiento>> {
+  if (!companyId) return {};
+  const { data, error } = await table()
+    .select('id, tipo, journal_entry_id, archivo_path, archivo_nombre, numero_factura, numero_declaracion')
+    .eq('company_id', companyId)
+    .not('journal_entry_id', 'is', null)
+    .not('archivo_path', 'is', null);
+  if (error) throw new Error(error.message);
+
+  const mapa: Record<string, ArchivoDeAsiento> = {};
+  for (const r of (data ?? []) as Array<{
+    id: string; tipo: TaxDocTipo; journal_entry_id: string;
+    archivo_path: string; archivo_nombre: string | null;
+    numero_factura: string | null; numero_declaracion: string | null;
+  }>) {
+    mapa[r.journal_entry_id] = {
+      tax_document_id: r.id,
+      tipo: r.tipo,
+      archivo_path: r.archivo_path,
+      archivo_nombre: r.archivo_nombre,
+      // Una DIM se identifica por su nº de declaración; su nº de factura es '0'.
+      referencia: r.numero_declaracion ?? r.numero_factura,
+    };
+  }
+  return mapa;
+}
+
 /**
  * ¿Este asiento ya generó una fila del libro fiscal? Se consulta antes de
  * ofrecer el modal del Libro Diario, para no cargar la misma factura dos veces

@@ -276,6 +276,8 @@ El IVA NO es el 13% "por dentro". La Aduana lo liquida "por fuera" sobre CIF + G
 
 Cada fila puede llevar adjunta la factura (`archivo_path`, `archivo_nombre`, `archivo_mime`, `archivo_size`) en el bucket **`tax-docs`**, rutas `{company_id}/{tax_document_id}/{archivo}`. A diferencia de los buckets antiguos, sus políticas de Storage validan el primer segmento de la ruta contra `company_members`: un miembro de otra empresa no puede leerlas. ⚠️ Los binarios NO van en el backup JSON (solo la referencia), misma limitación que `shipment-docs`.
 
+El **Libro Diario marca los asientos que tienen su factura adjunta** (`JournalEntryAttachment`), con accesos para verla o descargarla. El mapa asiento → adjunto se trae de una sola consulta (`listArchivosPorAsiento`), no una por fila, y **se gatea con `canView('taxes')`**: el adjunto es un documento fiscal y sigue los permisos de su módulo, no los del Diario.
+
 `accounts.modulo_vinculado` acepta `cxp` | `cxc` | `credito_fiscal` | `debito_fiscal`. Los dos últimos hacen que un asiento del Libro Diario que toque esa cuenta ofrezca registrar la factura en el libro fiscal (`TaxDocFromJournalModal`), enlazada por `journal_entry_id`. El índice único parcial `(company_id, journal_entry_id)` garantiza una sola factura por asiento; el importador de Ventas/CxP también excluye los asientos ya usados.
 
 ### System / multi-company

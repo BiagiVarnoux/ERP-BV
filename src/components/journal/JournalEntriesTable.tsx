@@ -9,6 +9,8 @@ import { JournalEntry, Account } from '@/accounting/types';
 import { fmt, round2, cmpEntryOrder } from '@/accounting/utils';
 import { Badge } from '@/components/ui/badge';
 import { DataCard, DataCardHeader, DataCardActions, DataCardList } from '@/components/ui/data-card';
+import { JournalEntryAttachment } from './JournalEntryAttachment';
+import type { ArchivoDeAsiento } from '@/domain/taxes';
 
 interface JournalEntriesTableProps {
   entries: JournalEntry[];
@@ -20,6 +22,8 @@ interface JournalEntriesTableProps {
   onEdit: (entry: JournalEntry) => void;
   onVoid: (entry: JournalEntry) => void;
   onDelete: (id: string) => void;
+  /** Facturas del libro fiscal adjuntas, indexadas por id de asiento. */
+  adjuntos?: Record<string, ArchivoDeAsiento>;
 }
 
 export function JournalEntriesTable({
@@ -32,6 +36,7 @@ export function JournalEntriesTable({
   onEdit,
   onVoid,
   onDelete,
+  adjuntos = {},
 }: JournalEntriesTableProps) {
   const sortedEntries = [...entries].sort((a, b) =>
     sortOrder === 'asc' ? cmpEntryOrder(a, b) : cmpEntryOrder(b, a)
@@ -80,6 +85,11 @@ export function JournalEntriesTable({
                     })}
                   </div>
                   {e.memo && <div className="mt-1 text-muted-foreground italic text-xs">{e.memo}</div>}
+                  {adjuntos[e.id] && (
+                    <div className="mt-2 pt-2 border-t">
+                      <JournalEntryAttachment archivo={adjuntos[e.id]} variant="full" />
+                    </div>
+                  )}
                   {!isReadOnly && (
                     <DataCardActions className="mt-2 pt-2 border-t">
                       <Button size="sm" variant="outline" className="flex-1" onClick={() => onEdit(e)} disabled={!!e.void_of}><Pencil className="w-3.5 h-3.5 mr-1" />Editar</Button>
@@ -123,6 +133,7 @@ export function JournalEntriesTable({
                       <TableCell className="font-mono">
                         <div className="flex items-center gap-2">
                           {e.id}
+                          {adjuntos[e.id] && <JournalEntryAttachment archivo={adjuntos[e.id]} />}
                           {isUnbalanced && (
                             <Badge variant="destructive" className="text-xs flex items-center gap-1">
                               <AlertTriangle className="h-3 w-3" />
