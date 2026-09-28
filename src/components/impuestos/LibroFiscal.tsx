@@ -353,7 +353,7 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
                   <TableHead>Fecha</TableHead>
                   <TableHead>NIT</TableHead>
                   <TableHead>{esCompra ? 'Proveedor' : 'Cliente'}</TableHead>
-                  <TableHead>Nº Factura</TableHead>
+                  <TableHead>Nº Factura / DIM</TableHead>
                   <TableHead>Autorización</TableHead>
                   <TableHead className="text-right">Importe</TableHead>
                   <TableHead className="text-right">Base</TableHead>

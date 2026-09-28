@@ -5,7 +5,7 @@ import { calcularBaseEIva, periodoDeFecha } from './calc';
 import { borrarArchivoFactura, subirArchivoFactura, type ArchivoFactura } from './taxDocStorage';
 import type {
   CreateTaxDocumentInput, CxPPendienteFiscal, TaxDocTipo, TaxDocumentRow,
-  UpdateTaxDocumentInput, VentaPendienteFiscal,
+  TaxTipoDocumento, UpdateTaxDocumentInput, VentaPendienteFiscal,
 } from './types';
 
 // `tax_documents` y `payables.sin_credito_fiscal` aún no están en los tipos
@@ -72,9 +72,11 @@ export async function listPeriodosConDocumentos(companyId: string, tipo: TaxDocT
 export interface ArchivoDeAsiento {
   tax_document_id: string;
   tipo: TaxDocTipo;
+  /** Distingue una DIM ('dui') de una factura comercial: cambia cómo se rotula. */
+  tipo_documento: TaxTipoDocumento;
   archivo_path: string;
   archivo_nombre: string | null;
-  /** Identificación del documento, para el tooltip: nº de factura o de DIM. */
+  /** Número que identifica al documento: el de la DIM si lo es, si no el de factura. */
   referencia: string | null;
 }
 
@@ -89,7 +91,7 @@ export async function listArchivosPorAsiento(
 ): Promise<Record<string, ArchivoDeAsiento>> {
   if (!companyId) return {};
   const { data, error } = await table()
-    .select('id, tipo, journal_entry_id, archivo_path, archivo_nombre, numero_factura, numero_declaracion')
+    .select('id, tipo, tipo_documento, journal_entry_id, archivo_path, archivo_nombre, numero_factura, numero_declaracion')
     .eq('company_id', companyId)
     .not('journal_entry_id', 'is', null)
     .not('archivo_path', 'is', null);
@@ -97,17 +99,20 @@ export async function listArchivosPorAsiento(
 
   const mapa: Record<string, ArchivoDeAsiento> = {};
   for (const r of (data ?? []) as Array<{
-    id: string; tipo: TaxDocTipo; journal_entry_id: string;
+    id: string; tipo: TaxDocTipo; tipo_documento: TaxTipoDocumento; journal_entry_id: string;
     archivo_path: string; archivo_nombre: string | null;
     numero_factura: string | null; numero_declaracion: string | null;
   }>) {
+    // Una DIM se identifica por su N° de declaración (DI-AAAA-...): su
+    // `numero_factura` es '0' por convención y no dice nada.
+    const esDim = r.tipo_documento === 'dui';
     mapa[r.journal_entry_id] = {
       tax_document_id: r.id,
       tipo: r.tipo,
+      tipo_documento: r.tipo_documento,
       archivo_path: r.archivo_path,
       archivo_nombre: r.archivo_nombre,
-      // Una DIM se identifica por su nº de declaración; su nº de factura es '0'.
-      referencia: r.numero_declaracion ?? r.numero_factura,
+      referencia: esDim ? r.numero_declaracion : r.numero_factura,
     };
   }
   return mapa;

@@ -26,9 +26,16 @@ export function JournalEntryAttachment({ archivo, variant = 'compact', className
   const [abriendo, setAbriendo] = useState(false);
   const [bajando, setBajando] = useState(false);
 
-  const etiqueta = archivo.referencia
-    ? `${archivo.tipo === 'compra' ? 'Factura de compra' : 'Factura de venta'} ${archivo.referencia}`
-    : archivo.archivo_nombre ?? 'Documento adjunto';
+  // Una DIM se nombra por su N° de declaración (DI-AAAA-...), no como factura:
+  // su `numero_factura` es '0' por convención del Libro de Compras.
+  const esDim = archivo.tipo_documento === 'dui';
+  const claseDoc = esDim
+    ? 'DIM'
+    : archivo.tipo === 'compra' ? 'Factura de compra' : 'Factura de venta';
+  /** Lo que se ve en el Diario: qué clase de documento hay, sin su número. */
+  const etiqueta = `${claseDoc} adjunta`;
+  /** Detalle completo, solo para el tooltip y las etiquetas de accesibilidad. */
+  const detalle = archivo.referencia ? `${claseDoc} ${archivo.referencia}` : etiqueta;
 
   // El bucket es privado: para ver el archivo hace falta una URL firmada temporal.
   async function ver() {
@@ -58,7 +65,7 @@ export function JournalEntryAttachment({ archivo, variant = 'compact', className
     return (
       <div className={cn('flex items-center gap-2 min-w-0', className)}>
         <Paperclip className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground truncate flex-1" title={etiqueta}>
+        <span className="text-xs text-muted-foreground truncate flex-1" title={detalle}>
           {etiqueta}
         </span>
         <Button size="sm" variant="outline" className="h-7 px-2 shrink-0" onClick={ver} disabled={abriendo}>
@@ -73,18 +80,18 @@ export function JournalEntryAttachment({ archivo, variant = 'compact', className
   }
 
   return (
-    <span className={cn('inline-flex items-center', className)}>
+    <span className={cn('inline-flex items-center', className)} title={detalle}>
       <Paperclip className="w-3.5 h-3.5 text-muted-foreground" aria-hidden />
       <Button
         size="icon" variant="ghost" className="h-6 w-6"
-        title={`Ver ${etiqueta}`} aria-label={`Ver ${etiqueta}`}
+        title={`Ver ${detalle}`} aria-label={`Ver ${detalle}`}
         onClick={ver} disabled={abriendo}
       >
         {abriendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
       </Button>
       <Button
         size="icon" variant="ghost" className="h-6 w-6"
-        title={`Descargar ${etiqueta}`} aria-label={`Descargar ${etiqueta}`}
+        title={`Descargar ${detalle}`} aria-label={`Descargar ${detalle}`}
         onClick={descargar} disabled={bajando}
       >
         {bajando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
