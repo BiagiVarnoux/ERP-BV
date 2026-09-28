@@ -30,6 +30,16 @@ import {
 } from '@/domain/taxes';
 import { downloadBlob, openExternalUrl } from '@/lib/open-url';
 
+/**
+ * Número que identifica al documento. Una DIM se identifica por su N° de
+ * declaración: su `numero_factura` es '0' por convención del Libro de Compras
+ * y no dice nada. Vive aquí para que escritorio y móvil no se desincronicen —
+ * pasó: la tabla mostraba el N° de DIM y la tarjeta móvil seguía mostrando '0'.
+ */
+function numeroDocumento(row: TaxDocumentRow): string | null {
+  return row.numero_declaracion ?? row.numero_factura ?? null;
+}
+
 function periodoActualDefault(): string {
   const { year, month } = nowInAppTZ();
   return `${year}-${String(month).padStart(2, '0')}`;
@@ -135,7 +145,7 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
     if (!row.archivo_path) return;
     try {
       const blob = await descargarArchivoFactura(row.archivo_path);
-      downloadBlob(blob, row.archivo_nombre ?? `factura-${row.numero_factura ?? row.id}`);
+      downloadBlob(blob, row.archivo_nombre ?? `documento-${numeroDocumento(row) ?? row.id}`);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'No se pudo descargar el archivo');
     }
@@ -297,7 +307,7 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
             {filtered.map(row => (
               <DataCard key={row.id} className={row.estado === 'anulada' ? 'opacity-60' : ''}>
                 <DataCardHeader
-                  title={<span className="font-mono text-sm">{row.numero_factura ?? 'S/N'}</span>}
+                  title={<span className="font-mono text-sm">{numeroDocumento(row) ?? 'S/N'}</span>}
                   subtitle={row.razon_social}
                   right={
                     row.estado === 'anulada'
@@ -370,9 +380,9 @@ export function LibroFiscal({ tipo }: { tipo: TaxDocTipo }) {
                     <TableCell className="font-mono text-xs">{row.nit ?? '—'}</TableCell>
                     <TableCell className="max-w-[200px] truncate" title={row.razon_social}>{row.razon_social}</TableCell>
                     <TableCell className="font-mono text-xs">
-                      {row.numero_declaracion
-                        ? <span title={`DIM ${row.numero_declaracion}`}>{row.numero_declaracion}</span>
-                        : row.numero_factura ?? '—'}
+                      <span title={row.numero_declaracion ? `DIM ${row.numero_declaracion}` : undefined}>
+                        {numeroDocumento(row) ?? '—'}
+                      </span>
                     </TableCell>
                     <TableCell className="font-mono text-xs max-w-[140px] truncate" title={row.numero_autorizacion ?? ''}>
                       {row.numero_autorizacion ?? '—'}
