@@ -418,7 +418,7 @@ export function CashFlowReport({
         <p className="text-xs text-muted-foreground">{subtitle}</p>
       </div>
       {items.length > 0 ? (
-        <Table>
+        <Table className="text-xs sm:text-sm [&_td]:p-2 [&_th]:h-9 [&_th]:px-2 sm:[&_td]:p-4 sm:[&_th]:h-12 sm:[&_th]:px-4">
           <TableBody>
             {items.map((item, idx) => {
               const s = sel.isSel(item.id);

@@ -324,7 +324,7 @@ export function BalanceSheetReport({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Column: ASSETS */}
           <div className="border rounded-xl overflow-hidden">
-            <Table>
+            <Table className="text-xs sm:text-sm [&_td]:p-2 [&_th]:h-9 [&_th]:px-2 sm:[&_td]:p-4 sm:[&_th]:h-12 sm:[&_th]:px-4">
               <TableHeader>
                 <TableRow>
                   <TableHead>Código</TableHead>
@@ -359,7 +359,7 @@ export function BalanceSheetReport({
 
           {/* Right Column: LIABILITIES + EQUITY */}
           <div className="border rounded-xl overflow-hidden">
-            <Table>
+            <Table className="text-xs sm:text-sm [&_td]:p-2 [&_th]:h-9 [&_th]:px-2 sm:[&_td]:p-4 sm:[&_th]:h-12 sm:[&_th]:px-4">
               <TableHeader>
                 <TableRow>
                   <TableHead>Código</TableHead>
