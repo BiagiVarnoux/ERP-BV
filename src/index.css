@@ -105,7 +105,52 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html {
+    /* Evita que iOS reescale la tipografía al girar el dispositivo. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-background text-foreground;
+    /* Sin flash gris al tocar en móvil y sin "rebote" elástico fuera del área. */
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
   }
+
+  /* iOS hace zoom automático al enfocar un control con letra < 16px.
+     Subimos los controles a 16px SOLO en pantallas chicas para evitarlo,
+     sin afectar la densidad del diseño en escritorio. */
+  @media (max-width: 767px) {
+    input,
+    textarea,
+    select,
+    [contenteditable="true"] {
+      font-size: 16px;
+    }
+  }
+
+  /* Scroll suave con inercia en los contenedores desplazables de iOS. */
+  .overflow-auto,
+  .overflow-y-auto,
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@layer utilities {
+  /* ---- Safe-area (notch / barra inferior) para modo app en el celular ---- */
+  .pt-safe   { padding-top: env(safe-area-inset-top); }
+  .pb-safe   { padding-bottom: env(safe-area-inset-bottom); }
+  .pl-safe   { padding-left: env(safe-area-inset-left); }
+  .pr-safe   { padding-right: env(safe-area-inset-right); }
+  .px-safe   { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+  /* Combinan el inset con un valor base (p.ej. altura de header + notch). */
+  .h-header-safe { height: calc(3.5rem + env(safe-area-inset-top)); }
+  .top-safe  { top: env(safe-area-inset-top); }
+  .min-h-touch { min-height: 2.75rem; }  /* 44px: objetivo de toque mínimo */
+  .min-w-touch { min-width: 2.75rem; }
+
+  /* Números alineados para columnas de importes (Bs). */
+  .tnum { font-variant-numeric: tabular-nums; }
 }

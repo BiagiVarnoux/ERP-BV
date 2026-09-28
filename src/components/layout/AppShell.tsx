@@ -393,7 +393,7 @@ export function AppShell() {
       {/* Sidebar desktop (minimizable) */}
       <aside
         className={cn(
-          'hidden md:flex fixed inset-y-0 left-0 z-50 border-r bg-card flex-col',
+          'hidden md:flex fixed inset-y-0 left-0 z-50 border-r bg-card flex-col pt-safe pb-safe pl-safe',
           'transition-[width] duration-300 ease-in-out',
           collapsed ? 'w-16' : 'w-60',
         )}
@@ -404,7 +404,7 @@ export function AppShell() {
       {/* Sidebar móvil (drawer, siempre completo) */}
       <aside
         className={cn(
-          'md:hidden fixed inset-y-0 left-0 z-50 w-60 border-r bg-card flex flex-col',
+          'md:hidden fixed inset-y-0 left-0 z-50 w-[min(18rem,85vw)] border-r bg-card flex flex-col pt-safe pb-safe pl-safe',
           'transition-transform duration-300 ease-in-out',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
         )}
@@ -412,13 +412,13 @@ export function AppShell() {
         <SidebarContent onClose={() => setMobileOpen(false)} />
       </aside>
 
-      <div className={cn('flex flex-col flex-1 min-w-0 overflow-auto transition-[margin] duration-300 ease-in-out', collapsed ? 'md:ml-16' : 'md:ml-60')}>
-        <header className="md:hidden shrink-0 border-b bg-card/50 backdrop-blur px-4 h-14 flex items-center gap-3">
+      <div className={cn('flex flex-col flex-1 min-w-0 overflow-auto transition-[margin] duration-300 ease-in-out pl-safe pr-safe', collapsed ? 'md:ml-16' : 'md:ml-60')}>
+        <header className="md:hidden sticky top-0 z-30 shrink-0 border-b bg-card/80 backdrop-blur px-4 pt-safe flex items-center gap-3" style={{ minHeight: '3.5rem' }}>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setMobileOpen(true)}
-            className="h-8 w-8"
+            className="h-9 w-9 -ml-1"
             aria-label="Abrir menú"
           >
             <Menu className="h-5 w-5" />
@@ -441,7 +441,7 @@ export function AppShell() {
           <Outlet />
         </main>
 
-        <footer className="shrink-0 border-t bg-card/30 px-4 sm:px-6 py-4">
+        <footer className="shrink-0 border-t bg-card/30 px-4 sm:px-6 py-4 pb-safe">
           <p className="text-xs text-muted-foreground">
             {isReadOnly
               ? 'Modo de solo lectura — Estás viendo datos compartidos contigo.'
