@@ -114,6 +114,10 @@ export interface InvestmentAnalysis {
   user_id?: string;
 
   nombre: string;
+  // Slug legible para la URL (`/investments/<slug>`). Se genera del nombre y es
+  // único por empresa. Se regenera al renombrar; los links por UUID viejos
+  // siguen resolviendo (ver InvestmentStorage.loadOne).
+  slug?: string;
   notas?: string;
 
   // Posición manual de la tarjeta en la lista (drag & drop). Menor = primero.

@@ -17,6 +17,7 @@ import { ShareButton } from '@/components/shared/ShareButton';
 import { FormSection } from '@/components/shared/FormSection';
 import { ManualOverride } from '@/components/shared/ManualOverride';
 import { NumInput, Pct, Field, StatCard } from './ui-helpers';
+import { CopyItemFromAnalysisDialog } from './CopyItemFromAnalysisDialog';
 
 interface Props {
   items: InvestmentItem[];
@@ -37,6 +38,11 @@ interface Props {
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
   onReorder: (items: InvestmentItem[]) => void;
+  /** Copia productos traídos de otro análisis (ya mapea id/orden en el destino). */
+  onCopyItems: (items: InvestmentItem[]) => void;
+  /** Empresa activa y análisis actual, para el diálogo "Copiar de otro análisis". */
+  companyId: string | null;
+  analysisId: string;
   /** Ruta del análisis, para los enlaces de "Compartir" por producto. */
   sharePath: string;
   /** Producto señalado por un enlace compartido (?item=...): se abre y resalta. */
@@ -46,8 +52,10 @@ interface Props {
 export function TabProductos({
   items, calcs, resumen, tcOficial, onTcOficial, fleteCifPct, onFleteCifPct,
   headerTcCompra, headerTcEnvio, onTcCompraAll, onTcEnvioAll, onPesoModeAll,
-  onUpdate, onAdd, onRemove, onDuplicate, onReorder, sharePath, highlightItemId,
+  onUpdate, onAdd, onRemove, onDuplicate, onReorder, onCopyItems, companyId, analysisId,
+  sharePath, highlightItemId,
 }: Props) {
+  const [copyOpen, setCopyOpen] = useState(false);
   // ¿Todos los productos comparten el mismo T/C? (si no, avisamos que hay valores mixtos)
   const allSameTcCompra = items.length <= 1 || items.every(it => it.tc === items[0].tc);
   const allSameTcEnvio  = items.length <= 1 || items.every(it => (it.tc_envio ?? null) === (items[0].tc_envio ?? null));
@@ -214,9 +222,14 @@ export function TabProductos({
         {items.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground border rounded-lg">
             <p className="mb-3">No hay productos en este análisis</p>
-            <Button variant="outline" size="sm" onClick={() => { onAdd(); }} className="gap-2">
-              <Plus className="h-3.5 w-3.5" /> Agregar producto
-            </Button>
+            <div className="flex items-center justify-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => { onAdd(); }} className="gap-2">
+                <Plus className="h-3.5 w-3.5" /> Agregar producto
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setCopyOpen(true)} className="gap-2">
+                <Copy className="h-3.5 w-3.5" /> Copiar de otro análisis
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="rounded-lg border divide-y overflow-hidden">
@@ -254,12 +267,25 @@ export function TabProductos({
         )}
 
         {items.length > 0 && (
-          <Button variant="outline" size="sm" onClick={onAdd} className="gap-2">
-            <Plus className="h-3.5 w-3.5" /> Agregar producto
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={onAdd} className="gap-2">
+              <Plus className="h-3.5 w-3.5" /> Agregar producto
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setCopyOpen(true)} className="gap-2">
+              <Copy className="h-3.5 w-3.5" /> Copiar de otro análisis
+            </Button>
+          </div>
         )}
 
         {items.length > 0 && <ResumenCard resumen={resumen} count={items.length} />}
+
+        <CopyItemFromAnalysisDialog
+          open={copyOpen}
+          onOpenChange={setCopyOpen}
+          companyId={companyId}
+          excludeAnalysisId={analysisId}
+          onCopy={onCopyItems}
+        />
       </div>
     </TooltipProvider>
   );

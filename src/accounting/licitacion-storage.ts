@@ -7,6 +7,7 @@ import {
   Licitacion, LicitacionProducto, LicitacionDoc,
   LicitacionEstado, TipoProceso,
 } from './licitacion-types';
+import { generateUniqueSlug, looksLikeUuid } from '@/lib/slug';
 
 // ─── Helpers de autenticación ─────────────────────────────────────────────────
 
@@ -33,6 +34,7 @@ function rowToLicitacion(row: Record<string, unknown>): Licitacion {
     company_id:            row.company_id as string,
     user_id:               row.user_id as string,
     nombre:                (row.nombre as string) || '',
+    slug:                  (row.slug as string) || undefined,
     entidad:               (row.entidad as string) || '',
     numero_sicoes:         (row.numero_sicoes as string) || '',
     tipo_proceso:          (row.tipo_proceso as TipoProceso) || 'ANPE',
@@ -130,6 +132,31 @@ function rowToDoc(row: Record<string, unknown>): LicitacionDoc {
   };
 }
 
+// Resuelve la cabecera de una licitación por slug o por UUID. Prueba primero la
+// vía que sugiere el formato del parámetro y cae a la otra (links viejos por
+// UUID, o un slug que casualmente parezca UUID). RLS limita a las empresas del
+// usuario; si el slug empata en dos, prioriza `preferredCompanyId`.
+async function resolveLicitacionHeader(
+  slugOrId: string,
+  preferredCompanyId?: string | null,
+): Promise<Record<string, unknown>> {
+  const byUuid = looksLikeUuid(slugOrId);
+
+  const trySlug = async () =>
+    (await supabase.from('licitaciones').select('*').eq('slug', slugOrId)).data ?? [];
+  const tryId = async () =>
+    (await supabase.from('licitaciones').select('*').eq('id', slugOrId)).data ?? [];
+
+  let rows = byUuid ? await tryId() : await trySlug();
+  if (rows.length === 0) rows = byUuid ? await trySlug() : await tryId();
+  if (rows.length === 0) throw new Error('Licitación no encontrada');
+
+  const preferred = preferredCompanyId
+    ? rows.find((r: { company_id?: string }) => r.company_id === preferredCompanyId)
+    : undefined;
+  return (preferred ?? rows[0]) as Record<string, unknown>;
+}
+
 // ─── LicitacionStorage ────────────────────────────────────────────────────────
 
 export const LicitacionStorage = {
@@ -151,18 +178,22 @@ export const LicitacionStorage = {
 
   // ── Detalle completo (con productos y documentos) ──────────────────────────
 
-  async loadOne(id: string): Promise<Licitacion> {
-    const [litRes, prodsRes, docsRes] = await Promise.all([
-      supabase.from('licitaciones').select('*').eq('id', id).single(),
+  // `slugOrId` acepta el slug legible (`/licitaciones/<slug>`) o el UUID de un
+  // link viejo. `preferredCompanyId` desempata si el mismo slug existe en dos
+  // empresas del usuario (Holding); RLS ya limita a sus empresas.
+  async loadOne(slugOrId: string, preferredCompanyId?: string | null): Promise<Licitacion> {
+    const litRow = await resolveLicitacionHeader(slugOrId, preferredCompanyId);
+    const id = litRow.id as string;
+
+    const [prodsRes, docsRes] = await Promise.all([
       supabase.from('licitacion_productos').select('*').eq('licitacion_id', id).order('orden'),
       supabase.from('licitacion_documentos').select('*').eq('licitacion_id', id).order('uploaded_at'),
     ]);
 
-    if (litRes.error) throw litRes.error;
     if (prodsRes.error) throw prodsRes.error;
     if (docsRes.error) throw docsRes.error;
 
-    const lit = rowToLicitacion(litRes.data as Record<string, unknown>);
+    const lit = rowToLicitacion(litRow);
     lit.productos  = (prodsRes.data || []).map(r => rowToProducto(r as Record<string, unknown>));
     lit.documentos = (docsRes.data  || []).map(r => rowToDoc(r as Record<string, unknown>));
     return lit;
@@ -176,6 +207,7 @@ export const LicitacionStorage = {
   ): Promise<Licitacion> {
     const user = await getUser();
     const companyId = requireCompany(activeCompanyId);
+    const slug = await generateUniqueSlug('licitaciones', companyId, lit.nombre);
 
     const { data, error } = await supabase
       .from('licitaciones')
@@ -183,6 +215,7 @@ export const LicitacionStorage = {
         user_id:    user.id,
         company_id: companyId,
         ...lit,
+        slug,
         datos_ia: (lit.datos_ia ?? {}) as Json,
       })
       .select()
@@ -203,9 +236,15 @@ export const LicitacionStorage = {
     changes: Partial<Omit<Licitacion, 'id' | 'company_id' | 'user_id' | 'productos' | 'documentos'>>,
   ): Promise<void> {
     const companyId = requireCompany(activeCompanyId);
+    // Al renombrar, regeneramos el slug (dedupe excluyendo la propia fila). Los
+    // links por UUID viejos siguen resolviendo aunque el slug cambie.
+    const patch: Record<string, unknown> = { ...changes, updated_at: new Date().toISOString() };
+    if (typeof changes.nombre === 'string' && changes.nombre.trim()) {
+      patch.slug = await generateUniqueSlug('licitaciones', companyId, changes.nombre, id);
+    }
     const { data, error } = await supabase
       .from('licitaciones')
-      .update({ ...changes, updated_at: new Date().toISOString() } as Database["public"]["Tables"]["licitaciones"]["Update"])
+      .update(patch as Database["public"]["Tables"]["licitaciones"]["Update"])
       .eq('id', id)
       .eq('company_id', companyId)
       .select('id');

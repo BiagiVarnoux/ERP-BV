@@ -12,7 +12,7 @@ export default function InvestmentsPage() {
   return (
     <Routes>
       <Route index element={<ListaView />} />
-      <Route path=":id" element={<DetalleView />} />
+      <Route path=":slug" element={<DetalleView />} />
     </Routes>
   );
 }
@@ -87,15 +87,18 @@ function ListaView() {
 
 function DetalleView() {
   const navigate = useNavigate();
-  const { id } = useParams<{ id: string }>();
+  const companyId = useActiveCompanyId();
+  // El parámetro puede ser el slug legible o un UUID (link viejo); loadOne
+  // resuelve ambos.
+  const { slug } = useParams<{ slug: string }>();
   const [analysis, setAnalysis] = useState<InvestmentAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    if (!id) return;
+    if (!slug) return;
     try {
       setLoading(true);
-      const data = await InvestmentStorage.loadOne(id);
+      const data = await InvestmentStorage.loadOne(slug, companyId);
       setAnalysis(data);
     } catch (e) {
       toast.error('Error cargando el análisis');
@@ -104,9 +107,17 @@ function DetalleView() {
     } finally {
       setLoading(false);
     }
-  }, [id, navigate]);
+  }, [slug, companyId, navigate]);
 
   useEffect(() => { load(); }, [load]);
+
+  // La barra de direcciones siempre muestra el slug bonito, sin importar cómo se
+  // haya llegado (link viejo por UUID, o tras renombrar).
+  useEffect(() => {
+    if (analysis?.slug && slug !== analysis.slug) {
+      navigate(`/investments/${analysis.slug}`, { replace: true });
+    }
+  }, [analysis?.slug, slug, navigate]);
 
   if (loading || !analysis) {
     return (

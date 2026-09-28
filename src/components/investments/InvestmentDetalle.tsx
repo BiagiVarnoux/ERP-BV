@@ -112,6 +112,28 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
     });
   }, []);
 
+  // Copia productos traídos de OTRO análisis: id nuevo, reasignados a este
+  // análisis y agregados al final. Las líneas de costo (costos_extra) renuevan su
+  // id y se corta el vínculo 1-a-1 con el embarque. Igual que al duplicar, no
+  // persiste hasta que el usuario guarda.
+  const copyItemsFromAnalysis = useCallback((incoming: InvestmentItem[]) => {
+    if (incoming.length === 0) return;
+    setItems(prev => {
+      const base = prev.length;
+      const copias: InvestmentItem[] = incoming.map((src, i) => ({
+        ...src,
+        id: crypto.randomUUID(),
+        analysis_id: analysis.id,
+        orden: base + i,
+        costos_extra: (src.costos_extra ?? []).map(c => ({ ...c, id: crypto.randomUUID() })),
+        mapped_shipment_product_ids: [],
+        created_at: undefined,
+        updated_at: undefined,
+      }));
+      return [...prev, ...copias];
+    });
+  }, [analysis.id]);
+
   const removeItem = useCallback((id: string) => {
     setItems(prev => prev.filter(it => it.id !== id));
   }, []);
@@ -228,7 +250,7 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <ShareButton basePath={`/investments/${analysis.id}`} label="Copiar enlace a este análisis" />
+          <ShareButton basePath={`/investments/${analysis.slug ?? analysis.id}`} label="Copiar enlace a este análisis" />
           <Button
             variant="outline"
             size="sm"
@@ -287,7 +309,10 @@ export function InvestmentDetalle({ analysis, onBack, onUpdated }: Props) {
             onRemove={removeItem}
             onDuplicate={duplicateItem}
             onReorder={reorderItems}
-            sharePath={`/investments/${analysis.id}`}
+            onCopyItems={copyItemsFromAnalysis}
+            companyId={companyId}
+            analysisId={analysis.id}
+            sharePath={`/investments/${analysis.slug ?? analysis.id}`}
             highlightItemId={sharedItemId}
           />
         </TabsContent>

@@ -191,6 +191,10 @@ export interface Licitacion {
 
   // Identificación
   nombre: string;
+  // Slug legible para la URL (`/licitaciones/<slug>`). Se genera del nombre y es
+  // único por empresa. Se regenera al renombrar; los links por UUID viejos
+  // siguen resolviendo (ver LicitacionStorage.loadOne).
+  slug?: string;
   entidad: string;
   numero_sicoes: string;
   tipo_proceso: TipoProceso;

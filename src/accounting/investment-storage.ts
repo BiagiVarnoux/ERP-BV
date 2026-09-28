@@ -9,6 +9,7 @@ import type { Json } from '@/integrations/supabase/types';
 import {
   InvestmentAnalysis, InvestmentItem, InvestmentEstado, CostoExtra,
 } from './investment-types';
+import { generateUniqueSlug, looksLikeUuid } from '@/lib/slug';
 
 // ─── Ventas reales atribuidas por embarque (Fase 3) ─────────────────────────
 // Una fila por producto del embarque (shipment_product_id). Las cifras provienen
@@ -51,6 +52,7 @@ function rowToAnalysis(row: Record<string, unknown>): InvestmentAnalysis {
     company_id:              row.company_id as string,
     user_id:                 (row.user_id as string) || undefined,
     nombre:                  (row.nombre as string) || '',
+    slug:                    (row.slug as string) || undefined,
     notas:                   (row.notas as string) || undefined,
     orden:                   row.orden != null ? Number(row.orden) : 0,
     costo_capital_anual:     row.costo_capital_anual != null ? Number(row.costo_capital_anual) : 12,
@@ -193,6 +195,31 @@ function itemToRow(it: InvestmentItem) {
   };
 }
 
+// Resuelve la cabecera de un análisis por slug o por UUID. Prueba primero la vía
+// que sugiere el formato del parámetro y cae a la otra (links viejos por UUID, o
+// un slug que casualmente parezca UUID). RLS limita a las empresas del usuario;
+// si el slug empata en dos, prioriza `preferredCompanyId`.
+async function resolveAnalysisHeader(
+  slugOrId: string,
+  preferredCompanyId?: string | null,
+): Promise<Record<string, unknown>> {
+  const byUuid = looksLikeUuid(slugOrId);
+
+  const trySlug = async () =>
+    (await supabase.from('investment_analyses').select('*').eq('slug', slugOrId)).data ?? [];
+  const tryId = async () =>
+    (await supabase.from('investment_analyses').select('*').eq('id', slugOrId)).data ?? [];
+
+  let rows = byUuid ? await tryId() : await trySlug();
+  if (rows.length === 0) rows = byUuid ? await trySlug() : await tryId();
+  if (rows.length === 0) throw new Error('Análisis no encontrado');
+
+  const preferred = preferredCompanyId
+    ? rows.find((r: { company_id?: string }) => r.company_id === preferredCompanyId)
+    : undefined;
+  return (preferred ?? rows[0]) as Record<string, unknown>;
+}
+
 // ─── InvestmentStorage ──────────────────────────────────────────────────────
 
 export const InvestmentStorage = {
@@ -226,14 +253,16 @@ export const InvestmentStorage = {
     return analyses;
   },
 
-  async loadOne(id: string): Promise<InvestmentAnalysis> {
-    const [aRes, itemsRes] = await Promise.all([
-      supabase.from('investment_analyses').select('*').eq('id', id).single(),
-      supabase.from('investment_analysis_items').select('*').eq('analysis_id', id).order('orden'),
-    ]);
-    if (aRes.error) throw aRes.error;
+  // `slugOrId` acepta el slug legible (`/investments/<slug>`) o el UUID de un
+  // link viejo. `preferredCompanyId` desempata si el mismo slug existe en dos
+  // empresas del usuario (Holding); RLS ya limita a sus empresas.
+  async loadOne(slugOrId: string, preferredCompanyId?: string | null): Promise<InvestmentAnalysis> {
+    const aRow = await resolveAnalysisHeader(slugOrId, preferredCompanyId);
+    const id = aRow.id as string;
+    const itemsRes = await supabase
+      .from('investment_analysis_items').select('*').eq('analysis_id', id).order('orden');
     if (itemsRes.error) throw itemsRes.error;
-    const a = rowToAnalysis(aRes.data as Record<string, unknown>);
+    const a = rowToAnalysis(aRow);
     a.items = (itemsRes.data || []).map(r => rowToItem(r as Record<string, unknown>));
     return a;
   },
@@ -243,12 +272,14 @@ export const InvestmentStorage = {
     a: Pick<InvestmentAnalysis, 'nombre' | 'notas' | 'costo_capital_anual' | 'plazo_importacion_meses'>,
   ): Promise<InvestmentAnalysis> {
     const user = await getUser();
+    const slug = await generateUniqueSlug('investment_analyses', companyId, a.nombre);
     const { data, error } = await supabase
       .from('investment_analyses')
       .insert({
         company_id:              companyId,
         user_id:                 user.id,
         nombre:                  a.nombre,
+        slug,
         notas:                   a.notas ?? null,
         costo_capital_anual:     a.costo_capital_anual,
         plazo_importacion_meses: a.plazo_importacion_meses,
@@ -267,9 +298,15 @@ export const InvestmentStorage = {
     changes: Partial<Omit<InvestmentAnalysis, 'id' | 'company_id' | 'user_id' | 'items' | 'created_at' | 'updated_at'>>
       & { embarque_id?: string | null },
   ): Promise<void> {
+    // Al renombrar, regeneramos el slug (dedupe excluyendo la propia fila). Los
+    // links por UUID viejos siguen resolviendo aunque el slug cambie.
+    const patch: Record<string, unknown> = { ...changes, updated_at: new Date().toISOString() };
+    if (typeof changes.nombre === 'string' && changes.nombre.trim()) {
+      patch.slug = await generateUniqueSlug('investment_analyses', companyId, changes.nombre, id);
+    }
     const { error } = await supabase
       .from('investment_analyses')
-      .update({ ...changes, updated_at: new Date().toISOString() })
+      .update(patch)
       .eq('id', id)
       .eq('company_id', companyId);
     if (error) throw error;

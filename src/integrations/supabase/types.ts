@@ -1092,6 +1092,7 @@ export type Database = {
           notas: string | null
           orden: number
           plazo_importacion_meses: number
+          slug: string | null
           tc_oficial: number | null
           updated_at: string
           user_id: string | null
@@ -1109,6 +1110,7 @@ export type Database = {
           notas?: string | null
           orden?: number
           plazo_importacion_meses?: number
+          slug?: string | null
           tc_oficial?: number | null
           updated_at?: string
           user_id?: string | null
@@ -1126,6 +1128,7 @@ export type Database = {
           notas?: string | null
           orden?: number
           plazo_importacion_meses?: number
+          slug?: string | null
           tc_oficial?: number | null
           updated_at?: string
           user_id?: string | null
@@ -1812,6 +1815,7 @@ export type Database = {
           pasaje_licitacion: number
           plazo_entrega_dias: number | null
           precio_referencial: number | null
+          slug: string | null
           tc_oficial: number | null
           tipo_proceso: string
           updated_at: string
@@ -1841,6 +1845,7 @@ export type Database = {
           pasaje_licitacion?: number
           plazo_entrega_dias?: number | null
           precio_referencial?: number | null
+          slug?: string | null
           tc_oficial?: number | null
           tipo_proceso?: string
           updated_at?: string
@@ -1870,6 +1875,7 @@ export type Database = {
           pasaje_licitacion?: number
           plazo_entrega_dias?: number | null
           precio_referencial?: number | null
+          slug?: string | null
           tc_oficial?: number | null
           tipo_proceso?: string
           updated_at?: string

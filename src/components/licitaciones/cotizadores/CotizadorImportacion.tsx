@@ -93,7 +93,7 @@ export function CotizadorImportacion({ licitacion, onUpdated }: Props) {
   // Enlace compartido: cambia de empresa si la licitación es de otra empresa del
   // usuario y señala el producto indicado en ?item=.
   const { itemId: sharedItemId } = useShareTarget(licitacion.company_id);
-  const sharePath = `/licitaciones/${licitacion.id}`;
+  const sharePath = `/licitaciones/${licitacion.slug ?? licitacion.id}`;
   const scrolledTo = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (!sharedItemId || scrolledTo.current === sharedItemId) return;

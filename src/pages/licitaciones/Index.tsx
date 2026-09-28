@@ -12,7 +12,7 @@ export default function LicitacionesPage() {
   return (
     <Routes>
       <Route index element={<ListaView />} />
-      <Route path=":id" element={<DetalleView />} />
+      <Route path=":slug" element={<DetalleView />} />
     </Routes>
   );
 }
@@ -70,16 +70,19 @@ function ListaView() {
 
 function DetalleView() {
   const navigate = useNavigate();
+  const companyId = useActiveCompanyId();
   const [licitacion, setLicitacion] = useState<Licitacion | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const { id } = useParams<{ id: string }>();
+  // El parámetro puede ser el slug legible o un UUID (link viejo); loadOne
+  // resuelve ambos.
+  const { slug } = useParams<{ slug: string }>();
 
   const load = useCallback(async () => {
-    if (!id) return;
+    if (!slug) return;
     try {
       setLoading(true);
-      const data = await LicitacionStorage.loadOne(id);
+      const data = await LicitacionStorage.loadOne(slug, companyId);
       setLicitacion(data);
     } catch (e) {
       toast.error('Error cargando licitación');
@@ -88,9 +91,17 @@ function DetalleView() {
     } finally {
       setLoading(false);
     }
-  }, [id, navigate]);
+  }, [slug, companyId, navigate]);
 
   useEffect(() => { load(); }, [load]);
+
+  // La barra de direcciones siempre muestra el slug bonito, sin importar cómo se
+  // haya llegado (link viejo por UUID, o tras renombrar).
+  useEffect(() => {
+    if (licitacion?.slug && slug !== licitacion.slug) {
+      navigate(`/licitaciones/${licitacion.slug}`, { replace: true });
+    }
+  }, [licitacion?.slug, slug, navigate]);
 
   if (loading || !licitacion) {
     return (
