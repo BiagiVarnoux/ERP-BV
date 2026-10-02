@@ -926,6 +926,28 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
   const canDeleteShipment = can('shipments', 'delete');
   const [quoteDialogOpen, setQuoteDialogOpen] = useState(false);
 
+  // Edición de nombre (número) y descripción del embarque
+  const [editInfoOpen, setEditInfoOpen] = useState(false);
+  const [editNumero, setEditNumero] = useState(s.numero);
+  const [editDescripcion, setEditDescripcion] = useState(s.descripcion ?? '');
+
+  function openEditInfo() {
+    setEditNumero(s.numero);
+    setEditDescripcion(s.descripcion ?? '');
+    setEditInfoOpen(true);
+  }
+
+  function saveEditInfo() {
+    const numero = editNumero.trim();
+    if (!numero) {
+      toast.error('El nombre del embarque no puede estar vacío');
+      return;
+    }
+    onSave({ ...s, numero, descripcion: editDescripcion.trim() || undefined });
+    setEditInfoOpen(false);
+    toast.success('Embarque actualizado');
+  }
+
   const totalManipuleo = round2(s.gastos_aduana.reduce((sum, g) => sum + g.monto, 0));
   const totalGA = round2(s.products.reduce((sum, p) => sum + (p.ga_monto ?? 0), 0));
   const totalIVA = round2(s.products.reduce((sum, p) => sum + (p.iva_monto ?? 0), 0));
@@ -949,6 +971,17 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
               {s.numero}
               {s.descripcion && (
                 <span className="text-sm font-normal text-muted-foreground">— {s.descripcion}</span>
+              )}
+              {canEditShipment && !isReadOnly && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 shrink-0 text-muted-foreground"
+                  onClick={openEditInfo}
+                  title="Editar nombre y descripción"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </Button>
               )}
             </CardTitle>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-muted-foreground">
@@ -1142,6 +1175,44 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
           canDelete={canDeleteShipment}
         />
       )}
+
+      <Dialog open={editInfoOpen} onOpenChange={setEditInfoOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar embarque</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-emb-numero">Nombre / Número</Label>
+              <Input
+                id="edit-emb-numero"
+                value={editNumero}
+                onChange={e => setEditNumero(e.target.value)}
+                placeholder="Ej: EMB-2026-001"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-emb-descripcion">Descripción</Label>
+              <Input
+                id="edit-emb-descripcion"
+                value={editDescripcion}
+                onChange={e => setEditDescripcion(e.target.value)}
+                placeholder="Descripción opcional"
+              />
+            </div>
+            {isClosed && (
+              <p className="text-xs text-muted-foreground">
+                Este embarque está cerrado. Cambiar el nombre no modifica los asientos ya
+                generados, que seguirán mostrando el número anterior en su glosa.
+              </p>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="outline" onClick={() => setEditInfoOpen(false)}>Cancelar</Button>
+            <Button onClick={saveEditInfo}>Guardar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
