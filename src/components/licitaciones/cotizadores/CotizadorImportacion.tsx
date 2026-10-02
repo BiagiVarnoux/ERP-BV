@@ -736,6 +736,10 @@ function ProductoRow({ producto: p, index, calc, tcOficialDefault, fleteCifPctDe
 }
 
 // ─── Formulario detallado de producto ─────────────────────────────────────────
+// Diseño en dos columnas: a la IZQUIERDA todo lo que se llena (identidad, compra,
+// peso, valores manuales, costos), a la DERECHA —fija al desplazar— la oferta y el
+// resultado. En celular las columnas se apilan en una sola, pero el bloque de
+// oferta/resultado queda arriba para no perderlo de vista.
 
 function ProductoForm({ producto: p, calc, tcOficialDefault, fleteCifPctDefault, onChange }: {
   producto: LicitacionProducto;
@@ -749,154 +753,158 @@ function ProductoForm({ producto: p, calc, tcOficialDefault, fleteCifPctDefault,
     onChange({ [k]: e.target.value });
 
   const esLocal = p.origen === 'local';
-  const bajoPiso = p.precio_ofertado > 0 && p.precio_ofertado < calc.precio_piso;
   const extras = round2((p.garantia || 0) + (p.pasaje || 0) + (p.envio_local || 0) + (p.otros_costos || 0));
-  const manualesActivos = [
-    p.usa_flete_manual, p.usa_manipuleo_manual, p.usa_ga_manual, p.usa_iva_manual,
-  ].filter(Boolean).length;
 
   return (
-    <div className="space-y-2.5">
-      {/* Nombre y origen: siempre visibles */}
-      <div className="flex flex-col sm:flex-row sm:items-end gap-2.5">
-        <div className="space-y-1 flex-1 min-w-0">
-          <label className="text-[11px] text-muted-foreground">Nombre del producto</label>
-          <Input className="h-9 sm:h-8 text-xs" value={p.nombre} onChange={s('nombre')} placeholder="Ej: SSD Timetec 512GB" />
-        </div>
-        <div className="space-y-1">
-          <label className="text-[11px] text-muted-foreground">Origen</label>
-          <div className="flex gap-1">
-            <Button type="button" size="sm" variant={!esLocal ? 'default' : 'outline'} className="h-9 sm:h-8 text-xs px-3" onClick={() => onChange({ origen: 'importado' })}>
-              Importado
-            </Button>
-            <Button type="button" size="sm" variant={esLocal ? 'default' : 'outline'} className="h-9 sm:h-8 text-xs px-3" onClick={() => onChange({ origen: 'local' })}>
-              Compra local
-            </Button>
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-4 pt-1">
+      {/* ── IZQUIERDA — lo que se llena ───────────────────────────────── */}
+      {/* order-2 en celular: los datos quedan debajo de la oferta/resultado. */}
+      <div className="space-y-3 min-w-0 order-2 lg:order-1">
+        {/* Identidad del producto */}
+        <div className="rounded-lg border bg-background/60 px-3 py-3 space-y-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-2.5">
+            <div className="space-y-1 flex-1 min-w-0">
+              <label className="text-[11px] text-muted-foreground">Nombre del producto</label>
+              <Input className="h-9 sm:h-8 text-xs" value={p.nombre} onChange={s('nombre')} placeholder="Ej: SSD Timetec 512GB" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">Origen</label>
+              <div className="flex gap-1">
+                <Button type="button" size="sm" variant={!esLocal ? 'default' : 'outline'} className="h-9 sm:h-8 text-xs px-3" onClick={() => onChange({ origen: 'importado' })}>
+                  Importado
+                </Button>
+                <Button type="button" size="sm" variant={esLocal ? 'default' : 'outline'} className="h-9 sm:h-8 text-xs px-3" onClick={() => onChange({ origen: 'local' })}>
+                  Compra local
+                </Button>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-
-      {/* Descripción y enlace: junto al nombre, siempre visibles */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <label className="text-[11px] text-muted-foreground">Especificación</label>
-          <Input className="h-9 sm:h-8 text-xs" value={p.especificacion || ''} onChange={s('especificacion')} placeholder="Ej: 256GB / WiFi" />
-        </div>
-        <div className="space-y-1">
-          <label className="text-[11px] text-muted-foreground">Link del producto</label>
-          <Input className="h-9 sm:h-8 text-xs" value={p.link_producto || ''} onChange={s('link_producto')} placeholder="https://..." />
-        </div>
-      </div>
-
-      {/* Precio ofertado: el campo que más se toca, siempre a la vista */}
-      <div className="rounded-lg border bg-background/60 px-3 py-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="text-[11px] font-semibold">Precio ofertado <span className="text-muted-foreground font-normal">Bs/u</span></label>
-            <Input
-              type="number" inputMode="decimal" min="0" step="0.01"
-              className={`h-9 font-mono font-semibold text-sm ${bajoPiso ? 'border-amber-400' : ''}`}
-              value={p.precio_ofertado || ''}
-              placeholder="0.00"
-              onChange={e => onChange({ precio_ofertado: toDecimal(e.target.value) || 0 })}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[11px] font-semibold">Precio entidad <span className="text-muted-foreground font-normal">referencial</span></label>
-            <Input
-              type="number" inputMode="decimal" min="0" step="0.01"
-              className="h-9 font-mono text-sm"
-              value={p.precio_entidad ?? ''}
-              placeholder="0.00"
-              onChange={e => onChange({ precio_entidad: e.target.value === '' ? undefined : (toDecimal(e.target.value) || 0) })}
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">Especificación</label>
+              <Input className="h-9 sm:h-8 text-xs" value={p.especificacion || ''} onChange={s('especificacion')} placeholder="Ej: 256GB / WiFi" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">Link del producto</label>
+              <Input className="h-9 sm:h-8 text-xs" value={p.link_producto || ''} onChange={s('link_producto')} placeholder="https://..." />
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
-          <ResultCard label="Precio piso" value={calc.precio_piso} hint="Venta mínima por unidad para no perder" color={bajoPiso ? 'text-amber-500' : undefined} />
-          <ResultCard label="Costo unit." value={calc.total_individual} hint="Costo puesto en almacén por unidad" />
-          <ResultCard label="Ganancia" value={calc.ganancia} bold hint="Total ofertado − Costos" color={calc.ganancia < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
-          <ResultCard label="ROI" value={calc.roi} isPct bold hint="Ganancia / Costos" color={calc.roi < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
-        </div>
-
-        {p.precio_entidad != null && p.precio_entidad > 0 && (
-          <p className="text-[11px] text-muted-foreground mt-2">
-            Vs. entidad:{' '}
-            <span className={`font-mono font-semibold ${p.precio_ofertado > p.precio_entidad ? 'text-amber-600' : 'text-green-600 dark:text-green-400'}`}>
-              {p.precio_ofertado > p.precio_entidad ? '+' : ''}{fmt(p.precio_ofertado - p.precio_entidad)}
-              {' '}({((p.precio_ofertado / p.precio_entidad - 1) * 100).toFixed(1)}%)
-            </span>
-            {' · '}Total ofertado: <span className="font-mono">Bs {fmt(calc.total_ofertado)}</span>
-          </p>
-        )}
-      </div>
-
-      {esLocal ? (
-        <FormSection title="Compra local" defaultOpen summary={`Bs ${fmt(p.precio_local || 0)} · Q ${p.cantidad}`}>
-          <CostoLocal producto={p} calc={calc} onChange={onChange} />
-        </FormSection>
-      ) : (
-        <CostoImportacion
-          producto={p}
-          calc={calc}
-          tcOficialDefault={tcOficialDefault}
-          fleteCifPctDefault={fleteCifPctDefault}
-          onChange={onChange}
-          manualesActivos={manualesActivos}
-        />
-      )}
-
-      <FormSection title="Costos adicionales" hint="se suman al costo de este producto" summary={`Bs ${fmt(extras)}`}>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-2.5">
-          <Field label="Garantía (Bs total)">
-            <NumInput value={p.garantia || undefined} onChange={n('garantia')} min="0" placeholder="0" />
-          </Field>
-          <Field label="Pasaje (Bs)">
-            <NumInput value={p.pasaje || undefined} onChange={n('pasaje')} min="0" placeholder="0" />
-          </Field>
-          <Field label="Envío local (Bs)">
-            <NumInput value={p.envio_local || undefined} onChange={n('envio_local')} min="0" placeholder="0" />
-          </Field>
-          <Field label="Otros costos (Bs)">
-            <NumInput value={p.otros_costos || undefined} onChange={n('otros_costos')} min="0" placeholder="0" />
-          </Field>
-        </div>
-      </FormSection>
-
-      <FormSection title="Impuestos y resultado" summary={`costos Bs ${fmt(calc.costos)}`}>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-          <ResultCard label="IVA a pagar"  value={calc.iva_pagar}      hint="13% ofertado − crédito fiscal" />
-          <ResultCard label="IT a pagar"   value={calc.it_pagar}       hint="3% del total ofertado" />
-          <ResultCard label="Total ofertado" value={calc.total_ofertado} hint="Precio ofertado × cantidad" />
-          <ResultCard label="Costos total" value={calc.costos}         hint="Costo del producto + IVA + IT + extras" bold />
-          <ResultCard
-            label="Ganancia"
-            value={calc.ganancia}
-            hint="Total ofertado − Costos"
-            bold
-            color={calc.ganancia < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'}
+        {/* Costos de compra */}
+        {esLocal ? (
+          <CostoLocalInputs producto={p} onChange={onChange} />
+        ) : (
+          <CostoImportacionInputs
+            producto={p}
+            calc={calc}
+            tcOficialDefault={tcOficialDefault}
+            fleteCifPctDefault={fleteCifPctDefault}
+            onChange={onChange}
           />
-        </div>
-      </FormSection>
+        )}
 
+        {/* Costos adicionales de la licitación por producto */}
+        <FormSection title="Costos adicionales" hint="se suman al costo de este producto" summary={`Bs ${fmt(extras)}`}>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-2.5">
+            <Field label="Garantía (Bs total)">
+              <NumInput value={p.garantia || undefined} onChange={n('garantia')} min="0" placeholder="0" />
+            </Field>
+            <Field label="Pasaje (Bs)">
+              <NumInput value={p.pasaje || undefined} onChange={n('pasaje')} min="0" placeholder="0" />
+            </Field>
+            <Field label="Envío local (Bs)">
+              <NumInput value={p.envio_local || undefined} onChange={n('envio_local')} min="0" placeholder="0" />
+            </Field>
+            <Field label="Otros costos (Bs)">
+              <NumInput value={p.otros_costos || undefined} onChange={n('otros_costos')} min="0" placeholder="0" />
+            </Field>
+          </div>
+        </FormSection>
+      </div>
+
+      {/* ── DERECHA — tu oferta y el resultado ────────────────────────── */}
+      <aside className="space-y-3 order-1 lg:order-2 lg:sticky lg:top-4 h-fit">
+        <OfertaResultado producto={p} calc={calc} onChange={onChange} />
+        {esLocal
+          ? <DetalleLocal producto={p} calc={calc} />
+          : <DetalleImportacion producto={p} calc={calc} tcOficialDefault={tcOficialDefault} fleteCifPctDefault={fleteCifPctDefault} />}
+      </aside>
     </div>
   );
 }
 
-// ─── Costo de importación (secciones del formulario, origen='importado') ─────
+// ─── Oferta + resultado (columna derecha, siempre visible) ───────────────────
 
-function CostoImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefault, onChange, manualesActivos }: {
+function OfertaResultado({ producto: p, calc, onChange }: {
+  producto: LicitacionProducto;
+  calc: ReturnType<typeof calcProducto>;
+  onChange: (c: Partial<LicitacionProducto>) => void;
+}) {
+  const bajoPiso = p.precio_ofertado > 0 && p.precio_ofertado < calc.precio_piso;
+
+  return (
+    <div className="rounded-lg border bg-background px-3 py-3 space-y-3">
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tu oferta</p>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-[11px] font-semibold">Precio ofertado <span className="text-muted-foreground font-normal">Bs/u</span></label>
+          <Input
+            type="number" inputMode="decimal" min="0" step="0.01"
+            className={`h-9 font-mono font-semibold text-sm ${bajoPiso ? 'border-amber-400' : ''}`}
+            value={p.precio_ofertado || ''}
+            placeholder="0.00"
+            onChange={e => onChange({ precio_ofertado: toDecimal(e.target.value) || 0 })}
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] font-semibold">Precio entidad <span className="text-muted-foreground font-normal">ref.</span></label>
+          <Input
+            type="number" inputMode="decimal" min="0" step="0.01"
+            className="h-9 font-mono text-sm"
+            value={p.precio_entidad ?? ''}
+            placeholder="0.00"
+            onChange={e => onChange({ precio_entidad: e.target.value === '' ? undefined : (toDecimal(e.target.value) || 0) })}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <ResultCard label="Precio piso" value={calc.precio_piso} hint="Venta mínima por unidad para no perder" color={bajoPiso ? 'text-amber-500' : undefined} />
+        <ResultCard label="Costo unit." value={calc.total_individual} hint="Costo puesto en almacén por unidad" />
+        <ResultCard label="Ganancia" value={calc.ganancia} bold hint="Total ofertado − Costos" color={calc.ganancia < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
+        <ResultCard label="ROI" value={calc.roi} isPct bold hint="Ganancia / Costos" color={calc.roi < 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'} />
+      </div>
+
+      {p.precio_entidad != null && p.precio_entidad > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          Vs. entidad:{' '}
+          <span className={`font-mono font-semibold ${p.precio_ofertado > p.precio_entidad ? 'text-amber-600' : 'text-green-600 dark:text-green-400'}`}>
+            {p.precio_ofertado > p.precio_entidad ? '+' : ''}{fmt(p.precio_ofertado - p.precio_entidad)}
+            {' '}({((p.precio_ofertado / p.precio_entidad - 1) * 100).toFixed(1)}%)
+          </span>
+          {' · '}Total: <span className="font-mono">Bs {fmt(calc.total_ofertado)}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Costo de importación: INPUTS (columna izquierda, origen='importado') ─────
+
+function CostoImportacionInputs({ producto: p, calc, tcOficialDefault, fleteCifPctDefault, onChange }: {
   producto: LicitacionProducto;
   calc: ReturnType<typeof calcProducto>;
   tcOficialDefault: number;
   fleteCifPctDefault: number;
   onChange: (c: Partial<LicitacionProducto>) => void;
-  manualesActivos: number;
 }) {
   const n = (k: keyof LicitacionProducto) => (v: number | undefined) => onChange({ [k]: v });
   const s = (k: keyof LicitacionProducto) => (e: React.ChangeEvent<HTMLInputElement>) =>
     onChange({ [k]: e.target.value });
+  const manualesActivos = [
+    p.usa_flete_manual, p.usa_manipuleo_manual, p.usa_ga_manual, p.usa_iva_manual,
+  ].filter(Boolean).length;
 
   return (
     <>
@@ -941,6 +949,7 @@ function CostoImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefa
 
       <FormSection
         title="Peso y flete"
+        defaultOpen
         summary={`${p.usa_peso_bruto ? 'bruto' : 'vol.'} ${fmt(calc.peso)} kg · envío Bs ${fmt(calc.envio)}`}
       >
         <div className="grid grid-cols-3 lg:grid-cols-6 gap-x-3 gap-y-2.5">
@@ -1045,9 +1054,31 @@ function CostoImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefa
           />
         </div>
       </FormSection>
+    </>
+  );
+}
+
+// ─── Detalle del costeo e impuestos (columna derecha, origen='importado') ─────
+
+function DetalleImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefault }: {
+  producto: LicitacionProducto;
+  calc: ReturnType<typeof calcProducto>;
+  tcOficialDefault: number;
+  fleteCifPctDefault: number;
+}) {
+  return (
+    <>
+      <FormSection title="Impuestos y resultado" summary={`costos Bs ${fmt(calc.costos)}`}>
+        <div className="grid grid-cols-2 gap-2">
+          <ResultCard label="IVA a pagar"  value={calc.iva_pagar}      hint="13% ofertado − crédito fiscal" />
+          <ResultCard label="IT a pagar"   value={calc.it_pagar}       hint="3% del total ofertado" />
+          <ResultCard label="Total ofertado" value={calc.total_ofertado} hint="Precio ofertado × cantidad" />
+          <ResultCard label="Costos total" value={calc.costos}         hint="Costo del producto + IVA + IT + extras" bold />
+        </div>
+      </FormSection>
 
       <FormSection title="Detalle del costeo" summary={`costo unit. Bs ${fmt(calc.total_individual)}`}>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {[
             { label: 'Precio Bs',   value: calc.precio_bs,       hint: '(USD + tax) × T/C' },
             { label: 'Precio BOB',  value: calc.precio_bob,      hint: `USD × ${p.tc_oficial ?? tcOficialDefault} (T/C aduana)` },
@@ -1109,18 +1140,16 @@ function CostoImportacion({ producto: p, calc, tcOficialDefault, fleteCifPctDefa
   );
 }
 
-// ─── Costo de compra local (sección del formulario, origen='local') ──────────
+// ─── Compra local: INPUTS (columna izquierda, origen='local') ────────────────
 
-function CostoLocal({ producto: p, calc, onChange }: {
+function CostoLocalInputs({ producto: p, onChange }: {
   producto: LicitacionProducto;
-  calc: ReturnType<typeof calcProducto>;
   onChange: (c: Partial<LicitacionProducto>) => void;
 }) {
   const n = (k: keyof LicitacionProducto) => (v: number | undefined) => onChange({ [k]: v });
 
   return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Compra local</p>
+    <FormSection title="Compra local" defaultOpen summary={`Bs ${fmt(p.precio_local || 0)} · Q ${p.cantidad}`}>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-3">
         <Field label="Cantidad">
           <NumInput value={p.cantidad} onChange={n('cantidad')} min="1" step="1" />
@@ -1161,9 +1190,19 @@ function CostoLocal({ producto: p, calc, onChange }: {
           </Field>
         )}
       </div>
+    </FormSection>
+  );
+}
 
-      {/* Resultados compra local */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4">
+// ─── Compra local: resultados (columna derecha, origen='local') ──────────────
+
+function DetalleLocal({ producto: p, calc }: {
+  producto: LicitacionProducto;
+  calc: ReturnType<typeof calcProducto>;
+}) {
+  return (
+    <FormSection title="Detalle de compra local" defaultOpen summary={`costo unit. Bs ${fmt(calc.total_individual)}`}>
+      <div className="grid grid-cols-2 gap-2">
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="bg-muted/60 rounded px-2.5 py-2 cursor-default">
@@ -1182,17 +1221,8 @@ function CostoLocal({ producto: p, calc, onChange }: {
           </TooltipTrigger>
           <TooltipContent>Bs/unidad — 13% del precio local, solo si tiene factura</TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="bg-muted/60 rounded px-2.5 py-2 cursor-default">
-              <p className="text-[10px] text-muted-foreground">Costo unit.</p>
-              <p className="text-xs font-mono font-semibold">Bs {fmt(calc.total_individual)}</p>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>Bs — costo de compra local por unidad</TooltipContent>
-        </Tooltip>
       </div>
-    </div>
+    </FormSection>
   );
 }
 
