@@ -132,6 +132,20 @@ export default function ShipmentsPage() {
   } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ shipment: Shipment; step: 1 | 2 } | null>(null);
   const [revertConfirm, setRevertConfirm] = useState<{ shipment: Shipment; step: 1 | 2 } | null>(null);
+  // Edición rápida de nombre/descripción desde la tarjeta de la lista
+  const [editInfo, setEditInfo] = useState<{ shipment: Shipment; numero: string; descripcion: string } | null>(null);
+
+  function saveEditInfoFromList() {
+    if (!editInfo) return;
+    const numero = editInfo.numero.trim();
+    if (!numero) {
+      toast.error('El nombre del embarque no puede estar vacío');
+      return;
+    }
+    persist({ ...editInfo.shipment, numero, descripcion: editInfo.descripcion.trim() || undefined });
+    setEditInfo(null);
+    toast.success('Embarque actualizado');
+  }
 
   const reloadShipments = useCallback(async () => {
     try {
@@ -597,9 +611,25 @@ export default function ShipmentsPage() {
                       {' · '}{s.created_at}
                     </p>
                   </div>
-                  <Badge className={`text-[10px] shrink-0 ${SHIPMENT_STATUS_COLORS[s.status]}`}>
-                    {SHIPMENT_STATUS_LABELS[s.status]}
-                  </Badge>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Badge className={`text-[10px] ${SHIPMENT_STATUS_COLORS[s.status]}`}>
+                      {SHIPMENT_STATUS_LABELS[s.status]}
+                    </Badge>
+                    {canEdit && !isReadOnly && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 text-muted-foreground"
+                        title="Editar nombre y descripción"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setEditInfo({ shipment: s, numero: s.numero, descripcion: s.descripcion ?? '' });
+                        }}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -639,6 +669,49 @@ export default function ShipmentsPage() {
                 onCreate={handleCreate}
                 onCancel={() => setShowNewDialog(false)}
               />
+            </DialogContent>
+          </Dialog>
+
+          {/* Modal editar nombre/descripción desde la lista */}
+          <Dialog open={!!editInfo} onOpenChange={(open) => { if (!open) setEditInfo(null); }}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Editar embarque</DialogTitle>
+              </DialogHeader>
+              {editInfo && (
+                <>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="list-edit-emb-numero">Nombre / Número</Label>
+                      <Input
+                        id="list-edit-emb-numero"
+                        value={editInfo.numero}
+                        onChange={e => setEditInfo({ ...editInfo, numero: e.target.value })}
+                        placeholder="Ej: EMB-2026-001"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="list-edit-emb-descripcion">Descripción</Label>
+                      <Input
+                        id="list-edit-emb-descripcion"
+                        value={editInfo.descripcion}
+                        onChange={e => setEditInfo({ ...editInfo, descripcion: e.target.value })}
+                        placeholder="Descripción opcional"
+                      />
+                    </div>
+                    {editInfo.shipment.status === 'CERRADO' && (
+                      <p className="text-xs text-muted-foreground">
+                        Este embarque está cerrado. Cambiar el nombre no modifica los asientos ya
+                        generados, que seguirán mostrando el número anterior en su glosa.
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex justify-end gap-2 mt-2">
+                    <Button variant="outline" onClick={() => setEditInfo(null)}>Cancelar</Button>
+                    <Button onClick={saveEditInfoFromList}>Guardar</Button>
+                  </div>
+                </>
+              )}
             </DialogContent>
           </Dialog>
 
