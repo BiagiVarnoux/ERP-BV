@@ -18,6 +18,12 @@ export type TipoPago =
 
 export type MetodoValuacion = 'CPP' | 'FIFO';
 
+/** Asignación manual de un lote a consumir en una venta FIFO (override del FIFO automático). */
+export interface LotAllocation {
+  lot_id: string;
+  cantidad: number;
+}
+
 export interface SaleItemInput {
   product_id: string;
   product_nombre: string;
@@ -26,6 +32,8 @@ export interface SaleItemInput {
   metodo_valuacion: MetodoValuacion;
   cantidad: number;
   precio_unitario_neto: number;
+  /** Opcional (solo FIFO): si viene, la venta descuenta de ESTOS lotes en vez del FIFO automático. */
+  lot_allocations?: LotAllocation[];
 }
 
 export interface SaleHeaderInput {
@@ -144,4 +152,6 @@ export interface SaleItemEnriched extends SaleItemInput {
   cpp_unitario: number | null;
   margen_unitario: number | null;
   margen_porcentaje: number | null;
+  /** Lote FIFO elegido manualmente (null/undefined = FIFO automático). Solo frontend. */
+  lot_id?: string | null;
 }

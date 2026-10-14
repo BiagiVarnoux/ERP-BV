@@ -53,6 +53,14 @@ interface ProductOption {
   iva_importado_bs: number | null;
 }
 
+interface LotOption {
+  id: string;
+  product_id: string;
+  fecha_ingreso: string;
+  cantidad_disponible: number;
+  costo_unitario: number;
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -64,6 +72,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
   const activeCompanyId = useActiveCompanyId();
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [stockMap, setStockMap] = useState<Record<string, { stock: number; cpp: number }>>({});
+  const [lotsMap, setLotsMap] = useState<Record<string, LotOption[]>>({});
   const [suggestedPrices, setSuggestedPrices] = useState<Record<string, number>>({});
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -177,12 +186,29 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
       setProducts(prods);
 
       const ids = prods.map(p => p.id);
+      const fifoIds = prods.filter(p => p.metodo_valuacion === 'FIFO').map(p => p.id);
       const [sm, sp] = await Promise.all([
         fetchProductsStockBatch(ids, activeCompanyId),
         fetchLastPricesByCanal(ids, canal),
       ]);
       setStockMap(sm);
       setSuggestedPrices(sp);
+
+      // Lotes FIFO con stock — para permitir elegir manualmente de qué lote sale la venta
+      const lmap: Record<string, LotOption[]> = {};
+      if (fifoIds.length > 0) {
+        const { data: lots } = await supabase
+          .from('inventory_lots')
+          .select('id, product_id, fecha_ingreso, cantidad_disponible, costo_unitario')
+          .eq('company_id', activeCompanyId)
+          .in('product_id', fifoIds)
+          .gt('cantidad_disponible', 0)
+          .order('fecha_ingreso', { ascending: true });
+        for (const l of (lots ?? []) as LotOption[]) {
+          (lmap[l.product_id] ??= []).push(l);
+        }
+      }
+      setLotsMap(lmap);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Error cargando productos');
     } finally {
@@ -259,6 +285,16 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
         );
       }
 
+      // Al elegir un lote concreto, el costo pasa a ser el de ese lote (no el CPP global)
+      if ('lot_id' in patch) {
+        if (updated.lot_id) {
+          const lot = (lotsMap[updated.product_id] ?? []).find(l => l.id === updated.lot_id);
+          if (lot) updated.cpp_unitario = lot.costo_unitario;
+        } else {
+          updated.cpp_unitario = stockMap[updated.product_id]?.cpp ?? null;
+        }
+      }
+
       // Recalcular margen
       if (updated.cpp_unitario !== null && updated.precio_unitario_neto > 0) {
         updated.margen_unitario = round2(updated.precio_unitario_neto - updated.cpp_unitario);
@@ -293,9 +329,20 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
     return { ...taxes, costoTotal, margenBruto, margenPct, tieneEstimados, ivaImportadoNoRecuperable, margenGerencial };
   }, [items, conFactura, products]);
 
+  function lotFor(it: SaleItemEnriched): LotOption | null {
+    if (!it.lot_id) return null;
+    return (lotsMap[it.product_id] ?? []).find(l => l.id === it.lot_id) ?? null;
+  }
+
   function canSubmit() {
     if (items.length === 0) return false;
-    return items.every(it => it.product_id && it.cantidad > 0 && it.precio_unitario_neto > 0);
+    return items.every(it => {
+      if (!(it.product_id && it.cantidad > 0 && it.precio_unitario_neto > 0)) return false;
+      // Si eligió un lote concreto, la cantidad no puede exceder ese lote
+      const lot = lotFor(it);
+      if (lot && it.cantidad > lot.cantidad_disponible) return false;
+      return true;
+    });
   }
 
   const itemsWithInsufficientStock = useMemo(
@@ -317,8 +364,12 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
       const cleanItems: SaleItemInput[] = items.map(({
         _key, stock_disponible, cpp_unitario, margen_unitario, margen_porcentaje,
         precio_lista, descuento_pct, unidad_medida, descripcion, categoria, precio_minimo,
-        ...rest
-      }) => rest);
+        lot_id, ...rest
+      }) => ({
+        ...rest,
+        // Lote elegido manualmente → override del FIFO automático
+        ...(lot_id ? { lot_allocations: [{ lot_id, cantidad: rest.cantidad }] } : {}),
+      }));
       const result = await createSale(
         {
           fecha,
@@ -497,6 +548,35 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
                                     </Badge>
                                   )}
                                 </div>
+                                {/* Selección de lote (solo FIFO con lotes) — por defecto FIFO automático */}
+                                {it.metodo_valuacion === 'FIFO' && (lotsMap[it.product_id]?.length ?? 0) > 0 && (
+                                  <div className="mt-1.5">
+                                    <Select
+                                      value={it.lot_id ?? '__auto__'}
+                                      onValueChange={v => updateItem(it._key, { lot_id: v === '__auto__' ? null : v })}
+                                    >
+                                      <SelectTrigger className="h-7 w-full text-xs">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__auto__">Lote: automático (FIFO)</SelectItem>
+                                        {(lotsMap[it.product_id] ?? []).map(l => (
+                                          <SelectItem key={l.id} value={l.id}>
+                                            {l.fecha_ingreso} · {l.cantidad_disponible} u · Bs {fmt(l.costo_unitario)}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    {(() => {
+                                      const lot = lotFor(it);
+                                      return lot && it.cantidad > lot.cantidad_disponible ? (
+                                        <p className="text-xs text-red-700 mt-0.5">
+                                          ✕ El lote elegido solo tiene {lot.cantidad_disponible} u.
+                                        </p>
+                                      ) : null;
+                                    })()}
+                                  </div>
+                                )}
                               </TableCell>
 
                               {/* Cantidad */}
