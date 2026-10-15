@@ -2,7 +2,7 @@
 // Analiza el CRONOGRAMA DE PLAZOS de un DBC. SOLO .docx (Word). Parsea en código
 // (plantilla estándar SICOES) y usa Groq como respaldo si el layout es desconocido.
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
@@ -20,7 +20,6 @@ import {
   extractTextFromDocx,
   extraerVentanaCronograma,
   parseCronogramaLocal,
-  mapearCronogramaAFechas,
   analizarDbc,
 } from '@/services/licitacionAiService';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
@@ -30,11 +29,14 @@ interface Props {
   onClose: () => void;
   licitacion: Licitacion;
   onUpdated: (l: Licitacion) => void;
+  // Archivo ya subido (DBC) a analizar automáticamente al abrir. Si se omite, el
+  // usuario sube/pega el DBC dentro del diálogo como siempre.
+  initialFile?: File | null;
 }
 
 type Step = 'idle' | 'extracting' | 'text-ready' | 'analyzing' | 'review' | 'error';
 
-export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Props) {
+export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated, initialFile }: Props) {
   const companyId = useActiveCompanyId();
   const fileRef = useRef<HTMLInputElement>(null);
   const [step, setStep]         = useState<Step>('idle');
@@ -114,6 +116,17 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
     if (f) processFile(f);
   };
 
+  // Si se abre con un archivo ya subido (DBC desde la lista de documentos), lo
+  // procesa automáticamente una sola vez.
+  const processedRef = useRef<File | null>(null);
+  useEffect(() => {
+    if (!open) { processedRef.current = null; return; }
+    if (initialFile && processedRef.current !== initialFile) {
+      processedRef.current = initialFile;
+      processFile(initialFile);
+    }
+  }, [open, initialFile]);
+
   // ── Análisis con Groq ────────────────────────────────────────────────────────
 
   const runAnalysis = async () => {
@@ -148,18 +161,14 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
     if (!result) return;
     try {
       setApplying(true);
-      // Guardamos el cronograma en datos_ia (jsonb) y, además, llenamos las fechas
-      // clave del proceso (presentación, adjudicación, contrato) derivadas de él.
+      // El cronograma es la fuente de fechas del proceso: se guarda en datos_ia
+      // (jsonb). Las columnas antiguas de fechas no se tocan.
       const nuevosDatos = { ...(licitacion.datos_ia ?? {}), cronograma: result };
-      const fechas = mapearCronogramaAFechas(result);
-      const changes: Partial<Licitacion> = { datos_ia: nuevosDatos, ...fechas };
+      const changes: Partial<Licitacion> = { datos_ia: nuevosDatos };
 
       await LicitacionStorage.update(licitacion.id, companyId, changes);
       onUpdated({ ...licitacion, ...changes });
-      const nFechas = Object.keys(fechas).length;
-      toast.success(nFechas > 0
-        ? `Cronograma guardado y ${nFechas} fecha${nFechas !== 1 ? 's' : ''} del proceso actualizada${nFechas !== 1 ? 's' : ''}`
-        : 'Cronograma guardado en la licitación');
+      toast.success('Cronograma guardado en el proceso');
       handleClose();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar');

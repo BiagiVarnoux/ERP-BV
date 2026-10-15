@@ -281,7 +281,7 @@ export const LicitacionStorage = {
       .in('id', licitacionIds)
       .eq('company_id', companyId);
     if (ownerErr) throw ownerErr;
-    const ownedIds = new Set((owned ?? []).map((r: any) => r.id));
+    const ownedIds = new Set((owned ?? []).map((r: { id: string }) => r.id));
     const safe = productos.filter(p => ownedIds.has(p.licitacion_id));
     // Nada que guardar porque la licitación no es de la empresa activa: avisar
     // en vez de descartar los cambios en silencio.
@@ -397,5 +397,14 @@ export const LicitacionStorage = {
       .from('licitacion-files')
       .createSignedUrl(path, 3600, opts?.download ? { download: opts.download } : undefined);
     return data?.signedUrl ?? '';
+  },
+
+  // Baja el archivo como Blob (vía SDK, sin problemas de CORS). Se usa para
+  // reanalizar un DBC ya subido sin pedir al usuario que lo vuelva a cargar.
+  async downloadDoc(path: string): Promise<Blob> {
+    const { data, error } = await supabase.storage.from('licitacion-files').download(path);
+    if (error) throw error;
+    if (!data) throw new Error('No se pudo descargar el archivo');
+    return data;
   },
 };

@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { Licitacion, LicitacionEstado } from '@/accounting/licitacion-types';
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
 import { type CronogramaItem, mapearCronogramaAFechas } from '@/services/licitacionAiService';
-import { CalendarDays, CheckCircle2, Circle, ListChecks, Sparkles } from 'lucide-react';
+import { CheckCircle2, Circle, ListChecks, Plus, Trash2 } from 'lucide-react';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 interface Props {
@@ -17,61 +17,52 @@ interface Props {
   onUpdated: (l: Licitacion) => void;
 }
 
+function leerCronograma(l: Licitacion): CronogramaItem[] {
+  const raw = (l.datos_ia as Record<string, unknown>)?.cronograma;
+  return Array.isArray(raw) ? (raw as CronogramaItem[]) : [];
+}
+
 export function TabProceso({ licitacion: l, onUpdated }: Props) {
   const companyId = useActiveCompanyId();
-  const [form, setForm] = useState({
-    fecha_presentacion:     l.fecha_presentacion     || '',
-    fecha_adjudicacion_est: l.fecha_adjudicacion_est || '',
-    fecha_contrato:         l.fecha_contrato         || '',
-    plazo_entrega_dias:     l.plazo_entrega_dias?.toString() || '',
-    fecha_limite_entrega:   l.fecha_limite_entrega   || '',
-    fecha_entrega_real:     l.fecha_entrega_real     || '',
-    notas:                  l.notas                  || '',
-  });
+
+  // El cronograma es ahora la ÚNICA fuente de fechas del proceso. Se puede extraer
+  // con "Analizar DBC" o llenar/corregir a mano aquí (no todos los DBC se leen bien).
+  const [crono, setCrono] = useState<CronogramaItem[]>(() => leerCronograma(l));
+  const [notas, setNotas] = useState(l.notas || '');
   const [saving, setSaving] = useState(false);
 
-  // Cronograma extraído del DBC (se guarda desde "Analizar DBC").
-  const cronograma = Array.isArray((l.datos_ia as Record<string, unknown>)?.cronograma)
-    ? ((l.datos_ia as Record<string, unknown>).cronograma as CronogramaItem[])
-    : [];
+  const updateRow = (i: number, patch: Partial<CronogramaItem>) =>
+    setCrono(prev => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
-  const set = (k: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-      setForm(prev => ({ ...prev, [k]: e.target.value }));
+  const addRow = () =>
+    setCrono(prev => [...prev, { nro: prev.length + 1, actividad: '', fecha: '', hora: '' }]);
 
-  // Rellena las fechas clave del formulario desde el cronograma extraído del DBC.
-  // No guarda: deja los valores en el form para que el usuario revise y presione
-  // "Guardar proceso".
-  const rellenarDesdeCronograma = () => {
-    const fechas = mapearCronogramaAFechas(cronograma);
-    const n = Object.keys(fechas).length;
-    if (n === 0) {
-      toast.info('El cronograma no tiene presentación, adjudicación ni contrato identificables');
-      return;
-    }
-    setForm(prev => ({
-      ...prev,
-      fecha_presentacion:     fechas.fecha_presentacion     ?? prev.fecha_presentacion,
-      fecha_adjudicacion_est: fechas.fecha_adjudicacion_est ?? prev.fecha_adjudicacion_est,
-      fecha_contrato:         fechas.fecha_contrato         ?? prev.fecha_contrato,
-    }));
-    toast.success(`${n} fecha${n !== 1 ? 's' : ''} rellenada${n !== 1 ? 's' : ''} — revisá y guardá`);
-  };
+  const removeRow = (i: number) =>
+    setCrono(prev => prev.filter((_, idx) => idx !== i));
 
   const handleSave = async () => {
     try {
       setSaving(true);
-      const changes = {
-        fecha_presentacion:     form.fecha_presentacion     || undefined,
-        fecha_adjudicacion_est: form.fecha_adjudicacion_est || undefined,
-        fecha_contrato:         form.fecha_contrato         || undefined,
-        plazo_entrega_dias:     form.plazo_entrega_dias ? parseInt(form.plazo_entrega_dias) : undefined,
-        fecha_limite_entrega:   form.fecha_limite_entrega   || undefined,
-        fecha_entrega_real:     form.fecha_entrega_real     || undefined,
-        notas:                  form.notas                  || undefined,
+      // Se descartan filas totalmente vacías. Las fechas/columnas antiguas no se
+      // tocan (se conservan en la BD); la fuente visible pasa a ser el cronograma.
+      const limpio: CronogramaItem[] = crono
+        .map(r => ({
+          nro: r.nro ?? null,
+          actividad: (r.actividad || '').trim(),
+          fecha: r.fecha || '',
+          hora: r.hora || '',
+        }))
+        .filter(r => r.actividad || r.fecha || r.hora);
+
+      const nuevosDatos = { ...(l.datos_ia ?? {}), cronograma: limpio };
+      const changes: Partial<Licitacion> = {
+        datos_ia: nuevosDatos,
+        notas: notas || undefined,
       };
+
       await LicitacionStorage.update(l.id, companyId, changes);
       onUpdated({ ...l, ...changes });
+      setCrono(limpio);
       toast.success('Proceso actualizado');
     } catch {
       toast.error('Error al guardar');
@@ -80,16 +71,18 @@ export function TabProceso({ licitacion: l, onUpdated }: Props) {
     }
   };
 
-  // Línea de tiempo
+  // Línea de tiempo — alimentada por el cronograma (presentación / adjudicación /
+  // contrato). "done" sigue el estado de la licitación.
+  const fechas = mapearCronogramaAFechas(crono);
   const estadosOrden: LicitacionEstado[] = ['BORRADOR', 'PRESENTADA', 'ADJUDICADA', 'ENTREGADA'];
   const idxEstadoActual = estadosOrden.indexOf(l.estado as LicitacionEstado);
 
   const hitos = [
-    { label: 'Borrador',             done: true,                   fecha: undefined },
-    { label: 'Presentada',           done: idxEstadoActual >= 1,   fecha: l.fecha_presentacion },
-    { label: 'Nota de Adjudicación', done: idxEstadoActual >= 2,   fecha: l.fecha_adjudicacion_est },
-    { label: 'Contrato / OC',        done: !!l.fecha_contrato,     fecha: l.fecha_contrato },
-    { label: 'Bienes entregados',    done: !!l.fecha_entrega_real, fecha: l.fecha_entrega_real },
+    { label: 'Borrador',             done: true,                        fecha: undefined as string | undefined },
+    { label: 'Presentada',           done: idxEstadoActual >= 1,        fecha: fechas.fecha_presentacion },
+    { label: 'Nota de Adjudicación', done: idxEstadoActual >= 2,        fecha: fechas.fecha_adjudicacion_est },
+    { label: 'Contrato / OC',        done: !!fechas.fecha_contrato,     fecha: fechas.fecha_contrato },
+    { label: 'Bienes entregados',    done: idxEstadoActual >= 3,        fecha: l.fecha_entrega_real },
   ];
 
   return (
@@ -130,107 +123,100 @@ export function TabProceso({ licitacion: l, onUpdated }: Props) {
 
       <Separator />
 
-      {/* Fechas */}
+      {/* Cronograma de Plazos (editable) */}
       <div>
-        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <h3 className="text-sm font-semibold flex items-center gap-2">
-            <CalendarDays className="h-4 w-4" /> Fechas clave
-          </h3>
-          {cronograma.length > 0 && (
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={rellenarDesdeCronograma}>
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              Rellenar desde el cronograma
-            </Button>
-          )}
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <DateField
-            id="fecha_pres"
-            label="Fecha de presentación"
-            value={form.fecha_presentacion}
-            onChange={set('fecha_presentacion')}
-          />
-          <DateField
-            id="fecha_adj_est"
-            label="Fecha adjudicación (est.)"
-            value={form.fecha_adjudicacion_est}
-            onChange={set('fecha_adjudicacion_est')}
-          />
-          <DateField
-            id="fecha_contrato"
-            label="Fecha contrato / OC"
-            hint="Desde aquí corren los plazos"
-            value={form.fecha_contrato}
-            onChange={set('fecha_contrato')}
-          />
-          <div className="space-y-1.5">
-            <Label htmlFor="plazo_dias">Plazo de entrega (días)</Label>
-            <Input
-              id="plazo_dias"
-              type="number"
-              min="0"
-              placeholder="Ej: 30"
-              value={form.plazo_entrega_dias}
-              onChange={set('plazo_entrega_dias')}
-            />
-          </div>
-          <DateField
-            id="fecha_limite"
-            label="Fecha límite entrega"
-            value={form.fecha_limite_entrega}
-            onChange={set('fecha_limite_entrega')}
-          />
-          <DateField
-            id="fecha_real"
-            label="Fecha entrega real"
-            value={form.fecha_entrega_real}
-            onChange={set('fecha_entrega_real')}
-          />
-        </div>
-      </div>
-
-      {/* Cronograma de Plazos (extraído del DBC) */}
-      {cronograma.length > 0 && (
-        <>
-          <Separator />
-          <div>
-            <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
-              <ListChecks className="h-4 w-4" /> Cronograma de Plazos
+            <ListChecks className="h-4 w-4" /> Cronograma de Plazos
+            {crono.length > 0 && (
               <span className="text-xs font-normal text-muted-foreground">
-                — {cronograma.length} actividades · extraído del DBC
+                — {crono.length} actividad{crono.length !== 1 ? 'es' : ''}
               </span>
-            </h3>
-            <div className="rounded-lg border overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/60">
-                    <tr className="text-left text-muted-foreground">
-                      <th className="px-2 py-1.5 w-7 text-right">#</th>
-                      <th className="px-2 py-1.5">Actividad</th>
-                      <th className="px-2 py-1.5 whitespace-nowrap">Fecha</th>
-                      <th className="px-2 py-1.5 whitespace-nowrap">Hora</th>
+            )}
+          </h3>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={addRow}>
+            <Plus className="h-3.5 w-3.5" /> Agregar actividad
+          </Button>
+        </div>
+
+        <p className="text-xs text-muted-foreground mb-3">
+          Se extrae con «Analizar DBC» (pestaña Documentos) o se llena y corrige a mano aquí.
+        </p>
+
+        {crono.length === 0 ? (
+          <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+            Sin actividades. Usa «Agregar actividad» o extrae el cronograma desde el DBC.
+          </div>
+        ) : (
+          <div className="rounded-lg border overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-muted/60">
+                  <tr className="text-left text-muted-foreground">
+                    <th className="px-2 py-1.5 w-12">#</th>
+                    <th className="px-2 py-1.5 min-w-[180px]">Actividad</th>
+                    <th className="px-2 py-1.5 w-40">Fecha</th>
+                    <th className="px-2 py-1.5 w-28">Hora</th>
+                    <th className="px-2 py-1.5 w-10" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {crono.map((it, i) => (
+                    <tr key={i} className="align-middle">
+                      <td className="px-2 py-1.5">
+                        <Input
+                          type="number"
+                          min="0"
+                          className="h-8 text-xs"
+                          value={it.nro ?? ''}
+                          onChange={e => updateRow(i, {
+                            nro: e.target.value === '' ? null : parseInt(e.target.value, 10),
+                          })}
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <Input
+                          className="h-8 text-xs"
+                          placeholder="Nombre de la actividad"
+                          value={it.actividad}
+                          onChange={e => updateRow(i, { actividad: e.target.value })}
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <Input
+                          type="date"
+                          className="h-8 text-xs"
+                          value={it.fecha}
+                          onChange={e => updateRow(i, { fecha: e.target.value })}
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <Input
+                          type="time"
+                          className="h-8 text-xs"
+                          value={it.hora}
+                          onChange={e => updateRow(i, { hora: e.target.value })}
+                        />
+                      </td>
+                      <td className="px-2 py-1.5 text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => removeRow(i)}
+                          aria-label="Eliminar actividad"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {cronograma.map((it, i) => (
-                      <tr key={i} className="align-top">
-                        <td className="px-2 py-1.5 text-right text-muted-foreground">{it.nro ?? '·'}</td>
-                        <td className="px-2 py-1.5">
-                          {it.actividad || <span className="text-muted-foreground/40 italic">—</span>}
-                        </td>
-                        <td className="px-2 py-1.5 whitespace-nowrap font-medium">{fmtFechaCorta(it.fecha)}</td>
-                        <td className="px-2 py-1.5 whitespace-nowrap font-medium">
-                          {it.hora || <span className="text-muted-foreground/40">—</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
-        </>
-      )}
+        )}
+      </div>
 
       <Separator />
 
@@ -240,8 +226,8 @@ export function TabProceso({ licitacion: l, onUpdated }: Props) {
         <Textarea
           id="notas"
           placeholder="Observaciones, detalles administrativos, recordatorios..."
-          value={form.notas}
-          onChange={set('notas')}
+          value={notas}
+          onChange={e => setNotas(e.target.value)}
           rows={4}
         />
       </div>
@@ -253,35 +239,4 @@ export function TabProceso({ licitacion: l, onUpdated }: Props) {
       </div>
     </div>
   );
-}
-
-function DateField({ id, label, hint, value, onChange }: {
-  id: string;
-  label: string;
-  hint?: string;
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>
-        {label}
-        {hint && (
-          <span className="ml-1 text-xs text-muted-foreground font-normal">— {hint}</span>
-        )}
-      </Label>
-      <Input id={id} type="date" value={value} onChange={onChange} />
-    </div>
-  );
-}
-
-function fmtFechaCorta(value: string): React.ReactNode {
-  if (!value) return <span className="text-muted-foreground/40">—</span>;
-  try {
-    return new Date(value + 'T12:00:00').toLocaleDateString('es-BO', {
-      day: '2-digit', month: 'short', year: 'numeric',
-    });
-  } catch {
-    return value;
-  }
 }

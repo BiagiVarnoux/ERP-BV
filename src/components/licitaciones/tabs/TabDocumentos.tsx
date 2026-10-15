@@ -31,6 +31,8 @@ export function TabDocumentos({ licitacion, onReload, onUpdated }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<LicitacionDoc | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dbcDialogOpen, setDbcDialogOpen] = useState(false);
+  const [dbcFile, setDbcFile] = useState<File | null>(null); // DBC ya subido a reanalizar
+  const [analyzing, setAnalyzing] = useState<string | null>(null); // doc id descargando
   const [preview, setPreview] = useState<{ url: string; doc: LicitacionDoc } | null>(null);
   const [previewing, setPreviewing] = useState<string | null>(null); // doc id loading preview
   const fileRef = useRef<HTMLInputElement>(null);
@@ -142,6 +144,31 @@ export function TabDocumentos({ licitacion, onReload, onUpdated }: Props) {
     }
   };
 
+  // Analiza un DBC YA subido: lo baja de Storage y lo pasa al diálogo del analizador.
+  const handleAnalyze = async (doc: LicitacionDoc) => {
+    const name = doc.nombre.toLowerCase();
+    if (!name.endsWith('.docx') && !name.endsWith('.doc')) {
+      toast.error('El analizador de cronograma solo admite Word (.docx)');
+      return;
+    }
+    setAnalyzing(doc.id);
+    try {
+      const blob = await LicitacionStorage.downloadDoc(doc.path);
+      const file = new File([blob], doc.nombre, {
+        type: blob.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+      setDbcFile(file);
+      setDbcDialogOpen(true);
+    } catch {
+      toast.error('No se pudo abrir el documento para analizar');
+    } finally {
+      setAnalyzing(null);
+    }
+  };
+
+  const openManualDbcDialog = () => { setDbcFile(null); setDbcDialogOpen(true); };
+  const closeDbcDialog = () => { setDbcDialogOpen(false); setDbcFile(null); };
+
   const totalDocs = licitacion.documentos.length;
 
   return (
@@ -189,7 +216,7 @@ export function TabDocumentos({ licitacion, onReload, onUpdated }: Props) {
         <Button
           variant="outline"
           className="gap-2"
-          onClick={() => setDbcDialogOpen(true)}
+          onClick={openManualDbcDialog}
         >
           <Sparkles className="h-4 w-4 text-primary" />
           Analizar DBC con IA
@@ -232,6 +259,8 @@ export function TabDocumentos({ licitacion, onReload, onUpdated }: Props) {
                 previewing={previewing}
                 onDownload={handleDownload}
                 onDelete={setDeleteTarget}
+                onAnalyze={handleAnalyze}
+                analyzing={analyzing}
               />
             );
           })}
@@ -262,9 +291,10 @@ export function TabDocumentos({ licitacion, onReload, onUpdated }: Props) {
       {/* Dialog IA para analizar DBC */}
       <DbcAnalyzerDialog
         open={dbcDialogOpen}
-        onClose={() => setDbcDialogOpen(false)}
+        onClose={closeDbcDialog}
         licitacion={licitacion}
         onUpdated={onUpdated}
+        initialFile={dbcFile}
       />
 
       {/* Visor de archivos */}
@@ -307,14 +337,21 @@ function DropZoneVacia({ categoria, onClickUpload, uploading }: {
 
 // ─── Carpeta por categoría ─────────────────────────────────────────────────────
 
-function CarpetaCategoria({ categoria, docs, onPreview, previewing, onDownload, onDelete }: {
+function CarpetaCategoria({ categoria, docs, onPreview, previewing, onDownload, onDelete, onAnalyze, analyzing }: {
   categoria: DocCategoria;
   docs: LicitacionDoc[];
   onPreview: (d: LicitacionDoc) => void;
   previewing: string | null;
   onDownload: (d: LicitacionDoc) => void;
   onDelete: (d: LicitacionDoc) => void;
+  onAnalyze: (d: LicitacionDoc) => void;
+  analyzing: string | null;
 }) {
+  const esDbcAnalizable = (nombre: string) => {
+    const n = nombre.toLowerCase();
+    return categoria === 'DBC' && (n.endsWith('.docx') || n.endsWith('.doc'));
+  };
+
   const formatSize = (bytes?: number) => {
     if (!bytes) return '';
     if (bytes < 1024) return `${bytes} B`;
@@ -342,6 +379,22 @@ function CarpetaCategoria({ categoria, docs, onPreview, previewing, onDownload, 
                 {new Date(doc.uploaded_at).toLocaleDateString('es-BO', { timeZone: 'America/La_Paz' })}
               </p>
             </div>
+            {esDbcAnalizable(doc.nombre) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 shrink-0 gap-1 px-2 text-primary hover:text-primary"
+                onClick={() => onAnalyze(doc)}
+                title="Analizar el cronograma de este DBC"
+                disabled={analyzing === doc.id}
+              >
+                {analyzing === doc.id
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Sparkles className="h-3.5 w-3.5" />
+                }
+                <span className="text-xs hidden sm:inline">Analizar</span>
+              </Button>
+            )}
             {isPreviewable(doc.nombre) && (
               <Button
                 variant="ghost"
