@@ -1,69 +1,32 @@
 // src/services/licitacionAiService.ts
-// Extracción de texto de PDF y Word, y análisis con Groq via edge function ai-dbc.
+// Extracción del CRONOGRAMA DE PLAZOS de un DBC boliviano (.docx).
+// Flujo: extraer texto del .docx (preservando celdas/filas) → localizar y limpiar
+// la ventana del cronograma → parsear en código (plantilla estándar SICOES) →
+// si el parser no detecta filas, caer al modelo Groq via edge function ai-dbc.
+//
+// Alcance intencional (acotado por decisión de producto): por ahora SOLO se extrae
+// el cronograma y SOLO desde .docx. Las demás extracciones (fechas sueltas, precio
+// referencial, requisitos) se retomarán cuando el cronograma esté sólido; sus
+// columnas en la tabla se conservan, solo dejamos de escribirlas desde el análisis.
 
 import { supabase } from '@/integrations/supabase/client';
 
+// ─── Tipos ──────────────────────────────────────────────────────────────────
+
+export interface CronogramaItem {
+  nro: number | null;
+  actividad: string;
+  fecha: string;   // 'YYYY-MM-DD' o '' si no corresponde / no hay
+  hora: string;    // 'HH:MM' o ''
+}
+
 export interface DbcExtraccion {
-  fecha_presentacion?:     string | null;
-  fecha_adjudicacion_est?: string | null;
-  fecha_contrato?:         string | null;
-  plazo_entrega_dias?:     number | null;
-  precio_referencial?:     number | null;
-  requisitos_adicionales?: string | null;
+  cronograma: CronogramaItem[];
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const VENTANA_CHARS = 4500;
 
-const LIMITE_CHARS = 24_000;
-
-/**
- * Busca "PARTE II" en el texto extraído y retorna solo desde ahí.
- * La Parte I de todo DBC boliviano es boilerplate legal idéntico — no nos interesa.
- * Si no encuentra el marcador, retorna el texto completo.
- */
-function extraerParteII(texto: string): string {
-  const marcadores = ['PARTE II', 'Parte II', 'PARTE  II', 'PARTE lI']; // lI = OCR fail común
-  for (const m of marcadores) {
-    const idx = texto.indexOf(m);
-    if (idx !== -1) return texto.slice(idx);
-  }
-  return texto; // fallback: devolver todo si no hay marcador
-}
-
-// ─── Extracción de texto ──────────────────────────────────────────────────────
-
-/**
- * Intenta extraer texto legible de un PDF digital (no funciona con escaneados).
- * Solo retorna texto si encuentra suficiente contenido; si no, devuelve vacío.
- */
-export async function extractTextFromPdf(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  const bytes  = new Uint8Array(buffer);
-  const latin1 = new TextDecoder('latin1').decode(bytes);
-
-  const chunks: string[] = [];
-
-  const btEtRegex = /BT\s([\s\S]{1,6000}?)ET/g;
-  let m: RegExpExecArray | null;
-  while ((m = btEtRegex.exec(latin1)) !== null) {
-    const block = m[1];
-    const strRegex = /\(([^)\\]{1,300}(?:\\.[^)\\]{0,300})*)\)/g;
-    let sm: RegExpExecArray | null;
-    while ((sm = strRegex.exec(block)) !== null) {
-      const s = sm[1]
-        .replace(/\\n/g, ' ').replace(/\\r/g, ' ').replace(/\\t/g, ' ')
-        .replace(/\\\(/g, '(').replace(/\\\)/g, ')').replace(/\\\\/g, '\\')
-        .trim();
-      if (s.length > 2 && /[a-zA-ZáéíóúñÁÉÍÓÚÑ]/.test(s)) chunks.push(s);
-    }
-  }
-
-  const raw = chunks.join(' ').replace(/\s+/g, ' ').trim();
-  if (raw.length < 100) return ''; // PDF comprimido o escaneado
-
-  const parteII = extraerParteII(raw);
-  return parteII.slice(0, LIMITE_CHARS);
-}
+// ─── Extracción de texto del .docx ──────────────────────────────────────────
 
 /**
  * Descomprime datos DEFLATE usando la API nativa del navegador.
@@ -87,9 +50,18 @@ async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
 }
 
 /**
- * Extrae texto de un archivo Word (.docx).
- * Parsea el ZIP, descomprime word/document.xml, extrae etiquetas <w:t>.
- * Luego busca PARTE II y envía solo esa sección.
+ * Extrae el texto COMPLETO de un .docx preservando el orden y los límites de las
+ * celdas/filas de las tablas: inserta ' | ' al cerrar cada celda (</w:tc>) y un
+ * salto de línea al cerrar cada fila (</w:tr>). Esto es imprescindible para que
+ * los dígitos día/mes/año/hora/min del cronograma queden en su fila y en orden.
+ *
+ * Los runs de texto (<w:t>) se unen SIN separador extra: Word ya guarda los
+ * espacios significativos dentro del propio run, y meter un espacio por run
+ * inyectaría espacios dentro de palabras partidas en varios runs (rompería el
+ * ancla "Cronograma de Plazos:").
+ *
+ * Devuelve el texto completo (sin recortar): la tabla del cronograma puede estar
+ * al 60% del documento, muy por detrás de cualquier recorte por primeros-N-chars.
  */
 export async function extractTextFromDocx(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
@@ -117,17 +89,23 @@ export async function extractTextFromDocx(file: File): Promise<string> {
         const xmlBytes = compression === 0 ? raw : await inflateRaw(raw);
         const xml = new TextDecoder('utf-8', { fatal: false }).decode(xmlBytes);
 
-        // Extraer texto de etiquetas <w:t>
-        const texts: string[] = [];
-        const wt = /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g;
-        let wm: RegExpExecArray | null;
-        while ((wm = wt.exec(xml)) !== null) {
-          if (wm[1]) texts.push(wm[1]);
+        const out: string[] = [];
+        const tokenRe = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<\/w:tc>|<\/w:tr>/g;
+        let tm: RegExpExecArray | null;
+        while ((tm = tokenRe.exec(xml)) !== null) {
+          if (tm[1] !== undefined)      out.push(tm[1]);  // texto del run
+          else if (tm[0] === '</w:tc>') out.push(' | ');  // fin de celda
+          else if (tm[0] === '</w:tr>') out.push('\n');   // fin de fila
         }
 
-        const full    = texts.join(' ').replace(/\s+/g, ' ').trim();
-        const parteII = extraerParteII(full);
-        return parteII.slice(0, LIMITE_CHARS);
+        return out.join('')
+          .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+          .replace(/[ \t]+/g, ' ')
+          .replace(/ *\| */g, ' | ')
+          .replace(/\s*\|\s*\n/g, '\n')   // "|" colgante al final de una fila
+          .replace(/ *\n */g, '\n')
+          .trim();
       }
 
       // Avanzar siempre al menos más allá de este entry (previene loop infinito con compSize=0)
@@ -142,10 +120,99 @@ export async function extractTextFromDocx(file: File): Promise<string> {
   return '';
 }
 
-// ─── Llamada al edge function ─────────────────────────────────────────────────
+// ─── Localización + limpieza de la ventana del cronograma ────────────────────
 
 /**
- * Envía el texto del DBC al edge function ai-dbc (Groq) y devuelve la extracción.
+ * Localiza el "Cronograma de Plazos" en el texto COMPLETO del DBC y devuelve una
+ * ventana limpia (~VENTANA_CHARS chars) lista para parsear o enviar al modelo.
+ *
+ * - Ancla: la frase con dos puntos "Cronograma de Plazos:" (la frase suelta
+ *   aparece mucho en prosa legal; por eso exigimos los dos puntos). Respaldo: la
+ *   cabecera de la tabla ACTIVIDAD … FECHA … HORA.
+ * - Corta al inicio de la sección siguiente ("(*) Los plazos…" o
+ *   "ESPECIFICACIONES TÉCNICAS") para no arrastrar el resto del DBC.
+ * - Colapsa celdas vacías consecutivas ' |  |  | ' → ' | ': la tabla de SICOES
+ *   intercala muchas celdas vacías entre los dígitos de la fecha.
+ *
+ * Devuelve '' si no encuentra el cronograma.
+ */
+export function extraerVentanaCronograma(texto: string): string {
+  const m = /Cronograma\s+de\s+Plazos\s*:/i.exec(texto)
+         ?? /ACTIVIDAD[\s|]*FECHA[\s|]*HORA/i.exec(texto);
+  if (!m) return '';
+
+  const rest = texto.slice(m.index);
+  const end  = /\(\*\)\s*Los plazos|ESPECIFICACIONES T[ÉE]CNICAS/i.exec(rest);
+  const win  = end ? rest.slice(0, end.index) : rest.slice(0, VENTANA_CHARS);
+
+  return win
+    .replace(/\n/g, ' \n ')             // proteger saltos de fila al colapsar
+    .replace(/(?: *\| *){2,}/g, ' | ')  // celdas vacías consecutivas → una
+    .replace(/\n *\| */g, '\n')         // "|" al inicio de línea
+    .replace(/ *\| *\n/g, '\n')         // "|" al final de línea
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+}
+
+// ─── Parser determinista (plantilla estándar SICOES) ─────────────────────────
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * Rearma el cronograma desde la ventana limpia, sin IA.
+ *
+ * La tabla de SICOES pone cada actividad en DOS filas: una de rótulos
+ * ("N | actividad | Día | Mes | Año [ | Hora | Min. ]") y la siguiente con los
+ * valores ("30 | 07 | 2026 [ | 08 | 30 ] | <texto de lugar>"). Tomamos los 3
+ * primeros números como día/mes/año y, si el rótulo trae "Hora | Min.", los dos
+ * siguientes como hora/min. "No corresponde" ⇒ fecha y hora vacías.
+ *
+ * Devuelve [] si el texto no sigue esta plantilla (ahí entra el respaldo Groq).
+ */
+export function parseCronogramaLocal(ventana: string): CronogramaItem[] {
+  const lines = ventana.split('\n');
+  const labelRe = /^(\d{1,2})\s*\|\s*(.+?)\s*\|\s*D[íi]a\b/i;
+  const items: CronogramaItem[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const lm = labelRe.exec(lines[i]);
+    if (!lm) continue;
+
+    const nro       = parseInt(lm[1], 10);
+    const actividad = lm[2].trim();
+    const tieneHora = /Hora\s*\|\s*Min/i.test(lines[i]);
+    const val       = (lines[i + 1] || '').trim();
+
+    let fecha = '';
+    let hora  = '';
+
+    if (!/No\s+corresponde/i.test(val)) {
+      const nums = val.split('|').map(s => s.trim())
+        .filter(s => /^\d{1,4}$/.test(s)).map(Number);
+      if (nums.length >= 3) {
+        const [d, mo, y] = nums;
+        if (y >= 2000 && y <= 2100 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+          fecha = `${y}-${pad2(mo)}-${pad2(d)}`;
+        }
+      }
+      if (tieneHora && nums.length >= 5) {
+        const h = nums[3], mi = nums[4];
+        if (h >= 0 && h <= 23 && mi >= 0 && mi <= 59) hora = `${pad2(h)}:${pad2(mi)}`;
+      }
+    }
+
+    items.push({ nro: Number.isFinite(nro) ? nro : null, actividad, fecha, hora });
+  }
+
+  return items;
+}
+
+// ─── Respaldo: modelo Groq (edge function ai-dbc) ────────────────────────────
+
+/**
+ * Envía la ventana del cronograma al edge function ai-dbc (Groq) y normaliza la
+ * respuesta. Se usa SOLO cuando el parser determinista no detecta filas.
  */
 export async function analizarDbc(dbcText: string): Promise<DbcExtraccion> {
   const { data, error } = await supabase.functions.invoke('ai-dbc', {
@@ -155,7 +222,12 @@ export async function analizarDbc(dbcText: string): Promise<DbcExtraccion> {
   if (error) throw new Error(error.message || 'Error al llamar al agente IA');
   if (data?.error) throw new Error(data.error);
 
-  const ext = data?.extraction as DbcExtraccion | undefined;
-  if (!ext) throw new Error('El agente no devolvió datos. Intenta de nuevo.');
-  return ext;
+  const items = Array.isArray(data?.extraction?.cronograma) ? data.extraction.cronograma : [];
+  const cronograma: CronogramaItem[] = items.map((it: Record<string, unknown>) => ({
+    nro:       typeof it?.nro === 'number' ? it.nro : null,
+    actividad: String(it?.actividad ?? '').trim(),
+    fecha:     typeof it?.fecha === 'string' ? it.fecha.trim() : '',
+    hora:      typeof it?.hora  === 'string' ? it.hora.trim()  : '',
+  }));
+  return { cronograma };
 }

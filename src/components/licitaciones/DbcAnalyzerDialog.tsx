@@ -1,5 +1,6 @@
 // src/components/licitaciones/DbcAnalyzerDialog.tsx
-// Analiza un DBC con Groq IA. Soporta PDF, Word (.docx) y texto pegado manualmente.
+// Analiza el CRONOGRAMA DE PLAZOS de un DBC. SOLO .docx (Word). Parsea en código
+// (plantilla estándar SICOES) y usa Groq como respaldo si el layout es desconocido.
 
 import React, { useRef, useState } from 'react';
 import {
@@ -10,14 +11,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
   Upload, Loader2, CheckCircle2, AlertCircle,
-  FileText, Sparkles, X, ChevronRight,
+  FileText, Sparkles, Cpu,
 } from 'lucide-react';
 import { Licitacion } from '@/accounting/licitacion-types';
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
 import {
-  DbcExtraccion,
-  extractTextFromPdf,
+  CronogramaItem,
   extractTextFromDocx,
+  extraerVentanaCronograma,
+  parseCronogramaLocal,
   analizarDbc,
 } from '@/services/licitacionAiService';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
@@ -37,7 +39,8 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
   const [step, setStep]         = useState<Step>('idle');
   const [fileName, setFileName] = useState('');
   const [dbcText, setDbcText]   = useState('');
-  const [result, setResult]     = useState<DbcExtraccion | null>(null);
+  const [result, setResult]     = useState<CronogramaItem[] | null>(null);
+  const [fuente, setFuente]     = useState<'local' | 'ia' | null>(null);
   const [errMsg, setErrMsg]     = useState('');
   const [applying, setApplying] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -47,6 +50,7 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
     setFileName('');
     setDbcText('');
     setResult(null);
+    setFuente(null);
     setErrMsg('');
     setApplying(false);
   };
@@ -57,11 +61,10 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
 
   const processFile = async (file: File) => {
     const name = file.name.toLowerCase();
-    const isPdf  = name.endsWith('.pdf');
     const isDocx = name.endsWith('.docx') || name.endsWith('.doc');
 
-    if (!isPdf && !isDocx) {
-      toast.error('Solo se admiten archivos PDF o Word (.docx)');
+    if (!isDocx) {
+      toast.error('Solo se admiten archivos Word (.docx)');
       return;
     }
     if (file.size > 15 * 1024 * 1024) {
@@ -74,29 +77,24 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
     setErrMsg('');
 
     try {
-      let extracted = '';
-      if (isPdf)  extracted = await extractTextFromPdf(file);
-      if (isDocx) extracted = await extractTextFromDocx(file);
+      const full    = await extractTextFromDocx(file);
+      const ventana = extraerVentanaCronograma(full);
 
-      if (extracted.length >= 100) {
-        // Extracción exitosa — mostrar el texto para que el usuario lo revise/edite
-        setDbcText(extracted);
+      if (ventana.length >= 50) {
+        // Cronograma localizado — mostrar la ventana para revisión/edición
+        setDbcText(ventana);
         setStep('text-ready');
       } else {
-        // No se pudo extraer (PDF comprimido o escaneado)
+        // No se encontró la tabla del cronograma en el documento
         setDbcText('');
         setStep('idle');
-        if (isPdf) {
-          setErrMsg(
-            'No se pudo extraer texto del PDF (puede estar comprimido o escaneado). ' +
-            'Abre el PDF, selecciona todo el texto (Ctrl+A), cópialo y pégalo en el área de abajo.'
-          );
-        } else {
-          setErrMsg('No se pudo leer el archivo Word. Intenta con otro formato o pega el texto manualmente.');
-        }
+        setErrMsg(
+          'No se encontró el "Cronograma de Plazos" en el Word. ' +
+          'Verifica que sea el DBC correcto, o copia esa sección de la tabla y pégala en el área de abajo.'
+        );
       }
-    } catch (err: any) {
-      setErrMsg(err.message || 'Error al leer el archivo');
+    } catch (err: unknown) {
+      setErrMsg(err instanceof Error ? err.message : 'Error al leer el archivo');
       setStep('idle');
     }
   };
@@ -118,14 +116,27 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
   // ── Análisis con Groq ────────────────────────────────────────────────────────
 
   const runAnalysis = async () => {
-    if (!dbcText.trim()) { toast.error('No hay texto para analizar'); return; }
+    const texto = dbcText.trim();
+    if (!texto) { toast.error('No hay texto para analizar'); return; }
+
+    // 1) Parser determinista (plantilla estándar SICOES) — gratis e instantáneo.
+    const local = parseCronogramaLocal(texto);
+    if (local.length > 0) {
+      setResult(local);
+      setFuente('local');
+      setStep('review');
+      return;
+    }
+
+    // 2) Respaldo: modelo Groq, por si el layout no es el estándar.
     setStep('analyzing');
     try {
-      const ext = await analizarDbc(dbcText.trim());
-      setResult(ext);
+      const ext = await analizarDbc(texto);
+      setResult(ext.cronograma);
+      setFuente('ia');
       setStep('review');
-    } catch (err: any) {
-      setErrMsg(err.message || 'Error al analizar');
+    } catch (err: unknown) {
+      setErrMsg(err instanceof Error ? err.message : 'Error al analizar');
       setStep('error');
     }
   };
@@ -136,26 +147,17 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
     if (!result) return;
     try {
       setApplying(true);
-      const changes: Partial<Licitacion> = {};
-
-      if (result.fecha_presentacion)        changes.fecha_presentacion     = result.fecha_presentacion;
-      if (result.fecha_adjudicacion_est)    changes.fecha_adjudicacion_est = result.fecha_adjudicacion_est;
-      if (result.fecha_contrato)            changes.fecha_contrato         = result.fecha_contrato;
-      if (result.plazo_entrega_dias != null) changes.plazo_entrega_dias    = result.plazo_entrega_dias;
-      if (result.precio_referencial  != null) changes.precio_referencial   = result.precio_referencial;
-
-      if (result.requisitos_adicionales) {
-        const prev = licitacion.notas?.trim() || '';
-        const sep  = prev ? '\n\n---\n' : '';
-        changes.notas = `${prev}${sep}📋 REQUISITOS ADICIONALES (extraído por IA):\n${result.requisitos_adicionales}`;
-      }
+      // Guardamos el cronograma en datos_ia (jsonb). NO tocamos las columnas de
+      // fechas/precio: su edición manual vive en la pestaña Proceso.
+      const nuevosDatos = { ...(licitacion.datos_ia ?? {}), cronograma: result };
+      const changes: Partial<Licitacion> = { datos_ia: nuevosDatos };
 
       await LicitacionStorage.update(licitacion.id, companyId, changes);
       onUpdated({ ...licitacion, ...changes });
-      toast.success('Datos aplicados a la licitación');
+      toast.success('Cronograma guardado en la licitación');
       handleClose();
-    } catch (err: any) {
-      toast.error(err.message || 'Error al guardar');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Error al guardar');
     } finally {
       setApplying(false);
     }
@@ -163,11 +165,7 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  const hasData = result && (
-    result.fecha_presentacion || result.fecha_adjudicacion_est ||
-    result.fecha_contrato || result.plazo_entrega_dias != null ||
-    result.precio_referencial != null || result.requisitos_adicionales
-  );
+  const hasData = !!result && result.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) handleClose(); }}>
@@ -175,11 +173,11 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
-            Analizar DBC con IA
+            Analizar cronograma del DBC
           </DialogTitle>
           <DialogDescription>
-            Sube el DBC en PDF o Word, o pega el texto directamente.
-            El agente extrae fechas y requisitos automáticamente.
+            Sube el DBC en Word (.docx) o pega la tabla del cronograma.
+            Se extrae el Cronograma de Plazos (actividad, fecha y hora).
           </DialogDescription>
         </DialogHeader>
 
@@ -205,16 +203,16 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
                   <div className="flex items-center gap-1.5">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
                     <p className="text-sm font-medium text-green-700 dark:text-green-400">{fileName}</p>
-                    <span className="text-xs text-muted-foreground">— texto extraído</span>
+                    <span className="text-xs text-muted-foreground">— cronograma localizado</span>
                   </div>
                 ) : (
                   <p className="text-sm font-medium">
                     {dragging ? 'Suelta aquí' : 'Arrastra el DBC o haz clic'}
                   </p>
                 )}
-                <p className="text-xs text-muted-foreground mt-0.5">PDF o Word (.docx) · máx. 15 MB</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Word (.docx) · máx. 15 MB</p>
               </div>
-              <input ref={fileRef} type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={handleFileInput} />
+              <input ref={fileRef} type="file" accept=".doc,.docx" className="hidden" onChange={handleFileInput} />
             </div>
 
             {/* Error de extracción */}
@@ -229,11 +227,11 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
                 {step === 'text-ready'
-                  ? 'Texto extraído — puedes editar antes de analizar:'
-                  : 'O pega el texto del DBC directamente aquí:'}
+                  ? 'Cronograma localizado — puedes editar antes de analizar:'
+                  : 'O pega la tabla del Cronograma de Plazos directamente aquí:'}
               </label>
               <Textarea
-                placeholder="Pega aquí el contenido del DBC copiado desde el PDF o Word…"
+                placeholder="Pega aquí la tabla del Cronograma de Plazos copiada desde el Word…"
                 value={dbcText}
                 onChange={e => setDbcText(e.target.value)}
                 rows={8}
@@ -241,9 +239,6 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
               />
               <p className="text-xs text-muted-foreground text-right">
                 {dbcText.length.toLocaleString()} caracteres
-                {dbcText.length > 16000 && (
-                  <span className="text-amber-500 ml-1">(se usarán los primeros 16 000)</span>
-                )}
               </p>
             </div>
 
@@ -253,7 +248,7 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
               onClick={runAnalysis}
             >
               <Sparkles className="h-4 w-4" />
-              Analizar con IA
+              Analizar cronograma
             </Button>
           </div>
         )}
@@ -277,7 +272,7 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
               <Loader2 className="h-16 w-16 animate-spin text-primary/25 absolute inset-0" />
             </div>
             <div className="text-center">
-              <p className="font-semibold">El agente está analizando el DBC…</p>
+              <p className="font-semibold">El agente está leyendo el cronograma…</p>
               <p className="text-sm text-muted-foreground mt-1">Esto toma unos segundos</p>
             </div>
           </div>
@@ -304,56 +299,58 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-sm">
               <CheckCircle2 className="h-4 w-4 text-green-500" />
-              <span className="font-medium text-green-700 dark:text-green-400">Análisis completado</span>
-              {fileName && (
-                <span className="ml-auto text-xs text-muted-foreground flex items-center gap-1">
-                  <FileText className="h-3 w-3" />{fileName}
-                </span>
-              )}
+              <span className="font-medium text-green-700 dark:text-green-400">
+                Cronograma detectado ({result.length})
+              </span>
+              <span className="ml-auto text-[11px] text-muted-foreground flex items-center gap-1">
+                {fuente === 'ia'
+                  ? <><Sparkles className="h-3 w-3 text-primary" /> vía IA</>
+                  : <><Cpu className="h-3 w-3" /> detectado localmente</>}
+              </span>
             </div>
 
-            {/* Tabla de datos extraídos */}
-            <div className="rounded-lg border divide-y">
-              <Row label="Fecha presentación"   value={result.fecha_presentacion}     isDate />
-              <Row label="Fecha adjudicación"   value={result.fecha_adjudicacion_est}  isDate />
-              <Row label="Fecha contrato / OC"  value={result.fecha_contrato}          isDate />
-              <Row
-                label="Plazo de entrega"
-                value={result.plazo_entrega_dias != null ? `${result.plazo_entrega_dias} días` : null}
-              />
-              <Row
-                label="Precio referencial"
-                value={result.precio_referencial != null
-                  ? `Bs ${result.precio_referencial.toLocaleString('es-BO', { minimumFractionDigits: 2 })}`
-                  : null}
-              />
-            </div>
-
-            {/* Requisitos adicionales */}
-            {result.requisitos_adicionales && (
-              <div className="space-y-1.5">
-                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                  <ChevronRight className="h-3.5 w-3.5" />
-                  Requisitos adicionales detectados
-                </p>
-                <div className="bg-muted/40 rounded-lg px-3 py-2.5 text-xs whitespace-pre-wrap max-h-28 overflow-y-auto leading-relaxed">
-                  {result.requisitos_adicionales}
+            {hasData ? (
+              <div className="rounded-lg border overflow-hidden">
+                <div className="max-h-72 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-muted/60 backdrop-blur">
+                      <tr className="text-left text-muted-foreground">
+                        <th className="px-2 py-1.5 w-7 text-right">#</th>
+                        <th className="px-2 py-1.5">Actividad</th>
+                        <th className="px-2 py-1.5 whitespace-nowrap">Fecha</th>
+                        <th className="px-2 py-1.5 whitespace-nowrap">Hora</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {result.map((it, i) => (
+                        <tr key={i} className="align-top">
+                          <td className="px-2 py-1.5 text-right text-muted-foreground">{it.nro ?? '·'}</td>
+                          <td className="px-2 py-1.5">{it.actividad || <span className="text-muted-foreground/40 italic">—</span>}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap font-medium">{fmtFecha(it.fecha)}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap font-medium">
+                            {it.hora || <span className="text-muted-foreground/40">—</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <p className="text-[11px] text-muted-foreground">Se añadirán a las Notas del proceso.</p>
               </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-2 bg-muted/30 rounded-lg">
+                No se detectaron actividades en el texto.<br />
+                <span className="text-xs">Verifica que sea la tabla del Cronograma de Plazos.</span>
+              </p>
             )}
 
-            {!hasData && (
-              <p className="text-sm text-muted-foreground text-center py-2 bg-muted/30 rounded-lg">
-                No se encontraron datos estructurados en el texto.<br />
-                <span className="text-xs">Verifica que el texto sea del DBC correcto.</span>
-              </p>
+            {hasData && (
+              <p className="text-[11px] text-muted-foreground">Se guardará en los datos del proceso.</p>
             )}
 
             {/* Acciones */}
             <div className="flex gap-2 pt-1">
               <Button variant="outline" onClick={() => setStep('text-ready')} className="flex-1">
-                <X className="h-3.5 w-3.5 mr-1.5" /> Editar texto
+                Editar texto
               </Button>
               <Button
                 onClick={handleApply}
@@ -361,7 +358,7 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
                 className="flex-1 gap-2"
               >
                 {applying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                {applying ? 'Aplicando…' : 'Aplicar datos'}
+                {applying ? 'Guardando…' : 'Guardar cronograma'}
               </Button>
             </div>
           </div>
@@ -371,28 +368,15 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
   );
 }
 
-// ── Fila de resultado ─────────────────────────────────────────────────────────
+// ── Formato de fecha es-BO ──────────────────────────────────────────────────
 
-function Row({ label, value, isDate }: {
-  label: string;
-  value: string | null | undefined;
-  isDate?: boolean;
-}) {
-  let display = value;
-  if (isDate && value) {
-    try {
-      display = new Date(value + 'T12:00:00').toLocaleDateString('es-BO', {
-        day: '2-digit', month: 'long', year: 'numeric',
-      });
-    } catch { /* mantener */ }
+function fmtFecha(value: string): React.ReactNode {
+  if (!value) return <span className="text-muted-foreground/40">—</span>;
+  try {
+    return new Date(value + 'T12:00:00').toLocaleDateString('es-BO', {
+      day: '2-digit', month: 'short', year: 'numeric',
+    });
+  } catch {
+    return value;
   }
-  return (
-    <div className="flex items-center justify-between px-3 py-2.5 gap-3">
-      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
-      {display
-        ? <span className="text-xs font-medium text-right">{display}</span>
-        : <span className="text-xs text-muted-foreground/40 italic">No encontrado</span>
-      }
-    </div>
-  );
 }

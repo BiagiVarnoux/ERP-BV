@@ -8,7 +8,8 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { Licitacion, LicitacionEstado } from '@/accounting/licitacion-types';
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
-import { CalendarDays, CheckCircle2, Circle } from 'lucide-react';
+import type { CronogramaItem } from '@/services/licitacionAiService';
+import { CalendarDays, CheckCircle2, Circle, ListChecks } from 'lucide-react';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 interface Props {
@@ -54,6 +55,11 @@ export function TabProceso({ licitacion: l, onUpdated }: Props) {
       setSaving(false);
     }
   };
+
+  // Cronograma extraído del DBC (solo lectura; se guarda desde "Analizar DBC")
+  const cronograma = Array.isArray((l.datos_ia as Record<string, unknown>)?.cronograma)
+    ? ((l.datos_ia as Record<string, unknown>).cronograma as CronogramaItem[])
+    : [];
 
   // Línea de tiempo
   const estadosOrden: LicitacionEstado[] = ['BORRADOR', 'PRESENTADA', 'ADJUDICADA', 'ENTREGADA'];
@@ -156,6 +162,49 @@ export function TabProceso({ licitacion: l, onUpdated }: Props) {
         </div>
       </div>
 
+      {/* Cronograma de Plazos (extraído del DBC) */}
+      {cronograma.length > 0 && (
+        <>
+          <Separator />
+          <div>
+            <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+              <ListChecks className="h-4 w-4" /> Cronograma de Plazos
+              <span className="text-xs font-normal text-muted-foreground">
+                — {cronograma.length} actividades · extraído del DBC
+              </span>
+            </h3>
+            <div className="rounded-lg border overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/60">
+                    <tr className="text-left text-muted-foreground">
+                      <th className="px-2 py-1.5 w-7 text-right">#</th>
+                      <th className="px-2 py-1.5">Actividad</th>
+                      <th className="px-2 py-1.5 whitespace-nowrap">Fecha</th>
+                      <th className="px-2 py-1.5 whitespace-nowrap">Hora</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {cronograma.map((it, i) => (
+                      <tr key={i} className="align-top">
+                        <td className="px-2 py-1.5 text-right text-muted-foreground">{it.nro ?? '·'}</td>
+                        <td className="px-2 py-1.5">
+                          {it.actividad || <span className="text-muted-foreground/40 italic">—</span>}
+                        </td>
+                        <td className="px-2 py-1.5 whitespace-nowrap font-medium">{fmtFechaCorta(it.fecha)}</td>
+                        <td className="px-2 py-1.5 whitespace-nowrap font-medium">
+                          {it.hora || <span className="text-muted-foreground/40">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       <Separator />
 
       {/* Notas */}
@@ -197,4 +246,15 @@ function DateField({ id, label, hint, value, onChange }: {
       <Input id={id} type="date" value={value} onChange={onChange} />
     </div>
   );
+}
+
+function fmtFechaCorta(value: string): React.ReactNode {
+  if (!value) return <span className="text-muted-foreground/40">—</span>;
+  try {
+    return new Date(value + 'T12:00:00').toLocaleDateString('es-BO', {
+      day: '2-digit', month: 'short', year: 'numeric',
+    });
+  } catch {
+    return value;
+  }
 }

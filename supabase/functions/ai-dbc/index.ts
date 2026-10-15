@@ -1,6 +1,8 @@
-// supabase/functions/ai-dbc/index.ts  v6
-// Extrae datos estructurados de un DBC boliviano (SICOES) usando Groq.
-// verify_jwt: true — la gateway de Supabase valida el JWT antes de llegar aquí.
+// supabase/functions/ai-dbc/index.ts  v7
+// Extrae el CRONOGRAMA DE PLAZOS de un DBC boliviano (SICOES) usando Groq.
+// Es el RESPALDO: el cliente parsea primero en código y solo llama aquí cuando
+// la plantilla no se reconoce. Recibe ya la ventana del cronograma (no el DBC
+// completo). verify_jwt: true — la gateway de Supabase valida el JWT antes de llegar aquí.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -10,24 +12,22 @@ const CORS = {
 };
 
 const SYSTEM_PROMPT = `Eres un asistente para licitaciones públicas bolivianas (SICOES/ANPE).
-Extrae del texto del DBC los siguientes datos y devuelve SOLO un objeto JSON con exactamente estos campos (usa null si no encuentras el dato):
+Recibes el texto de la tabla "Cronograma de Plazos". Las columnas se separan con " | ".
+Cada actividad ocupa normalmente DOS líneas: una con los RÓTULOS (número, nombre, "Día | Mes | Año" y a veces "Hora | Min.") y la siguiente con los VALORES (los dígitos y a veces texto de lugar).
+Devuelve SOLO un objeto JSON con exactamente esta forma:
 {
-  "fecha_presentacion":    "YYYY-MM-DD o null",
-  "fecha_adjudicacion_est":"YYYY-MM-DD o null",
-  "fecha_contrato":        "YYYY-MM-DD o null",
-  "plazo_entrega_dias":    número entero o null,
-  "precio_referencial":    número sin puntos de miles y con punto decimal o null,
-  "requisitos_adicionales":"texto con requisitos ADICIONALES como experiencia mínima, representaciones, certificaciones, sede física, etc. Si no hay, null"
+  "cronograma": [
+    { "nro": número de actividad o null, "actividad": "nombre", "fecha": "YYYY-MM-DD o cadena vacía", "hora": "HH:MM o cadena vacía" }
+  ]
 }
 
 Reglas:
-- Las fechas en el cronograma de un DBC boliviano suelen aparecer como dígitos separados por espacios porque cada celda de la tabla Word es un elemento separado. Ejemplo: "09 0 6 2026" = 09/06/2026 = 2026-06-09. Interpreta siempre en formato DD MM YYYY.
-- La actividad #5 del cronograma suele ser la fecha de presentación de propuestas.
-- La actividad #10 suele ser la adjudicación estimada.
-- La actividad #13 suele ser la firma del contrato.
-- El precio referencial está en bolivianos (Bs) y puede estar en la sección de datos generales o en la tabla de ítems.
-- El plazo de entrega es en días hábiles o calendario, para entregar bienes tras firmar el contrato.
-- NO incluyas especificaciones técnicas de productos en requisitos_adicionales.
+- Rearma la fecha con los 3 primeros números de la línea de valores: "30 | 07 | 2026" => "2026-07-30".
+- Si la actividad tiene "Hora | Min." en sus rótulos, los 2 números siguientes son la hora: "08 | 30" => "08:30"; si no tiene, deja "hora" "".
+- Si una actividad dice "No corresponde" o no tiene números, deja "fecha" "" y "hora" "".
+- "nro" es el número de la actividad si la fila lo trae; si no, null.
+- Respeta el ORDEN de aparición e incluye TODAS las actividades de la tabla.
+- NO inventes datos. Si no encuentras la tabla del cronograma, devuelve { "cronograma": [] }.
 - Responde SOLO con el JSON, sin explicaciones adicionales.`;
 
 serve(async (req) => {
@@ -55,12 +55,12 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model:           "llama-3.1-8b-instant",
-        temperature:     0.05,
-        max_tokens:      600,
+        temperature:     0,
+        max_tokens:      2000,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user",   content: `PARTE II del DBC:\n\n${sanitized}` },
+          { role: "user",   content: `Fragmento del DBC con el Cronograma de Plazos:\n\n${sanitized}` },
         ],
       }),
     });
