@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "13.0.4"
   }
   public: {
     Tables: {
@@ -2795,6 +2795,7 @@ export type Database = {
           nit: string | null
           notas: string | null
           numero_autorizacion: string | null
+          numero_declaracion: string | null
           numero_factura: string | null
           payable_id: string | null
           periodo: string
@@ -2829,6 +2830,7 @@ export type Database = {
           nit?: string | null
           notas?: string | null
           numero_autorizacion?: string | null
+          numero_declaracion?: string | null
           numero_factura?: string | null
           payable_id?: string | null
           periodo: string
@@ -2863,6 +2865,7 @@ export type Database = {
           nit?: string | null
           notas?: string | null
           numero_autorizacion?: string | null
+          numero_declaracion?: string | null
           numero_factura?: string | null
           payable_id?: string | null
           periodo?: string
@@ -3371,6 +3374,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      slugify: { Args: { txt: string }; Returns: string }
       transferir_inventario: {
         Args: {
           p_cantidad: number

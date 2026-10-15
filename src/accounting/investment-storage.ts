@@ -366,10 +366,10 @@ export const InvestmentStorage = {
   async fetchShipmentRealizedDetail(
     companyId: string, shipmentId: string,
   ): Promise<ShipmentRealizedDetailRow[]> {
-    const { data, error } = await (supabase.rpc('get_shipment_realized_sales_detail' as any, {
+    const { data, error } = await supabase.rpc('get_shipment_realized_sales_detail', {
       p_company_id: companyId,
       p_shipment_id: shipmentId,
-    }) as any);
+    });
     if (error) throw error;
 
     return ((data ?? []) as Array<Record<string, unknown>>).map(r => ({

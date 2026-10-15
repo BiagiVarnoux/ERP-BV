@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { resolveUserCompanyId } from '@/lib/resolveCompanyId';
 import { logAuditEntry } from '@/services/auditService';
 
@@ -91,7 +92,7 @@ export async function createReceivable(input: CreateReceivableInput): Promise<vo
   if (!user) throw new Error('No autenticado');
   const companyId = await resolveUserCompanyId();
 
-  const { data, error } = await (supabase.rpc('create_receivable_with_journal' as any, {
+  const { data, error } = await supabase.rpc('create_receivable_with_journal', {
     payload: {
       company_id:        companyId,
       customer_id:       input.customer_id ?? null,
@@ -104,8 +105,8 @@ export async function createReceivable(input: CreateReceivableInput): Promise<vo
       notas:             input.notas ?? null,
       cuenta_activo_id:  input.cuenta_activo_id,
       cuenta_ingreso_id: input.cuenta_ingreso_id,
-    },
-  }) as any);
+    } as unknown as Json,
+  });
 
   if (error) throw new Error(error.message);
 
@@ -124,7 +125,7 @@ export async function registerPayment(input: RegisterPaymentInput): Promise<void
   if (!user) throw new Error('No autenticado');
   const companyId = await resolveUserCompanyId();
 
-  const { data, error } = await (supabase.rpc('register_receivable_payment_with_journal' as any, {
+  const { data, error } = await supabase.rpc('register_receivable_payment_with_journal', {
     payload: {
       company_id:     companyId,
       receivable_id:  input.receivable_id,
@@ -134,8 +135,8 @@ export async function registerPayment(input: RegisterPaymentInput): Promise<void
       tipo_pago:      input.tipo_pago,
       cuenta_pago_id: input.cuenta_pago_id,
       notas:          input.notas ?? null,
-    },
-  }) as any);
+    } as unknown as Json,
+  });
   if (error) throw new Error(error.message);
 
   const result = data as { monto_pendiente?: number; estado?: ReceivableEstado; entry_id?: string } | null;

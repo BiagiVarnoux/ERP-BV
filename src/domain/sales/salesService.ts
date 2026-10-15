@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { calculateTaxes } from './calculateTaxes';
 import { resolveAccounts } from './resolveAccounts';
 import type { CreateSalePayload, SaleHeaderInput, SaleItemInput, SaleRow, TipoPago } from './types';
@@ -36,7 +37,7 @@ export async function createSale(
     company_id: companyId,
   };
 
-  const { data, error } = await supabase.rpc('create_sale', { payload: payload as any });
+  const { data, error } = await supabase.rpc('create_sale', { payload: payload as unknown as Json });
   if (error) throw new Error(error.message);
 
   const result = data as unknown as CreateSaleResult;

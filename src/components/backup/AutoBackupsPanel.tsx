@@ -102,7 +102,7 @@ export function AutoBackupsPanel({ onRestoreComplete }: { onRestoreComplete: () 
   async function createNow() {
     setCreating(true);
     try {
-      const { error } = await (supabase as any).rpc('create_company_backup', {
+      const { error } = await supabase.rpc('create_company_backup', {
         p_company_id: companyId, p_kind: 'manual',
       });
       if (error) throw error;
