@@ -20,6 +20,7 @@ import {
   extractTextFromDocx,
   extraerVentanaCronograma,
   parseCronogramaLocal,
+  mapearCronogramaAFechas,
   analizarDbc,
 } from '@/services/licitacionAiService';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
@@ -147,14 +148,18 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated }: Prop
     if (!result) return;
     try {
       setApplying(true);
-      // Guardamos el cronograma en datos_ia (jsonb). NO tocamos las columnas de
-      // fechas/precio: su edición manual vive en la pestaña Proceso.
+      // Guardamos el cronograma en datos_ia (jsonb) y, además, llenamos las fechas
+      // clave del proceso (presentación, adjudicación, contrato) derivadas de él.
       const nuevosDatos = { ...(licitacion.datos_ia ?? {}), cronograma: result };
-      const changes: Partial<Licitacion> = { datos_ia: nuevosDatos };
+      const fechas = mapearCronogramaAFechas(result);
+      const changes: Partial<Licitacion> = { datos_ia: nuevosDatos, ...fechas };
 
       await LicitacionStorage.update(licitacion.id, companyId, changes);
       onUpdated({ ...licitacion, ...changes });
-      toast.success('Cronograma guardado en la licitación');
+      const nFechas = Object.keys(fechas).length;
+      toast.success(nFechas > 0
+        ? `Cronograma guardado y ${nFechas} fecha${nFechas !== 1 ? 's' : ''} del proceso actualizada${nFechas !== 1 ? 's' : ''}`
+        : 'Cronograma guardado en la licitación');
       handleClose();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar');

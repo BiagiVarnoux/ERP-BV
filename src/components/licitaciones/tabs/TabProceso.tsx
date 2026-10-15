@@ -8,8 +8,8 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { Licitacion, LicitacionEstado } from '@/accounting/licitacion-types';
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
-import type { CronogramaItem } from '@/services/licitacionAiService';
-import { CalendarDays, CheckCircle2, Circle, ListChecks } from 'lucide-react';
+import { type CronogramaItem, mapearCronogramaAFechas } from '@/services/licitacionAiService';
+import { CalendarDays, CheckCircle2, Circle, ListChecks, Sparkles } from 'lucide-react';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 interface Props {
@@ -30,9 +30,33 @@ export function TabProceso({ licitacion: l, onUpdated }: Props) {
   });
   const [saving, setSaving] = useState(false);
 
+  // Cronograma extraído del DBC (se guarda desde "Analizar DBC").
+  const cronograma = Array.isArray((l.datos_ia as Record<string, unknown>)?.cronograma)
+    ? ((l.datos_ia as Record<string, unknown>).cronograma as CronogramaItem[])
+    : [];
+
   const set = (k: keyof typeof form) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setForm(prev => ({ ...prev, [k]: e.target.value }));
+
+  // Rellena las fechas clave del formulario desde el cronograma extraído del DBC.
+  // No guarda: deja los valores en el form para que el usuario revise y presione
+  // "Guardar proceso".
+  const rellenarDesdeCronograma = () => {
+    const fechas = mapearCronogramaAFechas(cronograma);
+    const n = Object.keys(fechas).length;
+    if (n === 0) {
+      toast.info('El cronograma no tiene presentación, adjudicación ni contrato identificables');
+      return;
+    }
+    setForm(prev => ({
+      ...prev,
+      fecha_presentacion:     fechas.fecha_presentacion     ?? prev.fecha_presentacion,
+      fecha_adjudicacion_est: fechas.fecha_adjudicacion_est ?? prev.fecha_adjudicacion_est,
+      fecha_contrato:         fechas.fecha_contrato         ?? prev.fecha_contrato,
+    }));
+    toast.success(`${n} fecha${n !== 1 ? 's' : ''} rellenada${n !== 1 ? 's' : ''} — revisá y guardá`);
+  };
 
   const handleSave = async () => {
     try {
@@ -55,11 +79,6 @@ export function TabProceso({ licitacion: l, onUpdated }: Props) {
       setSaving(false);
     }
   };
-
-  // Cronograma extraído del DBC (solo lectura; se guarda desde "Analizar DBC")
-  const cronograma = Array.isArray((l.datos_ia as Record<string, unknown>)?.cronograma)
-    ? ((l.datos_ia as Record<string, unknown>).cronograma as CronogramaItem[])
-    : [];
 
   // Línea de tiempo
   const estadosOrden: LicitacionEstado[] = ['BORRADOR', 'PRESENTADA', 'ADJUDICADA', 'ENTREGADA'];
@@ -113,9 +132,17 @@ export function TabProceso({ licitacion: l, onUpdated }: Props) {
 
       {/* Fechas */}
       <div>
-        <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
-          <CalendarDays className="h-4 w-4" /> Fechas clave
-        </h3>
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <CalendarDays className="h-4 w-4" /> Fechas clave
+          </h3>
+          {cronograma.length > 0 && (
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={rellenarDesdeCronograma}>
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              Rellenar desde el cronograma
+            </Button>
+          )}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <DateField
             id="fecha_pres"

@@ -24,7 +24,43 @@ export interface DbcExtraccion {
   cronograma: CronogramaItem[];
 }
 
+/** Fechas clave del proceso derivadas del cronograma (para la pestaña Proceso). */
+export interface FechasDesdeCronograma {
+  fecha_presentacion?: string;
+  fecha_adjudicacion_est?: string;
+  fecha_contrato?: string;
+}
+
 const VENTANA_CHARS = 4500;
+
+// ─── Mapeo cronograma → fechas clave del proceso ─────────────────────────────
+
+/**
+ * Deriva las fechas clave de la pestaña Proceso a partir del cronograma extraído,
+ * emparejando por el NOMBRE de la actividad (robusto frente a renumeraciones):
+ *   - fecha_presentacion     ← "Presentación (de) Propuestas"
+ *   - fecha_adjudicacion_est ← "Adjudicación o Declaratoria Desierta" (NO la
+ *                               "Notificación de la adjudicación")
+ *   - fecha_contrato         ← "Suscripción de Contrato / Orden de Compra"
+ * Solo incluye un campo si encontró la actividad con fecha no vacía.
+ */
+export function mapearCronogramaAFechas(cronograma: CronogramaItem[]): FechasDesdeCronograma {
+  const out: FechasDesdeCronograma = {};
+  const norm = (s: string) => s.toLowerCase();
+
+  const pres = cronograma.find(it => it.fecha
+    && /presentaci[oó]n/.test(norm(it.actividad)) && /propuesta/.test(norm(it.actividad)))?.fecha;
+  const adj = cronograma.find(it => it.fecha
+    && /(adjudicaci[oó]n|declaratoria desierta)/.test(norm(it.actividad))
+    && !/notificaci[oó]n/.test(norm(it.actividad)))?.fecha;
+  const cont = cronograma.find(it => it.fecha
+    && /(suscripci[oó]n de contrato|orden de compra)/.test(norm(it.actividad)))?.fecha;
+
+  if (pres) out.fecha_presentacion = pres;
+  if (adj)  out.fecha_adjudicacion_est = adj;
+  if (cont) out.fecha_contrato = cont;
+  return out;
+}
 
 // ─── Extracción de texto del .docx ──────────────────────────────────────────
 
