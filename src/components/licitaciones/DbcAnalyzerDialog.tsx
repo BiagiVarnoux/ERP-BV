@@ -19,6 +19,7 @@ import {
   CronogramaItem,
   extractTextFromDocx,
   extraerVentanaCronograma,
+  extraerPlazoEntregaDias,
   parseCronogramaLocal,
   analizarDbc,
 } from '@/services/licitacionAiService';
@@ -43,6 +44,7 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated, initia
   const [fileName, setFileName] = useState('');
   const [dbcText, setDbcText]   = useState('');
   const [result, setResult]     = useState<CronogramaItem[] | null>(null);
+  const [plazoDias, setPlazoDias] = useState<number | null>(null);
   const [fuente, setFuente]     = useState<'local' | 'ia' | null>(null);
   const [errMsg, setErrMsg]     = useState('');
   const [applying, setApplying] = useState(false);
@@ -53,6 +55,7 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated, initia
     setFileName('');
     setDbcText('');
     setResult(null);
+    setPlazoDias(null);
     setFuente(null);
     setErrMsg('');
     setApplying(false);
@@ -82,6 +85,8 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated, initia
     try {
       const full    = await extractTextFromDocx(file);
       const ventana = extraerVentanaCronograma(full);
+      // El plazo de entrega vive en otra sección del DBC (no en la ventana).
+      setPlazoDias(extraerPlazoEntregaDias(full));
 
       if (ventana.length >= 50) {
         // Cronograma localizado — mostrar la ventana para revisión/edición
@@ -161,14 +166,18 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated, initia
     if (!result) return;
     try {
       setApplying(true);
-      // El cronograma es la fuente de fechas del proceso: se guarda en datos_ia
-      // (jsonb). Las columnas antiguas de fechas no se tocan.
+      // El cronograma (con su actividad canónica) es la fuente de fechas del
+      // proceso: se guarda en datos_ia. Además guardamos el plazo de entrega (días)
+      // en su columna si se detectó. El resto de columnas de fechas no se tocan.
       const nuevosDatos = { ...(licitacion.datos_ia ?? {}), cronograma: result };
       const changes: Partial<Licitacion> = { datos_ia: nuevosDatos };
+      if (plazoDias != null) changes.plazo_entrega_dias = plazoDias;
 
       await LicitacionStorage.update(licitacion.id, companyId, changes);
       onUpdated({ ...licitacion, ...changes });
-      toast.success('Cronograma guardado en el proceso');
+      toast.success(plazoDias != null
+        ? `Cronograma y plazo de entrega (${plazoDias} días) guardados`
+        : 'Cronograma guardado en el proceso');
       handleClose();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar');
@@ -322,6 +331,12 @@ export function DbcAnalyzerDialog({ open, onClose, licitacion, onUpdated, initia
                   : <><Cpu className="h-3 w-3" /> detectado localmente</>}
               </span>
             </div>
+
+            {plazoDias != null && (
+              <div className="text-xs rounded-lg bg-muted/40 px-3 py-2">
+                Plazo de entrega detectado: <span className="font-medium">{plazoDias} días</span>
+              </div>
+            )}
 
             {hasData ? (
               <div className="rounded-lg border overflow-hidden">

@@ -13,7 +13,17 @@ import { supabase } from '@/integrations/supabase/client';
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 
+// Actividad canónica del Cronograma de Plazos. SICOES usa una plantilla estándar:
+// siempre las mismas actividades y en el mismo orden. Una licitación puede traer
+// todas, algunas o ninguna. 'otro' = fila no reconocida (se conserva como texto).
+export type CronogramaKey =
+  | 'publicacion_dbc' | 'inspeccion_previa' | 'consultas_escritas' | 'reunion_aclaracion'
+  | 'presentacion_propuestas' | 'inicio_subasta' | 'cierre_subasta' | 'apertura_propuestas'
+  | 'informe_evaluacion' | 'adjudicacion' | 'notificacion_adjudicacion'
+  | 'presentacion_docs' | 'suscripcion_contrato' | 'otro';
+
 export interface CronogramaItem {
+  key?: CronogramaKey; // actividad canónica detectada (o 'otro')
   nro: number | null;
   actividad: string;
   fecha: string;   // 'YYYY-MM-DD' o '' si no corresponde / no hay
@@ -22,6 +32,7 @@ export interface CronogramaItem {
 
 export interface DbcExtraccion {
   cronograma: CronogramaItem[];
+  plazo_entrega_dias?: number | null; // de la sección "PLAZO DE ENTREGA" del DBC
 }
 
 /** Fechas clave del proceso derivadas del cronograma (para la pestaña Proceso). */
@@ -33,33 +44,92 @@ export interface FechasDesdeCronograma {
 
 const VENTANA_CHARS = 4500;
 
+// ─── Catálogo fijo de actividades (plantilla estándar SICOES) ─────────────────
+
+export interface CronogramaActividadDef {
+  key: Exclude<CronogramaKey, 'otro'>;
+  label: string;
+  test: (nombreMinuscula: string) => boolean;
+}
+
+// Orden = orden de la tabla del DBC. `test` recibe el nombre YA en minúsculas.
+export const CRONOGRAMA_CATALOGO: CronogramaActividadDef[] = [
+  { key: 'publicacion_dbc',          label: 'Publicación del DBC en el SICOES',               test: n => /publicaci[oó]n/.test(n) && /(dbc|sicoes)/.test(n) },
+  { key: 'inspeccion_previa',        label: 'Inspección previa',                               test: n => /inspecci[oó]n/.test(n) },
+  { key: 'consultas_escritas',       label: 'Consultas escritas',                              test: n => /consultas?/.test(n) },
+  { key: 'reunion_aclaracion',       label: 'Reunión informativa de aclaración',               test: n => /reuni[oó]n/.test(n) && /(aclaraci[oó]n|informativa)/.test(n) },
+  { key: 'presentacion_propuestas',  label: 'Presentación de Propuestas',                      test: n => /presentaci[oó]n/.test(n) && /propuesta/.test(n) },
+  { key: 'inicio_subasta',           label: 'Inicio de Subasta Electrónica',                   test: n => /inicio/.test(n) && /subasta/.test(n) },
+  { key: 'cierre_subasta',           label: 'Cierre preliminar de Subasta Electrónica',        test: n => /cierre/.test(n) && /subasta/.test(n) },
+  { key: 'apertura_propuestas',      label: 'Apertura de Propuestas',                          test: n => /apertura/.test(n) && /propuesta/.test(n) },
+  { key: 'informe_evaluacion',       label: 'Informe de Evaluación y Recomendación al RPA',    test: n => /informe/.test(n) && /evaluaci[oó]n/.test(n) },
+  { key: 'adjudicacion',             label: 'Adjudicación o Declaratoria Desierta',            test: n => /(adjudicaci[oó]n|declaratoria desierta)/.test(n) && !/notificaci[oó]n/.test(n) },
+  { key: 'notificacion_adjudicacion',label: 'Notificación de la adjudicación',                 test: n => /notificaci[oó]n/.test(n) && /(adjudicaci[oó]n|declaratoria)/.test(n) },
+  { key: 'presentacion_docs',        label: 'Presentación de documentos para la formalización', test: n => /presentaci[oó]n/.test(n) && /documento/.test(n) && /(formalizaci[oó]n|contrataci[oó]n)/.test(n) },
+  { key: 'suscripcion_contrato',     label: 'Suscripción de Contrato / Orden de Compra',       test: n => /(suscripci[oó]n de contrato|orden de compra)/.test(n) },
+];
+
+export const CRONOGRAMA_LABELS: Record<CronogramaKey, string> = {
+  ...Object.fromEntries(CRONOGRAMA_CATALOGO.map(d => [d.key, d.label])),
+  otro: 'Otra actividad',
+} as Record<CronogramaKey, string>;
+
+/** Clasifica el nombre de una actividad contra el catálogo fijo. */
+export function clasificarActividad(nombre: string): CronogramaKey {
+  const n = (nombre || '').toLowerCase();
+  for (const d of CRONOGRAMA_CATALOGO) if (d.test(n)) return d.key;
+  return 'otro';
+}
+
+/** Posición de orden de una key (1..13); las 'otro'/desconocidas van al final. */
+export function cronogramaOrden(key?: CronogramaKey): number {
+  if (!key || key === 'otro') return 99;
+  const i = CRONOGRAMA_CATALOGO.findIndex(d => d.key === key);
+  return i < 0 ? 99 : i + 1;
+}
+
+/** Asegura que cada ítem tenga `key` (clasifica los que no la traigan, p. ej. legados). */
+export function conKeys(cronograma: CronogramaItem[]): CronogramaItem[] {
+  return cronograma.map(it => ({ ...it, key: it.key ?? clasificarActividad(it.actividad) }));
+}
+
 // ─── Mapeo cronograma → fechas clave del proceso ─────────────────────────────
 
 /**
- * Deriva las fechas clave de la pestaña Proceso a partir del cronograma extraído,
- * emparejando por el NOMBRE de la actividad (robusto frente a renumeraciones):
- *   - fecha_presentacion     ← "Presentación (de) Propuestas"
- *   - fecha_adjudicacion_est ← "Adjudicación o Declaratoria Desierta" (NO la
- *                               "Notificación de la adjudicación")
- *   - fecha_contrato         ← "Suscripción de Contrato / Orden de Compra"
- * Solo incluye un campo si encontró la actividad con fecha no vacía.
+ * Deriva las fechas clave de la pestaña Proceso a partir del cronograma, usando la
+ * actividad canónica (key); para ítems legados sin key, clasifica por el nombre.
+ *   - fecha_presentacion     ← presentacion_propuestas
+ *   - fecha_adjudicacion_est ← adjudicacion
+ *   - fecha_contrato         ← suscripcion_contrato
  */
 export function mapearCronogramaAFechas(cronograma: CronogramaItem[]): FechasDesdeCronograma {
   const out: FechasDesdeCronograma = {};
-  const norm = (s: string) => s.toLowerCase();
+  const keyOf = (it: CronogramaItem) => it.key ?? clasificarActividad(it.actividad);
+  const fechaDe = (k: CronogramaKey) => cronograma.find(it => it.fecha && keyOf(it) === k)?.fecha;
 
-  const pres = cronograma.find(it => it.fecha
-    && /presentaci[oó]n/.test(norm(it.actividad)) && /propuesta/.test(norm(it.actividad)))?.fecha;
-  const adj = cronograma.find(it => it.fecha
-    && /(adjudicaci[oó]n|declaratoria desierta)/.test(norm(it.actividad))
-    && !/notificaci[oó]n/.test(norm(it.actividad)))?.fecha;
-  const cont = cronograma.find(it => it.fecha
-    && /(suscripci[oó]n de contrato|orden de compra)/.test(norm(it.actividad)))?.fecha;
-
+  const pres = fechaDe('presentacion_propuestas');
+  const adj  = fechaDe('adjudicacion');
+  const cont = fechaDe('suscripcion_contrato');
   if (pres) out.fecha_presentacion = pres;
   if (adj)  out.fecha_adjudicacion_est = adj;
   if (cont) out.fecha_contrato = cont;
   return out;
+}
+
+// ─── Plazo de entrega (sección aparte del DBC) ───────────────────────────────
+
+/**
+ * Extrae el plazo de entrega de los BIENES (en días) de la sección "PLAZO DE
+ * ENTREGA" del DBC. OJO: hay un "plazo de entrega de documentos" en el boilerplate
+ * legal que NO es este; por eso exigimos el encabezado seguido en la línea siguiente
+ * por "N días" (así se descarta el de documentos, que va seguido de "de documentos…").
+ * Requiere el texto COMPLETO del DBC (no la ventana del cronograma).
+ */
+export function extraerPlazoEntregaDias(textoCompleto: string): number | null {
+  const m = /(?:^|\n)\s*(?:[A-Z]\.\s*)?PLAZO\s+DE\s+ENTREGA\s*:?\s*\n?\s*(\d{1,3})\s*d[ií]as?/i.exec(textoCompleto);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return Number.isFinite(n) && n > 0 && n <= 365 ? n : null;
 }
 
 // ─── Extracción de texto del .docx ──────────────────────────────────────────
@@ -238,7 +308,11 @@ export function parseCronogramaLocal(ventana: string): CronogramaItem[] {
       }
     }
 
-    items.push({ nro: Number.isFinite(nro) ? nro : null, actividad, fecha, hora });
+    items.push({
+      key: clasificarActividad(actividad),
+      nro: Number.isFinite(nro) ? nro : null,
+      actividad, fecha, hora,
+    });
   }
 
   return items;
@@ -259,11 +333,15 @@ export async function analizarDbc(dbcText: string): Promise<DbcExtraccion> {
   if (data?.error) throw new Error(data.error);
 
   const items = Array.isArray(data?.extraction?.cronograma) ? data.extraction.cronograma : [];
-  const cronograma: CronogramaItem[] = items.map((it: Record<string, unknown>) => ({
-    nro:       typeof it?.nro === 'number' ? it.nro : null,
-    actividad: String(it?.actividad ?? '').trim(),
-    fecha:     typeof it?.fecha === 'string' ? it.fecha.trim() : '',
-    hora:      typeof it?.hora  === 'string' ? it.hora.trim()  : '',
-  }));
+  const cronograma: CronogramaItem[] = items.map((it: Record<string, unknown>) => {
+    const actividad = String(it?.actividad ?? '').trim();
+    return {
+      key:       clasificarActividad(actividad),
+      nro:       typeof it?.nro === 'number' ? it.nro : null,
+      actividad,
+      fecha:     typeof it?.fecha === 'string' ? it.fecha.trim() : '',
+      hora:      typeof it?.hora  === 'string' ? it.hora.trim()  : '',
+    };
+  });
   return { cronograma };
 }
