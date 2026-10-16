@@ -6,6 +6,7 @@
 export type LicitacionEstado =
   | 'BORRADOR'
   | 'PRESENTADA'
+  | 'GANADA'
   | 'ADJUDICADA'
   | 'PERDIDA'
   | 'DESIERTA'
@@ -30,6 +31,7 @@ export type DocCategoria =
 export const LICITACION_ESTADO_LABELS: Record<LicitacionEstado, string> = {
   BORRADOR:   'Borrador',
   PRESENTADA: 'Presentada',
+  GANADA:     'Ganada',
   ADJUDICADA: 'Adjudicada',
   PERDIDA:    'Perdida',
   DESIERTA:   'Desierta',
@@ -40,6 +42,7 @@ export const LICITACION_ESTADO_LABELS: Record<LicitacionEstado, string> = {
 export const LICITACION_ESTADO_COLORS: Record<LicitacionEstado, string> = {
   BORRADOR:   'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
   PRESENTADA: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  GANADA:     'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
   ADJUDICADA: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
   PERDIDA:    'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
   DESIERTA:   'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',

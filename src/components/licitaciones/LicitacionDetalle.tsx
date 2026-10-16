@@ -22,7 +22,7 @@ interface Props {
 }
 
 const ESTADOS_ORDEN: LicitacionEstado[] = [
-  'BORRADOR', 'PRESENTADA', 'ADJUDICADA', 'PERDIDA', 'DESIERTA', 'ENTREGADA', 'COBRADA',
+  'BORRADOR', 'PRESENTADA', 'GANADA', 'ADJUDICADA', 'PERDIDA', 'DESIERTA', 'ENTREGADA', 'COBRADA',
 ];
 
 export function LicitacionDetalle({ licitacion, onBack, onUpdated, onReload }: Props) {

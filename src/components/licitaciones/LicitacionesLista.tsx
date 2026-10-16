@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Plus, Search, Trash2, ChevronRight, FileText, Clock, AlertTriangle, CalendarClock, ListChecks, X, Layers } from 'lucide-react';
 import { Licitacion, LicitacionEstado, LICITACION_ESTADO_LABELS, LICITACION_ESTADO_COLORS, TIPO_PROCESO_LABELS } from '@/accounting/licitacion-types';
+import { type CronogramaItem, mapearCronogramaAFechas } from '@/services/licitacionAiService';
 import { fmt } from '@/accounting/utils';
 import { NuevaLicitacionModal } from './NuevaLicitacionModal';
 import { LicitacionesConsolidado } from './LicitacionesConsolidado';
@@ -23,7 +24,7 @@ interface Props {
   onOpen: (id: string) => void;
 }
 
-const ESTADOS_ACTIVOS: LicitacionEstado[] = ['BORRADOR', 'PRESENTADA', 'ADJUDICADA'];
+const ESTADOS_ACTIVOS: LicitacionEstado[] = ['BORRADOR', 'PRESENTADA', 'GANADA', 'ADJUDICADA'];
 const ESTADOS_COMPLETADAS: LicitacionEstado[] = ['ENTREGADA', 'COBRADA'];
 const ESTADOS_NO_GANADAS: LicitacionEstado[] = ['PERDIDA', 'DESIERTA'];
 
@@ -297,30 +298,43 @@ function diasHasta(fechaIso: string): number {
 }
 
 function CountdownChip({ licitacion: l }: { licitacion: Licitacion }) {
+  // Las fechas salen del cronograma (fuente actual); se cae a las columnas legadas.
+  const cronoRaw = (l.datos_ia as Record<string, unknown>)?.cronograma;
+  const crono = Array.isArray(cronoRaw) ? (cronoRaw as CronogramaItem[]) : [];
+  const fechas = mapearCronogramaAFechas(crono);
+  const fPres = fechas.fecha_presentacion     ?? l.fecha_presentacion;
+  const fAdj  = fechas.fecha_adjudicacion_est ?? l.fecha_adjudicacion_est;
+  const fCont = fechas.fecha_contrato         ?? l.fecha_contrato;
+
   // Determinar qué fecha y etiqueta mostrar según el estado
   let fechaIso: string | undefined;
   let etiqueta: string;
   let icono: 'clock' | 'alert' | 'calendar' = 'calendar';
 
   if (l.estado === 'BORRADOR' || l.estado === 'PRESENTADA') {
-    fechaIso = l.fecha_presentacion;
+    fechaIso = fPres;
     etiqueta = 'para presentar';
     icono    = 'clock';
+  } else if (l.estado === 'GANADA') {
+    // Ganada: se esperan los plazos de la adjudicación.
+    fechaIso = fAdj;
+    etiqueta = 'para adjudicación';
+    icono    = 'calendar';
   } else if (l.estado === 'ADJUDICADA') {
-    // Prioridad: fecha_limite_entrega > fecha_contrato + plazo > fecha_contrato
+    // Prioridad: fecha_limite_entrega > contrato + plazo > contrato
     if (l.fecha_limite_entrega) {
       fechaIso = l.fecha_limite_entrega;
       etiqueta = 'para entregar';
       icono    = 'alert';
-    } else if (l.fecha_contrato && l.plazo_entrega_dias) {
+    } else if (fCont && l.plazo_entrega_dias) {
       // Calcular fecha límite desde el contrato + plazo
-      const d = new Date(l.fecha_contrato + 'T12:00:00');
+      const d = new Date(fCont + 'T12:00:00');
       d.setDate(d.getDate() + l.plazo_entrega_dias);
       fechaIso = d.toISOString().slice(0, 10);
       etiqueta = 'para entregar';
       icono    = 'alert';
-    } else if (l.fecha_contrato) {
-      fechaIso = l.fecha_contrato;
+    } else if (fCont) {
+      fechaIso = fCont;
       etiqueta = 'para firma contrato';
       icono    = 'calendar';
     }

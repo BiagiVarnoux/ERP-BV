@@ -126,14 +126,15 @@ export function TabProceso({ licitacion: l, onUpdated }: Props) {
   const diasPresentacion = diasDesdeHoy(fechas.fecha_presentacion);
 
   // ── Línea de tiempo ────────────────────────────────────────────────────────
-  const estadosOrden: LicitacionEstado[] = ['BORRADOR', 'PRESENTADA', 'ADJUDICADA', 'ENTREGADA'];
+  const estadosOrden: LicitacionEstado[] = ['BORRADOR', 'PRESENTADA', 'GANADA', 'ADJUDICADA', 'ENTREGADA'];
   const idxEstadoActual = estadosOrden.indexOf(l.estado as LicitacionEstado);
   const hitos = [
     { label: 'Borrador',             done: true,                    fecha: undefined as string | undefined },
     { label: 'Presentada',           done: idxEstadoActual >= 1,    fecha: fechas.fecha_presentacion },
-    { label: 'Nota de Adjudicación', done: idxEstadoActual >= 2,    fecha: fechas.fecha_adjudicacion_est },
+    { label: 'Ganada',               done: idxEstadoActual >= 2,    fecha: undefined },
+    { label: 'Nota de Adjudicación', done: idxEstadoActual >= 3,    fecha: fechas.fecha_adjudicacion_est },
     { label: 'Contrato / OC',        done: !!fechas.fecha_contrato, fecha: fechas.fecha_contrato },
-    { label: 'Bienes entregados',    done: idxEstadoActual >= 3,    fecha: l.fecha_entrega_real || fechaLimiteEntrega },
+    { label: 'Bienes entregados',    done: idxEstadoActual >= 4,    fecha: l.fecha_entrega_real || fechaLimiteEntrega },
   ];
 
   return (
