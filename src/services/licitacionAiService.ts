@@ -64,7 +64,7 @@ export const CRONOGRAMA_CATALOGO: CronogramaActividadDef[] = [
   { key: 'apertura_propuestas',      label: 'Apertura de Propuestas',                          test: n => /apertura/.test(n) && /propuesta/.test(n) },
   { key: 'informe_evaluacion',       label: 'Informe de Evaluación y Recomendación al RPA',    test: n => /informe/.test(n) && /evaluaci[oó]n/.test(n) },
   { key: 'adjudicacion',             label: 'Adjudicación o Declaratoria Desierta',            test: n => /(adjudicaci[oó]n|declaratoria desierta)/.test(n) && !/notificaci[oó]n/.test(n) },
-  { key: 'notificacion_adjudicacion',label: 'Notificación de la adjudicación',                 test: n => /notificaci[oó]n/.test(n) && /(adjudicaci[oó]n|declaratoria)/.test(n) },
+  { key: 'notificacion_adjudicacion',label: 'Notificación de la adjudicación (fecha límite)',   test: n => /notificaci[oó]n/.test(n) && /(adjudicaci[oó]n|declaratoria)/.test(n) },
   { key: 'presentacion_docs',        label: 'Presentación de documentos para la formalización', test: n => /presentaci[oó]n/.test(n) && /documento/.test(n) && /(formalizaci[oó]n|contrataci[oó]n)/.test(n) },
   { key: 'suscripcion_contrato',     label: 'Suscripción de Contrato / Orden de Compra',       test: n => /(suscripci[oó]n de contrato|orden de compra)/.test(n) },
 ];
@@ -99,7 +99,8 @@ export function conKeys(cronograma: CronogramaItem[]): CronogramaItem[] {
  * Deriva las fechas clave de la pestaña Proceso a partir del cronograma, usando la
  * actividad canónica (key); para ítems legados sin key, clasifica por el nombre.
  *   - fecha_presentacion     ← presentacion_propuestas
- *   - fecha_adjudicacion_est ← adjudicacion
+ *   - fecha_adjudicacion_est ← notificacion_adjudicacion (act. 11, "fecha límite");
+ *                               si no existe, cae a adjudicacion (act. 10)
  *   - fecha_contrato         ← suscripcion_contrato
  */
 export function mapearCronogramaAFechas(cronograma: CronogramaItem[]): FechasDesdeCronograma {
@@ -108,7 +109,9 @@ export function mapearCronogramaAFechas(cronograma: CronogramaItem[]): FechasDes
   const fechaDe = (k: CronogramaKey) => cronograma.find(it => it.fecha && keyOf(it) === k)?.fecha;
 
   const pres = fechaDe('presentacion_propuestas');
-  const adj  = fechaDe('adjudicacion');
+  // La fecha límite de notificación (act. 11) es la adjudicación estimada; si no
+  // está, se usa la adjudicación (act. 10).
+  const adj  = fechaDe('notificacion_adjudicacion') ?? fechaDe('adjudicacion');
   const cont = fechaDe('suscripcion_contrato');
   if (pres) out.fecha_presentacion = pres;
   if (adj)  out.fecha_adjudicacion_est = adj;
