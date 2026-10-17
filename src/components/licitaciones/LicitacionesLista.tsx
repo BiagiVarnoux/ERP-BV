@@ -15,6 +15,7 @@ import { type CronogramaItem, mapearCronogramaAFechas } from '@/services/licitac
 import { fmt } from '@/accounting/utils';
 import { NuevaLicitacionModal } from './NuevaLicitacionModal';
 import { LicitacionesConsolidado } from './LicitacionesConsolidado';
+import { NotasConfigModal } from './NotasConfigModal';
 
 interface Props {
   licitaciones: Licitacion[];
@@ -36,6 +37,7 @@ export function LicitacionesLista({ licitaciones, loading, onCreated, onDelete, 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showConsolidado, setShowConsolidado] = useState(false);
+  const [showNotasConfig, setShowNotasConfig] = useState(false);
 
   const toggleSelectMode = () => {
     setSelectMode(prev => !prev);
@@ -74,6 +76,10 @@ export function LicitacionesLista({ licitaciones, loading, onCreated, onDelete, 
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowNotasConfig(true)} className="gap-2">
+            <FileText className="h-4 w-4" />
+            Datos para notas
+          </Button>
           <Button variant="outline" onClick={toggleSelectMode} className="gap-2">
             {selectMode ? <X className="h-4 w-4" /> : <ListChecks className="h-4 w-4" />}
             {selectMode ? 'Cancelar selección' : 'Seleccionar'}
@@ -159,6 +165,8 @@ export function LicitacionesLista({ licitaciones, loading, onCreated, onDelete, 
           onClose={() => setShowConsolidado(false)}
         />
       )}
+
+      <NotasConfigModal open={showNotasConfig} onClose={() => setShowNotasConfig(false)} />
 
       <NuevaLicitacionModal
         open={showModal}

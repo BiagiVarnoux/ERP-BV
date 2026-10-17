@@ -583,6 +583,32 @@ export type Database = {
           },
         ]
       }
+      licitacion_notas_config: {
+        Row: {
+          company_id: string
+          data: Json
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          data?: Json
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          data?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "licitacion_notas_config_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cost_sheet_cells: {
         Row: {
           cell_type: string

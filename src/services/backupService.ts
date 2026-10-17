@@ -221,6 +221,8 @@ export interface BackupData {
   product_publicaciones?: any[];
   // v3.7 fields — cotizaciones/proformas de cliente por embarque
   shipment_cotizaciones?: any[];
+  // v3.8 fields — config "Datos para notas" por empresa
+  licitacion_notas_config?: any[];
 }
 
 export async function createFullBackup(activeCompanyId?: string): Promise<BackupData> {
@@ -269,6 +271,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     product_publicaciones,
     tax_documents,
     shipment_cotizaciones,
+    licitacion_notas_config,
   ] = await Promise.all([
     fetchAllCompanyRows('accounts', companyId),
     fetchAllCompanyRows('journal_entries', companyId),
@@ -328,6 +331,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     fetchAllCompanyRows('tax_documents', companyId),
     // v3.7: cotizaciones/proformas de cliente por embarque
     fetchAllCompanyRows('shipment_cotizaciones', companyId),
+    fetchAllCompanyRows('licitacion_notas_config', companyId),
   ]);
 
   return {
@@ -372,6 +376,7 @@ export async function createFullBackup(activeCompanyId?: string): Promise<Backup
     product_publicaciones,
     tax_documents,
     shipment_cotizaciones,
+    licitacion_notas_config,
   };
 }
 
@@ -462,6 +467,7 @@ async function _performRestoreInternal(
   await safeDeleteCompany('investment_analyses', companyId);
   await safeDeleteCompany('company_sale_account_config', companyId);
   await safeDeleteCompany('company_sale_channel_config', companyId);
+  await safeDeleteCompany('licitacion_notas_config', companyId);
 
   // tax_documents referencia sales y payables → se borra antes que ellos
   await safeDeleteCompany('tax_documents', companyId);
@@ -778,6 +784,17 @@ async function _performRestoreInternal(
       );
     if (error) throw new Error(`Error insertando en company_sale_channel_config: ${error.message}`);
   }
+
+  // v3.8: config "Datos para notas" (UNIQUE company_id → upsert)
+  if (backup.licitacion_notas_config?.length) {
+    const { error } = await supabase
+      .from('licitacion_notas_config')
+      .upsert(
+        backup.licitacion_notas_config.map((r: any) => ({ ...r, company_id: companyId })),
+        { onConflict: 'company_id' }
+      );
+    if (error) throw new Error(`Error insertando en licitacion_notas_config: ${error.message}`);
+  }
 }
 
 // ─── Public API ────────────────────────────────────────────────────────────────
@@ -906,6 +923,7 @@ export function validateBackupFile(data: any): { valid: boolean; error?: string 
     'product_publicaciones',
     'tax_documents',
     'shipment_cotizaciones',
+    'licitacion_notas_config',
   ];
 
   for (const key of optionalArrays) {
