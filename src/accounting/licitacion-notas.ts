@@ -61,6 +61,44 @@ export const NOTAS_CONFIG_DEFAULT: NotasEmpresaConfig = {
   ],
 };
 
+// ─── Datos de notas POR licitación (overrides) ────────────────────────────────
+
+// Override por producto del cotizador (cantidad y precio salen del cotizador;
+// descripción, Nº de ítem del DBC, unidad y cantidad de garantía se cargan aquí).
+export interface NotaItemOverride {
+  nro_dbc: string;
+  descripcion: string;
+  unidad: string;
+  cant_garantia: number | null;
+}
+
+export interface LicitacionNotasDatos {
+  tratamiento: string;              // 'Señor:', 'Señora:', 'Señor(es):'
+  destinatario_nombre: string;
+  destinatario_cargo: string;
+  destinatario_reparticion: string;
+  ciudad: string;                   // si vacío, usa la ciudad de la config
+  fecha: string;                    // ISO 'YYYY-MM-DD'
+  nro_licitacion_anual: string;     // {MM} del CITE
+  items: Record<string, NotaItemOverride>; // keyed by producto.id
+}
+
+export const NOTAS_DATOS_DEFAULT: LicitacionNotasDatos = {
+  tratamiento: 'Señor(es):',
+  destinatario_nombre: '',
+  destinatario_cargo: '',
+  destinatario_reparticion: '',
+  ciudad: '',
+  fecha: '',
+  nro_licitacion_anual: '',
+  items: {},
+};
+
+export function leerNotasDatos(datosIa: Record<string, unknown> | undefined | null): LicitacionNotasDatos {
+  const n = (datosIa?.notas as Partial<LicitacionNotasDatos> | undefined) ?? {};
+  return { ...NOTAS_DATOS_DEFAULT, ...n, items: n.items ?? {} };
+}
+
 // ─── Storage (una fila por empresa) ───────────────────────────────────────────
 
 export const NotasConfigStorage = {

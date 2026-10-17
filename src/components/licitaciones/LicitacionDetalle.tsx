@@ -12,6 +12,7 @@ import { TabCotizacion } from './tabs/TabCotizacion';
 import { TabDocumentos } from './tabs/TabDocumentos';
 import { TabProceso } from './tabs/TabProceso';
 import { TabGeneral } from './tabs/TabGeneral';
+import { TabNotas } from './tabs/TabNotas';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 interface Props {
@@ -96,6 +97,7 @@ export function LicitacionDetalle({ licitacion, onBack, onUpdated, onReload }: P
             )}
           </TabsTrigger>
           <TabsTrigger value="proceso">Proceso</TabsTrigger>
+          <TabsTrigger value="notas">Notas</TabsTrigger>
           <TabsTrigger value="general">General</TabsTrigger>
         </TabsList>
 
@@ -116,6 +118,13 @@ export function LicitacionDetalle({ licitacion, onBack, onUpdated, onReload }: P
 
         <TabsContent value="proceso" className="mt-4">
           <TabProceso
+            licitacion={licitacion}
+            onUpdated={onUpdated}
+          />
+        </TabsContent>
+
+        <TabsContent value="notas" className="mt-4">
+          <TabNotas
             licitacion={licitacion}
             onUpdated={onUpdated}
           />
