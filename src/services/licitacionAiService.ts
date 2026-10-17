@@ -135,6 +135,47 @@ export function extraerPlazoEntregaDias(textoCompleto: string): number | null {
   return Number.isFinite(n) && n > 0 && n <= 365 ? n : null;
 }
 
+// ─── Datos oficiales del proceso (tabla "DATOS GENERALES" del DBC) ────────────
+
+// Datos EXACTOS del DBC, separados de cómo el usuario identifica la licitación
+// (nombre/entidad/numero_sicoes en la pestaña General). El "CUSE" del usuario es el
+// CUCE del DBC; su 4º segmento es el número que suele usar para buscar en SICOES.
+export interface DatosProcesoDbc {
+  entidad_convocante: string;
+  cuce: string;
+  objeto_contratacion: string;
+}
+
+/**
+ * Extrae entidad convocante, CUCE y objeto de la tabla "DATOS DEL PROCESO DE
+ * CONTRATACIÓN" del DBC. El CUCE viene partido celda por celda (igual que las
+ * fechas): se rearma quedándose con dígitos y guiones hasta "Gestión".
+ * Requiere el texto COMPLETO del .docx. Campos no hallados → ''.
+ */
+export function extraerDatosProceso(textoCompleto: string): DatosProcesoDbc {
+  const celda = (label: string): string => {
+    const esc = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const m = new RegExp(`(?:^|\\n)\\s*${esc}\\s*\\|\\s*([^|\\n]+)`, 'i').exec(textoCompleto);
+    return m ? m[1].trim() : '';
+  };
+
+  // CUCE: "CUCE | 2 | 6 | - | 0 | 0 | ... | 1 |  | Gestión | 2026" (ignora el
+  // formulario A-1 vacío, cuyo rótulo lleva dos puntos: "CUCE:").
+  const cuceM = /(?:^|\n)\s*CUCE\s*\|([^\n]*?)\|\s*Gesti[oó]n/i.exec(textoCompleto)
+             ?? /(?:^|\n)\s*CUCE\s*\|([^\n]*)/i.exec(textoCompleto);
+  let cuce = '';
+  if (cuceM) {
+    const raw = cuceM[1].replace(/[^0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    if (raw.length >= 10) cuce = raw;
+  }
+
+  return {
+    entidad_convocante: celda('Entidad Convocante'),
+    cuce,
+    objeto_contratacion: celda('Objeto de la contratación'),
+  };
+}
+
 // ─── Extracción de texto del .docx ──────────────────────────────────────────
 
 /**

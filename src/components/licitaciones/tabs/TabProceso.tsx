@@ -12,10 +12,10 @@ import { toast } from 'sonner';
 import { Licitacion, LicitacionEstado } from '@/accounting/licitacion-types';
 import { LicitacionStorage } from '@/accounting/licitacion-storage';
 import {
-  type CronogramaItem, type CronogramaKey,
+  type CronogramaItem, type CronogramaKey, type DatosProcesoDbc,
   CRONOGRAMA_CATALOGO, mapearCronogramaAFechas, cronogramaOrden, conKeys,
 } from '@/services/licitacionAiService';
-import { CheckCircle2, Circle, ListChecks, Plus, Trash2, Clock } from 'lucide-react';
+import { CheckCircle2, Circle, ListChecks, Plus, Trash2, Clock, FileText } from 'lucide-react';
 import { useActiveCompanyId } from '@/contexts/UserAccessContext';
 
 interface Props {
@@ -62,6 +62,20 @@ export function TabProceso({ licitacion: l, onUpdated }: Props) {
   const [notas, setNotas] = useState(l.notas || '');
   const [saving, setSaving] = useState(false);
 
+  // Datos oficiales del proceso extraídos del DBC (separados de los campos de
+  // General, que son cómo el usuario identifica la licitación).
+  const [proc, setProc] = useState<DatosProcesoDbc>(() => {
+    const p = (l.datos_ia as Record<string, unknown>)?.proceso as DatosProcesoDbc | undefined;
+    return {
+      entidad_convocante:  p?.entidad_convocante  || '',
+      cuce:                p?.cuce                || '',
+      objeto_contratacion: p?.objeto_contratacion || '',
+    };
+  });
+  const setProcField = (k: keyof DatosProcesoDbc) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      setProc(prev => ({ ...prev, [k]: e.target.value }));
+
   const usedKeys = new Set(crono.map(r => r.key).filter((k): k is CronogramaKey => !!k && k !== 'otro'));
 
   const updateRow = (i: number, patch: Partial<CronogramaItem>) =>
@@ -99,7 +113,15 @@ export function TabProceso({ licitacion: l, onUpdated }: Props) {
         .sort((a, b) => cronogramaOrden(a.key) - cronogramaOrden(b.key));
 
       const plazo = plazoStr.trim() ? parseInt(plazoStr, 10) : null;
-      const nuevosDatos = { ...(l.datos_ia ?? {}), cronograma: limpio };
+      const nuevosDatos: Record<string, unknown> = { ...(l.datos_ia ?? {}), cronograma: limpio };
+      const procTrim: DatosProcesoDbc = {
+        entidad_convocante:  proc.entidad_convocante.trim(),
+        cuce:                proc.cuce.trim(),
+        objeto_contratacion: proc.objeto_contratacion.trim(),
+      };
+      if (procTrim.entidad_convocante || procTrim.cuce || procTrim.objeto_contratacion) {
+        nuevosDatos.proceso = procTrim;
+      }
       const changes: Partial<Licitacion> = {
         datos_ia: nuevosDatos,
         plazo_entrega_dias: plazo ?? undefined,
@@ -139,6 +161,37 @@ export function TabProceso({ licitacion: l, onUpdated }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* Datos oficiales del proceso (del DBC) — distintos de los de General */}
+      <div>
+        <h3 className="text-sm font-semibold mb-1 flex items-center gap-2">
+          <FileText className="h-4 w-4" /> Datos del proceso (del DBC)
+        </h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Datos oficiales exactos del pliego. No reemplazan tus campos de «General»
+          (nombre, entidad y N° SICOES), que son tu forma de identificar la licitación.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="proc_entidad" className="text-xs text-muted-foreground">Entidad convocante</Label>
+            <Input id="proc_entidad" className="h-8 text-sm" placeholder="Ej: Ministerio de la Presidencia"
+              value={proc.entidad_convocante} onChange={setProcField('entidad_convocante')} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="proc_cuce" className="text-xs text-muted-foreground">CUCE</Label>
+            <Input id="proc_cuce" className="h-8 text-sm font-mono" placeholder="Ej: 26-0025-00-1676174-1-1"
+              value={proc.cuce} onChange={setProcField('cuce')} />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="proc_objeto" className="text-xs text-muted-foreground">Objeto de la contratación</Label>
+            <Textarea id="proc_objeto" rows={2} className="text-sm"
+              placeholder="Descripción oficial del objeto de contratación"
+              value={proc.objeto_contratacion} onChange={setProcField('objeto_contratacion')} />
+          </div>
+        </div>
+      </div>
+
+      <Separator />
+
       {/* Línea de tiempo */}
       <div className="flex items-start gap-0 overflow-x-auto pb-2">
         {hitos.map((h, i) => (
